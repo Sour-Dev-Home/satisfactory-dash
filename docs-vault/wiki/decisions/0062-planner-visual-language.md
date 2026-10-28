@@ -216,6 +216,29 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
 - **`stalledOf`** (`planner/plannerText.ts`) shares `stalledStateText`'s rule: a mark only when all of a group's machines share
   one of the four states. "Not producing" (mixed), "unpowered" and unknown states have no mark and keep their word.
 
+### Values chosen in build PR 2 (2026-10-28)
+- **Widths** (`planner/graph/lineWidth.ts`, named constants, the SVG `stroke-width` attribute in canvas units): slow 2, mid 3,
+  fast 4, from `rateStep` on the line's `ratePerMinute` and unit. A bundle uses its summed rate, the number its label reads.
+  A line with no step (unknown, 0, a stalled line reading 0) keeps the base width 2, which is today's width for every
+  unmixed line, so unknown lines look as before.
+- **Mixed lines.** The warn colour and the rate's width, plus an inner stroke in the canvas colour (`stroke-surface`, the
+  graph's and the legend's background) drawn over it: 0.5, 1 and 1.5 for slow, mid and fast (its dashes each one unit
+  shorter and centred in the line's, so a dashed or dotted line's holes close at both ends), which
+  leaves a warn rail of 0.75, 1 and 1.25 on each side. Contrast: the rails are `--color-warn`, and both sides of each rail
+  are surface (the canvas outside, the inner stroke inside); warn on surface and on canvas clears 3:1
+  (`lineWidth.test.ts` computes it from the tokens in `index.css`). The old mixed width 3 is gone.
+- **Markers.** The arrowhead stays `userSpaceOnUse` (8 long, 8 wide at its base, the same on every width). It is now placed
+  at its middle (`refX` 5, was 9) and the line stops 3.2 short of the route's end (`roundedOrthogonalPath`'s `trimEnd`, with
+  every corner kept), so a line ends where the head is 4 wide and a 4-wide line never blunts the tip; the tip is where it
+  was, 0.8 past the end under the card. The inner stroke stops 8 short, before the head's base (7.2), or 3 short on a
+  stalled line, at the stop bar's back. A trim always leaves 0.5 of the last run, so the marker keeps its direction. A
+  stalled line's stop bar (12 tall) is unchanged and untrimmed: the line ends inside the bar.
+- **Known limit.** A slow mixed line's warn rails (0.75) blur together below about 0.8 zoom; colour still says mixed there
+  (as it did before this PR). To check on the baselines.
+- **Transports** keep today's 2, or 3 when mixed, and no inner stroke, until their double line (build PR 4).
+- **Legend.** The samples stay at the base width; the mixed-belt sample wears the inner stroke so it matches the canvas.
+  The width rows are build PR 5's.
+
 ### Consequences
 - The graph reads rate at a glance by speed and width, with colour left free for carrier and state.
 - Animation cost is bounded by the view and the cap, not the factory's size, once the cap is measured.

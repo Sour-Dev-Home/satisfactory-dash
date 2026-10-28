@@ -311,7 +311,7 @@ describe("the graph's readable chrome", () => {
 
   it("draws every line before every label, so no line runs over another edge's label (2026-10-27)", async () => {
     const svg = await openGraph();
-    const paths = [...svg.querySelectorAll('[data-edge-layer="lines"] path')];
+    const paths = [...svg.querySelectorAll('[data-edge-layer="lines"] path[marker-end]')];
     const pills = [...svg.querySelectorAll("[data-label-pill]")];
     expect(paths.length).toBeGreaterThan(1);
     expect(pills).toHaveLength(paths.length);
@@ -331,7 +331,7 @@ describe("the graph's readable chrome", () => {
     expect(title).toContain("2 links: Iron Ore · 120 items/min (measured); Limestone · 30 items/min (measured)");
     // The summary still counts every link; the lines layer draws one line fewer.
     expect(svg.getAttribute("aria-label")).toMatch(/6 connections/);
-    expect(svg.querySelectorAll('[data-edge-layer="lines"] path')).toHaveLength(5);
+    expect(svg.querySelectorAll('[data-edge-layer="lines"] path[marker-end]')).toHaveLength(5);
     fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_Stone_C" } });
     expect(label).not.toHaveClass("opacity-graph-dim");
     // The text path keeps a row per link.
