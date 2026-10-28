@@ -18,11 +18,15 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   toolbar); a factory above `COLLAPSE_AT` groups starts collapsed.
 - A card's "+N" pill hides what only feeds it (the backend's `collapseUnder` tree), and the Storage detail toggle folds
   buffers and terminal storage into chips.
-- A transport wears its mode's glyph (`transportGlyphs.tsx`, tokens only, moved by SVG `animateMotion`). It never moves
-  in a hidden tab or past 40 edges, and never at all under System with reduced motion. Moving, it rides
-  `motionPathAround` (`edgeShapes.ts`): the route minus its own label box grown by the halo, a moveto jumping the gap, so
-  it never crosses the item bubbles; it is drawn under the bubble row as a backstop. At rest it stands in the pill's left
-  `GLYPH_INSET` (the halo plus a gap), clear of the bubbles and the rate text.
+- A transport wears its mode's glyph (`transportGlyphs.tsx`, tokens only, moved by SVG `animateMotion`) on a double line
+  (ADR-0062 amendment build PR 4: `lineStroke`'s `double`, a `TRANSPORT_W` stroke with a `stroke-surface` `TRANSPORT_GAP`
+  over it, `data-double`/`data-double-gap`; one geometry at any rate; it never marches). The glyph never moves in a hidden
+  tab, past `GLYPH_MOVE_MAX` (40) in the settled view, during a glide or a lasso, or under System with reduced motion
+  (Motion On still moves it). Moving, it is drawn by `MarchLayer`, not the canvas (`glyphMotion.ts`: `glyphCandidates`,
+  `movingGlyphs`), and rides `motionPathAround` (`edgeShapes.ts`): the route minus its own label box grown by the halo, a
+  moveto jumping the gap, so it never crosses the item bubbles; the layer's mask (every pill and card a hole) is the
+  backstop. At rest (only then drawn in the canvas) it stands in the pill's left `GLYPH_INSET` (the halo plus a gap), clear
+  of the bubbles and the rate text.
 - A group card of more than one machine with ids opens into its machines (Expand pill at its bottom right, and a hidden
   button in "Open and close parts of the graph"). Opened, the card is a dashed frame with its title and Collapse in a
   header and a grid of machine cards (`machineSlot`, `machineFrameSize` in `layoutSite.ts`; at most `MACHINES_MAX` (48),
@@ -106,7 +110,7 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   lines, then all labels.
 - Width means rate (ADR-0062 amendment Decision 4): `lineStroke` (`lineWidth.ts`) gives a belt or pipe line 2, 3 or 4
   from `rateStep` on its (a bundle's summed) rate, 2 with no step; a mixed line keeps its width and gets a thin
-  `stroke-surface` inner stroke (`data-mixed-inner`), never extra width. Transports keep 2 (3 mixed). The line stops
+  `stroke-surface` inner stroke (`data-mixed-inner`), never extra width. Transports draw a 6 double line (above) into their own arrowhead marker (`-double`). The line stops
   `LINE_UNDER_ARROW` short (`roundedOrthogonalPath`'s `trimEnd`) so it ends inside the arrowhead; see the amendment's
   "Values chosen in build PR 2".
 - Marching dashes (ADR-0062 amendment build PR 3, `marching.ts`): a belt or pipe line with a measured or estimated rate

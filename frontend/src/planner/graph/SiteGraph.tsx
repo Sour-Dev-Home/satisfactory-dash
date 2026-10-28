@@ -55,12 +55,13 @@ import { StateMarkGlyph } from "./StateMark";
 import type { StalledKind } from "../plannerText";
 import { machineState } from "../../factory/machineState";
 import { TransportGlyph } from "./transportGlyphs";
-import { GLYPH_HALO_RADIUS, GLYPH_MODES } from "./transportModes";
+import { GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W } from "./cardBadges";
-import { motionPathAround, roundedOrthogonalPath } from "./edgeShapes";
+import { roundedOrthogonalPath } from "./edgeShapes";
 import { lineStroke } from "./lineWidth";
 import { CARD_STACK_OFFSET, MARCH_SETTLE_MS, PULSE_DASH, PULSE_MIN_W, marchCandidates, marchHoles, marchingLines, type MarchHole } from "./marching";
+import { glyphCandidates, movingGlyphs, type GlyphCandidate } from "./glyphMotion";
 import type { RateStep } from "./rateStep";
 import { useSettled } from "./useSettled";
 import {
@@ -99,7 +100,6 @@ import {
   clippedEdges,
   fitView,
   isClipped,
-  isInView,
   keyView,
   panBy,
   pinchView,
@@ -121,11 +121,6 @@ const WHEEL_SENSITIVITY = 0.0015;
 const PILL_MIN_W = 24;
 /** Why the toolbar's blow-up "Expand all" is disabled: every card here would pass `EXPAND_MAX_CARDS`. */
 const NOTHING_FITS = "Nothing here fits under the cap; open a factory to see its parts.";
-/** A glyph crosses its edge at this many units a second, within these bounds; at most this many edges move at once. */
-const GLYPH_SPEED = 40;
-const GLYPH_MIN_S = 4;
-const GLYPH_MAX_S = 16;
-const MAX_MOVING = 40;
 /** A lasso adds a point once the pointer is this far (stage units) from the last one. */
 const LASSO_STEP = 3;
 /** The check on a selected card's corner. */
@@ -161,6 +156,13 @@ const edgeDash = (rate: CanvasFlow["rate"]) => (rate === "measured" ? undefined 
  */
 const ARROW_REF_X = 5;
 const LINE_UNDER_ARROW = 3.2;
+/**
+ * A transport's double line (`TRANSPORT_W`, 6) ends where the head is 6 wide, so its rails never stick out beside it. The
+ * marker rides the path's end, so the double line has its own marker placed further back (`DOUBLE_ARROW_REF_X`): the line
+ * stops `DOUBLE_UNDER_ARROW` short, the tip stays 0.8 past the route's end and the base at 7.2 short, as on a belt.
+ */
+const DOUBLE_ARROW_REF_X = 2.5;
+const DOUBLE_UNDER_ARROW = 5.2;
 /** A mixed line's inner stroke stops before the arrowhead's base (7.2 short of the end), or at a stop bar's back (3 short). */
 const INNER_TRIM = 8;
 const INNER_TRIM_STALLED = 3;
@@ -1116,22 +1118,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   };
   const loops = useMemo(() => scene.cards.filter((c) => c.loop).length, [scene]);
 
-  // The transport glyphs that move: only those whose edge is in view, at most MAX_MOVING, and never in a hidden tab.
-  const moving = useMemo(() => {
-    const set = new Set<number>();
-    if (!animate || !visible) return set;
-    for (const e of transports) {
-      if (set.size >= MAX_MOVING) break;
-      // A stalled line never moves in marks mode (ADR-0062 Decision 2); words mode is today's canvas.
-      if (e.points.length < 2 || (marks && e.flow.stalled !== undefined)) continue;
-      const xs = e.points.map((p) => p.x);
-      const ys = e.points.map((p) => p.y);
-      const box = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
-      if (isInView(viewport, stage, box)) set.add(e.index);
-    }
-    return set;
-  }, [animate, visible, transports, viewport, stage, marks]);
-
   // The lines whose dashes march (ADR-0062 amendment build PR 3): only those in the settled view, at most MARCH_MAX, never
   // with Motion off, under reduced motion (even with Motion on, as its CSS would stop them anyway), in a hidden tab, or during
   // a make-room glide (the march layer does not follow the gliding cards). Chosen per layout, then per settled view. They are
@@ -1139,6 +1125,16 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const marchable = useMemo(() => marchCandidates(layout.edges), [layout]);
   const viewNow = useMemo(() => ({ view: viewport, stage }), [viewport, stage]);
   const settledView = useSettled(viewNow, MARCH_SETTLE_MS);
+  // The transport glyphs that move (ADR-0055 PR 8b; amendment build PR 4): in the settled view, at most GLYPH_MOVE_MAX, never
+  // in a hidden tab, during a glide or a lasso, nor (marks mode) on a stalled line. Motion's On still moves them under reduced
+  // motion, as before; System follows it. They ride their line in `MarchLayer`: an `animateMotion` inside the canvas repainted
+  // the whole canvas every frame, as a marching dash did (#808).
+  const glyphMovable = useMemo(() => glyphCandidates(layout.edges, marks), [layout, marks]);
+  const glyphsMoving = useMemo(
+    () => (animate && visible && ghost === null && lasso === null ? movingGlyphs(glyphMovable, settledView.view, settledView.stage) : []),
+    [animate, visible, ghost, lasso, glyphMovable, settledView],
+  );
+  const moving = useMemo(() => new Set(glyphsMoving.map((g) => g.edge.index)), [glyphsMoving]);
   const marching = useMemo(
     () =>
       animate && !reduced && visible && ghost === null && lasso === null
@@ -1347,6 +1343,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               <marker id={markerId} viewBox="0 0 10 10" refX={ARROW_REF_X} refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
                 <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
               </marker>
+              <marker id={`${markerId}-double`} viewBox="0 0 10 10" refX={DOUBLE_ARROW_REF_X} refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+                <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
+              </marker>
               {/* A stalled line's end (ADR-0062 Decision 2): a bar across it in the state's tone, not an arrowhead. */}
               {marks && STALLED_KINDS.map((kind) => (
                 <marker key={kind} id={`${markerId}-${kind}`} viewBox="0 0 10 12" refX="9" refY="6" markerWidth="10" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
@@ -1437,7 +1436,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               )}
             </g>
           </svg>
-          {(marching.size > 0 || capsMarching.length > 0) && (
+          {(marching.size > 0 || capsMarching.length > 0 || glyphsMoving.length > 0) && (
             <MarchLayer
               edges={layout.edges}
               marching={marching}
@@ -1445,6 +1444,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               caps={capsMarching}
               capDim={(c) => !lit(c.nodeKey)}
               capHoles={focusHoles}
+              glyphs={glyphsMoving}
               holes={holes}
               bounds={{ width: layout.width, height: layout.height }}
               stage={stage}
@@ -1725,6 +1725,7 @@ type EdgeProps = {
   /** The state style is marks (ADR-0062 Decision 2): a stalled line draws its marks; words mode draws none. */
   marks: boolean;
   dim: boolean;
+  /** A transport's glyph moves (drawn by `MarchLayer`), so the label leaves out its glyph at rest. */
   moving: boolean;
   from: string;
   to: string;
@@ -1734,24 +1735,37 @@ type EdgeProps = {
 
 /** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. A stalled line in marks mode ends
  *  in its state's stop bar instead of the arrowhead. Its width is its rate's step (`lineStroke`; a bundle's summed rate),
- *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. It is always still: a
- *  marching line's motion is drawn over it by `MarchLayer`. */
+ *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. A transport draws a double
+ *  line (amendment Decision 6): its wide stroke with a gap in the canvas colour down its middle, two rails, dashed alike. It
+ *  is always still: a marching line's motion and a transport's moving glyph are drawn over it by `MarchLayer`. */
 function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
   const stalled = marks ? e.flow.stalled : undefined;
   const stroke = lineStroke(e.flow);
   const dash = edgeDash(e.flow.rate);
+  const underArrow = stroke.double ? DOUBLE_UNDER_ARROW : LINE_UNDER_ARROW;
   return (
-    <g data-edge={e.index} data-stalled={stalled} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
       <path
-        d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? LINE_UNDER_ARROW : 0)}
+        d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? underArrow : 0)}
         fill="none"
         strokeWidth={stroke.width}
         strokeDasharray={dash}
-        markerEnd={`url(#${stalled === undefined ? markerId : `${markerId}-${stalled}`})`}
+        markerEnd={`url(#${stalled !== undefined ? `${markerId}-${stalled}` : stroke.double ? `${markerId}-double` : markerId})`}
         className={edgeClass(e.flow)}
       />
-      {stroke.inner !== null && (
+      {stroke.inner !== null && stroke.double && (
+        // The gap between the rails: the same dashes at the same offset, so a dashed transport's dashes are each two short rails.
+        <path
+          d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? INNER_TRIM : INNER_TRIM_STALLED)}
+          fill="none"
+          strokeWidth={stroke.inner}
+          strokeDasharray={dash}
+          data-double-gap=""
+          className="stroke-surface"
+        />
+      )}
+      {stroke.inner !== null && !stroke.double && (
         <path
           d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? INNER_TRIM : INNER_TRIM_STALLED)}
           fill="none"
@@ -1784,6 +1798,9 @@ function focusCardHole(edge: LaidEdge | undefined): MarchHole[] {
  * dashes in step; a measured line keeps its solid stroke and pulses ride over it, invisible except while they run. Everything
  * the canvas draws over its lines (labels, cards, the item card) is a hole in the layer's mask, so a marching stroke never
  * shows over them. Decorative (`aria-hidden`) and pointer-transparent: the canvas keeps the tooltips and the pointer.
+ *
+ * The moving transport glyphs (amendment build PR 4) are drawn here too, after the lines and under the same mask: their
+ * `animateMotion` inside the canvas would repaint it whole every frame, as a dash did.
  */
 function MarchLayer({
   edges,
@@ -1792,6 +1809,7 @@ function MarchLayer({
   caps,
   capDim,
   capHoles,
+  glyphs,
   holes,
   bounds,
   stage,
@@ -1811,6 +1829,8 @@ function MarchLayer({
   caps: readonly CapMarch[];
   capDim: (c: CapMarch) => boolean;
   capHoles: readonly MarchHole[];
+  /** The transport glyphs that move (amendment build PR 4), each riding its line under the lines' mask, over the lines. */
+  glyphs: readonly GlyphCandidate<LaidEdge>[];
   holes: readonly MarchHole[];
   bounds: { width: number; height: number };
   stage: Stage;
@@ -1859,6 +1879,13 @@ function MarchLayer({
             const step = marching.get(e.index);
             return step === undefined ? null : <MarchLine key={e.index} edge={e} step={step} dim={dim(e)} />;
           })}
+          {glyphs.length > 0 && (
+            <g data-march-glyphs="">
+              {glyphs.map((g) => (
+                <MovingGlyph key={g.edge.index} glyph={g} dim={dim(g.edge)} />
+              ))}
+            </g>
+          )}
         </g>
         {caps.length > 0 && (
           <g data-march-caps="" mask={capHoles.length > 0 ? `url(#${maskId}-caps)` : undefined}>
@@ -1915,21 +1942,33 @@ function MarchLine({ edge: e, step, dim }: { edge: LaidEdge; step: RateStep; dim
 }
 
 /**
+ * A transport's glyph riding its double line in the march layer (ADR-0055 PR 8b, amendment Decision 6): SVG `animateMotion`
+ * (no script, no inline style) along `motionPathAround`'s path, which leaves out the stretch through its own label box, so the
+ * glyph leaps the item bubbles. One trip takes `seconds`, by the line's length. The canvas leaves out its glyph at rest.
+ */
+function MovingGlyph({ glyph, dim }: { glyph: GlyphCandidate<LaidEdge>; dim: boolean }) {
+  return (
+    <g data-moving="true" data-glyph-edge={glyph.edge.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+      <TransportGlyph mode={glyph.edge.flow.carrier} />
+      <animateMotion path={glyph.path} dur={`${glyph.seconds}s`} repeatCount="indefinite" calcMode="linear" />
+    </g>
+  );
+}
+
+/**
  * A flow's label with a halo: a bubble per item it carries (its icon, up to three, then a "+k" chip) over the short rate
- * text (ADR-0060 Decision 1), and for a transport the mode's glyph (moving along the line when it may). Above every line.
+ * text (ADR-0060 Decision 1), and for a transport the mode's glyph at rest (the march layer draws it when it moves). Above
+ * every line.
  * The words for each item stay in the `<title>` and the Tables view.
  */
 function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }: EdgeProps) {
   const transport = isTransport(e.flow);
   const stalled = marks ? e.flow.stalled : undefined;
-  const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
   const row = e.bubbles;
   const top = e.labelY - e.labelHeight / 2 + LABEL_PAD / 2;
   // The same geometry the detail card's morph starts from (`bubbleCentre`).
   const { left, cy } = bubbleRowOrigin(e);
   const at = bubbleOffsets(row);
-  // A route that lies wholly in its own label box leaves nothing to ride: the glyph then stays at rest.
-  const glide = transport && moving ? motionPathAround(e.points, labelBox(e), GLYPH_HALO_RADIUS + 1) : null;
   return (
     <g data-edge-label={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
@@ -1943,12 +1982,11 @@ function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }:
         data-label-pill=""
         className="fill-surface"
       />
-      {/* Under the bubble row: at rest the glyph stands inside its own pill, left of the bubbles; moving, it travels the line
-          but jumps the label box (`motionPathAround`), and being under the row is the backstop. */}
-      {transport && (
-        <g transform={glide === null ? `translate(${e.mid.x} ${e.mid.y})` : undefined} data-moving={glide !== null}>
+      {/* At rest the glyph stands inside its own pill, left of the bubbles. Moving, it leaves the canvas: `MarchLayer` draws it
+          travelling the line, jumping the label box (`motionPathAround`), with every pill a hole in its mask as the backstop. */}
+      {transport && !moving && (
+        <g transform={`translate(${e.mid.x} ${e.mid.y})`} data-moving="false">
           <TransportGlyph mode={e.flow.carrier} />
-          {glide !== null && <animateMotion path={glide} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
         </g>
       )}
       {row.items.map((item, i) => (

@@ -35,7 +35,17 @@ export const PULSE_DASH = "3 10";
 /** A pulse is half its line's width (a mixed line's inner width), but never thinner than this, so a slow line's beads show. */
 export const PULSE_MIN_W = 1.25;
 
-/** The carriers whose lines march; a transport's glyph moves instead (build PR 4's double line). */
+/**
+ * At most this many transport glyphs move at once (ADR-0055 PR 8b), in view, in edge order. Their own budget, beside the lines'
+ * `MARCH_MAX` and the caps' `CAP_MARCH_MAX`; they move in the march layer too (amendment build PR 4, `glyphMotion.ts`).
+ */
+export const GLYPH_MOVE_MAX = 40;
+/** A glyph crosses its edge at this many units a second, taking at least `GLYPH_MIN_S` and at most `GLYPH_MAX_S` a trip. */
+export const GLYPH_SPEED = 40;
+export const GLYPH_MIN_S = 4;
+export const GLYPH_MAX_S = 16;
+
+/** The carriers whose lines march; a transport's glyph moves instead, along its double line (build PR 4). */
 const MARCH_CARRIERS: ReadonlySet<string> = new Set(["belt", "pipe"]);
 /** Fastest first: under the cap the fastest lines keep their motion. */
 const STEP_RANK: ReadonlyMap<RateStep, number> = new Map([
