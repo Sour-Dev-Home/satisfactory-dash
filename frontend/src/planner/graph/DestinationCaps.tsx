@@ -37,6 +37,8 @@ const CAP_GLYPH: ReadonlyMap<string, GlyphKind> = new Map([
 ]);
 /** The art drawn in a cap's disc, this many units square (the 24-unit glyph box scaled to it). */
 const CAP_ICON = 14;
+/** The glyph's stroke in its own 24-unit box, so it draws about 1.5 units at the disc's size. */
+const CAP_GLYPH_STROKE = 2.5;
 /** The number badge: a pill this tall, centred this far right of and above the disc's centre, each digit this wide. */
 const CAP_BADGE_H = 16;
 const CAP_BADGE_AT = 8;
@@ -91,7 +93,8 @@ function CapArt({ destination, cx, cy }: { destination: string; cx: number; cy: 
   }
   return (
     <g transform={`translate(${cx} ${cy}) scale(${CAP_ICON / GLYPH_BOX})`} data-cap-art="glyph">
-      <BuildingGlyph kind={CAP_GLYPH.get(destination) ?? "unknown"} />
+      {/* Dark on the light chip (as the "+k" text), and heavier: scaled to the disc, the default 1.75 would draw about 1 unit. */}
+      <BuildingGlyph kind={CAP_GLYPH.get(destination) ?? "unknown"} tone="stroke-surface" strokeWidth={CAP_GLYPH_STROKE} />
     </g>
   );
 }

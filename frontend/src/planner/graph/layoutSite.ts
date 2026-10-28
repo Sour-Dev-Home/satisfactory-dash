@@ -43,8 +43,10 @@ export const cardLineMid = (i: number): number => LINES_TOP + LINE_H * i + LINE_
 export const CAP_ROW_H = 28;
 export const CAP_STUB = 14;
 export const CAP_D = 20;
-export const CAP_GAP = 10;
+export const CAP_GAP = 12;
 export const CAP_BADGE_OVER = 12;
+/** The disc's centre sits this far below the row's middle, so the badge on its top right stays inside the row. */
+const CAP_ROW_DROP = 3;
 const CAP_SLOT_W = CAP_STUB + CAP_D;
 /** The top of a card's cap row, under its `lines` lines. */
 export const capRowTop = (lines: number): number => LINES_TOP + LINE_H * lines;
@@ -53,7 +55,7 @@ export const capRowWidth = (slots: number): number => (slots <= 0 ? 0 : slots * 
 /** Cap `i`'s stub (from `x0` to the disc's edge at `x1`) and disc centre, in the card's units, under `lines` lines. */
 export function capSlotAt(i: number, lines: number): { x0: number; x1: number; cx: number; cy: number } {
   const x0 = NODE_PAD_X + i * (CAP_SLOT_W + CAP_GAP);
-  return { x0, x1: x0 + CAP_STUB, cx: x0 + CAP_STUB + CAP_D / 2, cy: capRowTop(lines) + CAP_ROW_H / 2 + 3 };
+  return { x0, x1: x0 + CAP_STUB, cx: x0 + CAP_STUB + CAP_D / 2, cy: capRowTop(lines) + CAP_ROW_H / 2 + CAP_ROW_DROP };
 }
 /** The width of the "×N" badge for a count. */
 export const countBadgeWidth = (count: number): number => `×${count}`.length * CHAR_W_TITLE + 2 * COUNT_BADGE_PAD;

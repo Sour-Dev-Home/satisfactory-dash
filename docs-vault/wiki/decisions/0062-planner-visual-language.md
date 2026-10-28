@@ -147,10 +147,12 @@ per group.
   card's `description` (tooltip and button), the group panel's facts and `FactoryFacts` (the phone's cards and an opened
   factory's detail). No contract change: the rates come from the flows the client already has.
 - **Shape** (`layoutSite.ts`, `DestinationCaps.tsx`). A footer row `CAP_ROW_H` 28 under the card's lines (the card is that
-  much taller, only when it has caps). Each cap is a stub `CAP_STUB` 14 long ending in a disc `CAP_D` 20 across, `CAP_GAP` 10
-  apart from the card's left padding. The disc is `fill-icon-chip` with a `stroke-line` ring and the kind's art at 14: the
-  storage container, Dimensional Depot and AWESOME Sink icons (`buildingIcons.ts`), the generic power and station glyphs, and
-  the "?" glyph for an unknown end or a word this build does not know. Past one flow a number badge (a 16-tall pill on the
+  much taller, only when it has caps). Each cap is a stub `CAP_STUB` 14 long ending in a disc `CAP_D` 20 across, `CAP_GAP` 12
+  apart (so a "99+" badge clears the next stub) from the card's left padding. The disc is `fill-icon-chip` with a
+  `stroke-line` ring and the kind's art at 14: the storage container, Dimensional Depot and AWESOME Sink icons
+  (`buildingIcons.ts`), the generic power and station glyphs, and the "?" glyph for an unknown end or a word this build does
+  not know. The glyphs are drawn `stroke-surface` at a heavier stroke (`ui-reviewer`: the cards' default `stroke-fg` on the
+  light chip is about 1.3:1; `CardIcon`'s fallback glyph on a card has the same pairing, left for its own fix). Past one flow a number badge (a 16-tall pill on the
   disc's top right, "99+" past 99). Past `CAPS_MAX` (4) kinds: the first three and a "+k" disc. The stub wears its line's
   colour and width: `stroke-muted`, `stroke-info` when every flow is a fluid, `stroke-line` when unknown; 2, 3 or 4 by step
   (`lineWidth.ts`'s widths); solid measured, `8 5` estimated, `2 5` unknown. A stalled cap in marks mode wears its state's
