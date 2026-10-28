@@ -19,9 +19,14 @@ export interface Folds {
   unfolded: ReadonlySet<string>;
   /** Group cards opened into their machines (absent = none; added after the first two, so an older entry still reads). */
   machines?: ReadonlySet<string>;
+  /** ADR-0061 Decision 5: the overview's cards blown up in place, per path (`overviewFoldsKey`; absent = none). */
+  expanded?: ReadonlySet<string>;
 }
 
-const EMPTY: Folds = { flipped: new Set(), unfolded: new Set(), machines: new Set() };
+const EMPTY: Folds = { flipped: new Set(), unfolded: new Set(), machines: new Set(), expanded: new Set() };
+
+/** The key an overview level's blow-ups are remembered under: one per path (owner answer 5), apart from every factory key. */
+export const overviewFoldsKey = (path: readonly string[]): string => ["overview", ...path].join("\u0001");
 
 /** Newest last, so the first key is the one dropped past `FOLDS_MAX`. */
 let memory: Map<string, Folds> | null = null;
@@ -37,8 +42,13 @@ function load(): Map<string, Folds> {
     if (Array.isArray(parsed)) {
       for (const entry of parsed.slice(-FOLDS_MAX)) {
         if (!Array.isArray(entry) || typeof entry[0] !== "string" || typeof entry[1] !== "object" || entry[1] === null) continue;
-        const { flipped, unfolded, machines } = entry[1] as { flipped?: unknown; unfolded?: unknown; machines?: unknown };
-        memory.set(entry[0], { flipped: new Set(strings(flipped)), unfolded: new Set(strings(unfolded)), machines: new Set(strings(machines)) });
+        const { flipped, unfolded, machines, expanded } = entry[1] as { flipped?: unknown; unfolded?: unknown; machines?: unknown; expanded?: unknown };
+        memory.set(entry[0], {
+          flipped: new Set(strings(flipped)),
+          unfolded: new Set(strings(unfolded)),
+          machines: new Set(strings(machines)),
+          expanded: new Set(strings(expanded)),
+        });
       }
     }
   } catch {
@@ -49,7 +59,7 @@ function load(): Map<string, Folds> {
 
 function save(map: Map<string, Folds>): void {
   try {
-    const entries = [...map].map(([key, f]) => [key, { flipped: [...f.flipped], unfolded: [...f.unfolded], machines: [...(f.machines ?? [])] }]);
+    const entries = [...map].map(([key, f]) => [key, { flipped: [...f.flipped], unfolded: [...f.unfolded], machines: [...(f.machines ?? [])], expanded: [...(f.expanded ?? [])] }]);
     window.sessionStorage.setItem(FOLDS_KEY, JSON.stringify(entries));
   } catch {
     // Private mode, quota or blocked site data: the choices hold in memory for this visit.
@@ -65,7 +75,7 @@ export function readFolds(key: string): Folds {
 export function writeFolds(key: string, folds: Folds): void {
   const map = load();
   map.delete(key);
-  if (folds.flipped.size > 0 || folds.unfolded.size > 0 || (folds.machines?.size ?? 0) > 0) map.set(key, folds);
+  if (folds.flipped.size > 0 || folds.unfolded.size > 0 || (folds.machines?.size ?? 0) > 0 || (folds.expanded?.size ?? 0) > 0) map.set(key, folds);
   while (map.size > FOLDS_MAX) map.delete(map.keys().next().value!);
   save(map);
 }

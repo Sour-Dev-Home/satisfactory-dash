@@ -97,3 +97,32 @@ export function treeWorld(): { graph: ProductionGraph; designations: PlannerDesi
 
 /** The production-graph response for the world. */
 export const treeGraphResponse = (graph: ProductionGraph) => ({ ...productionGraphFactories, data: graph });
+
+/**
+ * A wide nested world (ADR-0061 build PR 4's blow-up cap and benchmark): `parents` top-level parents with no machines of
+ * their own, each of `leaves` designated factories of `groups` groups. Every group feeds the next (measured or estimated),
+ * and every third also one seven back (rate unknown), so lines cross factories and parents.
+ */
+export function wideTreeWorld(parents: number, leaves: number, groups: number): { graph: ProductionGraph; designations: PlannerDesignation[] } {
+  const nodes: PlannerNode[] = [];
+  const factories: PlannerFactory[] = [];
+  const designations: PlannerDesignation[] = [];
+  let id = 100;
+  for (let p = 0; p < parents; p++) {
+    const pid = treeId(id++);
+    designations.push(treeDesignation(pid, `Area ${p}`, null, 0));
+    for (let l = 0; l < leaves; l++) {
+      const lid = treeId(id++);
+      designations.push(treeDesignation(lid, `Area ${p} line ${l}`, pid));
+      const mine = Array.from({ length: groups }, (_, g) => treeNode(`g-${p}-${l}-${g}`, `Desc_Item${g % 5}_C`, 10, 20));
+      nodes.push(...mine);
+      const factory = treeFactory(designated(lid), `Area ${p} line ${l}`, mine, lid, pid);
+      // One product per item (the contract caps a factory's list at 16).
+      factories.push({ ...factory, products: [...new Map(factory.products.map((r) => [r.className, r])).values()] });
+    }
+  }
+  const edges: PlannerEdge[] = [];
+  for (let i = 1; i < nodes.length; i++) edges.push(treeEdge(nodes[i - 1]!.key, nodes[i]!.key, `Desc_Item${i % 5}_C`, 10 + (i % 7) * 30, i % 3 === 0 ? "estimated" : "measured"));
+  for (let i = 7; i < nodes.length; i += 3) edges.push(treeEdge(nodes[i - 7]!.key, nodes[i]!.key, `Desc_Item${i % 4}_C`, null, "unknown"));
+  return { graph: { ...base, nodes, edges, transports: [], factories }, designations };
+}

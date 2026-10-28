@@ -85,9 +85,48 @@ are relative to `frontend/src/planner/` unless they say otherwise. Nothing here 
   level opens by navigating. `expanded` joins the layout memo signature.
 - **Budget.** At most `EXPAND_MAX_CARDS = 120` visible cards after expanding. Past it the control is disabled and its tooltip (a
   text node) says "Too large to expand here; open it". The expanded layout is measured in build PR 4 on ADR-0060's synthetic
-  160-group site and the number recorded here **[NEEDS MEASUREMENT]**; past 100 ms the cap comes down, not a worker.
+  160-group site and the number recorded here (see the note below: measured, and the cap came down to 60); past 100 ms the
+  cap comes down, not a worker.
 - **Persistence.** `expanded` is remembered per path for the session, like fold state (owner answer 5).
 - **Motion.** Cards glide with the existing tween (`--duration-slow`, `--ease-standard`); reduced motion jumps. No `style=`.
+- **Note (2026-10-28, build PR 4: measured, and what the Decision left open).**
+  - *Benchmark.* `layoutScene` (dagre plus the orthogonal router), the median of five cold runs (memo cleared) after one
+    warm-up, in Vitest on the owner's dev machine, on a synthetic 160-group site shaped as 4 parents of 4 factories of 10
+    groups with 211 lines (`wideTreeWorld(4, 4, 10)` in `src/test/plannerTree.ts`). For reference the same machine lays
+    out the flat `planner-large` site (160 groups, 210 lines, no frames) in 40 ms. Frames are what cost: dagre's compound
+    nodes, more so nested.
+
+    | Shape | Cards | Frames | Lines | ms |
+    |---|---|---|---|---|
+    | Closed | 4 | 0 | 3 | 1 |
+    | Parents blown up | 16 | 4 | 15 | 9-11 |
+    | Expand all at the cap of 60 | 52 | 8 (4 nested) | 64 | 75-76 |
+    | One factory of 59 groups | 59 | 1 | 76 | 45-48 |
+    | Two deep, past 60 (not allowed) | 61 / 70 / 88 / 115 | 9 / 10 / 12 / 15 | 94-158 | 95 / 103 / 153 / 180-187 |
+    | One deep, past 60 (not allowed) | 88 / 115 | 8 / 11 | 126 / 158 | 86 / 117 |
+
+    120 cards two deep is about 180 ms, so by the rule above **`EXPAND_MAX_CARDS` is 60** (61 cards two deep is 95 ms, at
+    the edge). `layoutScene.blowUp.test.ts` re-measures the first four rows on every run and warns past 100 ms.
+  - *Flag.* All of blow-up, a plain factory into its groups too, ships behind `planner.nesting` (Decision 7): the Decision
+    describes both kinds as one control, and it has not been through the owner's demo review (build PR 6) yet. With the flag
+    off the overview is drawn exactly as before (no pill, no extra card height), so no screenshot changes.
+  - *Which cards.* Any overview card with at least one part: a parent (its parts, the own-machines card among them) or a
+    leaf or own-machines card (its groups, each group once: the group's factory is the one `factoryOfNode` gives it). A
+    blown-up factory's groups are plain group cards: they open the group panel, and do not open into their machines (that
+    would be a third frame).
+  - *Depth.* A card's frame depth is counted in the scene: a top card's frame is depth 1, a part blown up inside it depth 2,
+    and a card inside a depth-2 frame shows no Expand control. Order is depth-first in scene order; the cap is checked as
+    each blow-up is placed, so an over-cap key in the session (a poll grew a factory) simply stays closed.
+  - *Opening a part.* Choosing a factory drawn inside a frame opens it at its place in the tree: the path grows by the chain
+    from the level to it (`pathBelow`), so Back pops one level at a time as Decision 4 says.
+  - *Expand all / Collapse all.* "Collapse all" while anything is blown up (clears the level's set); otherwise "Expand all"
+    blows up what fits, the level's cards first and then their parts, one round per depth, disabled when nothing fits.
+  - *Keyboard.* The hidden "Expand <name> in place into its N factories" button (in "Open and close parts of the graph"),
+    `aria-disabled` with the tooltip's words past the cap; focus then goes to the frame's first part in tab order. Escape on
+    a part's button collapses its frame and returns focus to the card; the frame's hidden "Collapse ..." button does the same.
+  - *Nested frames' tabs.* dagre leaves a nested compound node too close under its parent's top for both header tabs, so
+    `roomForNestedTabs` (`layoutSite.ts`) grows the parent upward by the difference, and a scene with nested frames gets
+    `FRAME_HEADER_H` more top margin.
 
 ### 6. Editing: every change is one replace
 
