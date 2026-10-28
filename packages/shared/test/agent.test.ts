@@ -20,6 +20,7 @@ import {
   KNOWN_CONNECTION_KINDS,
   FactorySchema,
   KnownErrorCode,
+  PowerResponseSchema,
   PowerSchema,
   SENDER_VERSION_MAX,
   SetAutoPauseParamsSchema,
@@ -241,6 +242,40 @@ describe("agent contract: snapshots", () => {
       const parsed = SnapshotRequestSchema.parse({ ...full, ...withGens([{ ...generator, fuel: { ...coal, unit: "items" } }]) });
       expect(parsed.power?.generators?.[0]?.fuel).not.toHaveProperty("unit");
       expect(PowerSchema.safeParse({ circuits: [], hasOutage: false, generators: [{ ...generator, fuel: { ...coal, unit: "items" } }] }).success).toBe(true);
+    });
+
+    it("S4-B generators once per read: generatorsReadAt is response-only, ISO UTC, and optional for older backends", () => {
+      const generator = {
+        id: "Build_GeneratorCoal_C_1",
+        name: "Coal-Powered Generator",
+        className: "Build_GeneratorCoal_C",
+        currentMW: 75,
+        capacityMW: 75,
+        isProducing: true,
+        fuel: null,
+      };
+      // The read time is the snapshot's observedAt: a sender's generatorsReadAt is dropped, never trusted.
+      const parsed = SnapshotRequestSchema.parse({ ...full, power: { circuits: [circuit], generators: [], generatorsReadAt: "2026-10-28T00:00:00Z" } });
+      expect(parsed.power).not.toHaveProperty("generatorsReadAt");
+      expect(parsed.power?.generators).toEqual([]); // [] = read, none found; kept distinct from absent
+      expect(SnapshotRequestSchema.parse({ ...full, power: { circuits: [circuit] } }).power).not.toHaveProperty("generators");
+      // Response: both absent (not read, or an older backend), or both present.
+      const base = { circuits: [], hasOutage: false };
+      expect(PowerSchema.safeParse(base).success).toBe(true);
+      expect(PowerSchema.safeParse({ ...base, generators: [generator], generatorsReadAt: "2026-10-28T12:00:40.000Z" }).success).toBe(true);
+      expect(PowerSchema.safeParse({ ...base, generators: [], generatorsReadAt: "2026-10-28T12:00:40Z" }).success).toBe(true);
+      // UTC like the envelope's observedAt: an offset or a non-date is refused.
+      expect(PowerSchema.safeParse({ ...base, generators: [], generatorsReadAt: "2026-10-28T12:00:40+02:00" }).success).toBe(false);
+      expect(PowerSchema.safeParse({ ...base, generators: [], generatorsReadAt: "40 s ago" }).success).toBe(false);
+      expect(PowerSchema.safeParse({ ...base, generators: [], generatorsReadAt: 1_700_000_000_000 }).success).toBe(false);
+    });
+
+    it("S4-B generatorsReadAt from a sender is dropped even when malformed, and survives in a response envelope", () => {
+      const parsed = SnapshotRequestSchema.safeParse({ ...full, power: { circuits: [circuit], generatorsReadAt: "not a date" } });
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.power).not.toHaveProperty("generatorsReadAt");
+      const response = { ...fixtures.powerOk, data: { ...fixtures.powerOk.data, generators: [], generatorsReadAt: "2026-10-28T12:00:40Z" } };
+      expect(PowerResponseSchema.parse(response).data.generatorsReadAt).toBe("2026-10-28T12:00:40Z");
     });
 
     it("S4-B extractors: optional, the building shape and bounds, capped at 5000", () => {

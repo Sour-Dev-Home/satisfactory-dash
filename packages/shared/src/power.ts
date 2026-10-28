@@ -80,6 +80,12 @@ export const PowerGeneratorSchema = z.object({
     .describe("The supplement (water for coal and nuclear); null when it takes none or holds none; absent = not read"),
 });
 
+/**
+ * S4-B generators are read ONCE PER READ (owner, 2026-10-28; ADR-0058 "S4-B: generators once per read"): the sender reads
+ * them at the factory cadence (`factorySeconds`, today 30 s), not with every power reading, so ~1,000 generators do not
+ * spend the snapshot byte budget every 5 s. The backend keeps the last list per server and serves it with later power
+ * responses, with `generatorsReadAt`, until that read is older than 3 × `factorySeconds`; then both are absent.
+ */
 export const PowerSchema = z.object({
   circuits: z.array(PowerCircuitSchema).describe("Empty when no circuits exist (e.g. a new save)."),
   hasOutage: z.boolean().describe("true if any circuit's status is outage"),
@@ -87,8 +93,17 @@ export const PowerSchema = z.object({
     .array(PowerGeneratorSchema)
     .optional()
     .describe(
-      "S4-B: every generator, with its output and fuel. Absent = a sender that does not read generators (the FRM agent) " +
-        "or an older backend (ADR-0007); an empty array means none were found.",
+      "S4-B: every generator, with its output and fuel, from the last generator read, which can be older than this power " +
+        "reading (see generatorsReadAt). An empty array means the last read found none. Absent = not read: a sender that " +
+        "does not read generators (the FRM agent), no read yet since the backend started or the session changed, the last " +
+        "read older than 3 × the factory cadence, or an older backend (ADR-0007).",
+    ),
+  generatorsReadAt: z.iso
+    .datetime()
+    .optional()
+    .describe(
+      "S4-B: UTC time of the read `generators` came from (as the envelope's observedAt is for the power reading), so a " +
+        "client can say \"read 40 s ago\". Present exactly when `generators` is present; absent from an older backend.",
     ),
 });
 export const PowerResponseSchema = snapshotEnvelope(PowerSchema);
