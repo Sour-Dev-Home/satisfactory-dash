@@ -41,6 +41,24 @@ describe("roundedOrthogonalPath", () => {
   it("ends on the route's last point along its last leg, so the arrowhead meets the card", () => {
     expect(roundedOrthogonalPath([P(0, 0), P(50, 0), P(50, 40), P(120, 40)]).endsWith("L120 40")).toBe(true);
   });
+
+  it("stops `trimEnd` short of the end along the last leg, every corner where it was", () => {
+    const route = [P(0, 0), P(50, 0), P(50, 40), P(120, 40)];
+    const full = roundedOrthogonalPath(route);
+    const trimmed = roundedOrthogonalPath(route, undefined, 3.2);
+    expect(trimmed).toBe(full.replace(/L120 40$/, "L116.8 40"));
+    // Upward and leftward last legs trim towards their previous point too.
+    expect(roundedOrthogonalPath([P(0, 100), P(0, 0)], 10, 8)).toBe("M0 100 L0 8");
+    expect(roundedOrthogonalPath([P(100, 0), P(0, 0)], 10, 8)).toBe("M100 0 L8 0");
+  });
+
+  it("never trims into the arc before the last run, and a trim of 0 or less is the full path", () => {
+    // The last run after the arc is 10 (ARROW_TAIL): a trim of 25 stops at the arc's end.
+    expect(roundedOrthogonalPath([P(0, 0), P(0, 50), P(20, 50)], 10, 25)).toBe("M0 0 L0 40 A10 10 0 0 0 10 50");
+    expect(roundedOrthogonalPath([P(0, 0), P(100, 0)], 10, 0)).toBe("M0 0 L100 0");
+    expect(roundedOrthogonalPath([P(0, 0), P(100, 0)], 10, -4)).toBe("M0 0 L100 0");
+    expect(roundedOrthogonalPath([P(5, 5)], 10, 4)).toBe("M5 5");
+  });
 });
 
 describe("segmentHitsRect", () => {

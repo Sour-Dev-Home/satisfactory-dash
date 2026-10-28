@@ -61,8 +61,10 @@ const along = (p: Point, u: Point, d: number): Point => ({ x: p.x + u.x * d, y: 
  * An SVG path for an orthogonal route with each right-angle corner drawn as a circular arc of `radius`, clamped to half
  * the shorter of its two segments so neighbouring arcs never overlap, and on the last corner to leave `ARROW_TAIL` of
  * straight line before the end. An arc clamped below half the radius is drawn square. Other corners stay sharp.
+ * `trimEnd` stops the path that much short of its end along the last straight run (never into the arc before it), with
+ * every corner where it was: a line drawn under an arrowhead, or a mixed belt's inner stroke, ends inside the marker.
  */
-export function roundedOrthogonalPath(points: readonly Point[], radius = CORNER_RADIUS): string {
+export function roundedOrthogonalPath(points: readonly Point[], radius = CORNER_RADIUS, trimEnd = 0): string {
   const p = simplify(points);
   if (p.length === 0) return "";
   let d = `M${f1(p[0].x)} ${f1(p[0].y)}`;
@@ -87,7 +89,12 @@ export function roundedOrthogonalPath(points: readonly Point[], radius = CORNER_
     d += ` A${f1(r)} ${f1(r)} 0 0 ${sweep} ${f1(e.x)} ${f1(e.y)}`;
     at = e;
   }
-  if (p.length > 1) lineTo(p[p.length - 1]);
+  if (p.length > 1) {
+    const end = p[p.length - 1];
+    const run = Math.hypot(end.x - at.x, end.y - at.y);
+    const cut = Math.min(Math.max(trimEnd, 0), run);
+    lineTo(cut > 0 ? along(end, { x: (at.x - end.x) / run, y: (at.y - end.y) / run }, cut) : end);
+  }
   return d;
 }
 

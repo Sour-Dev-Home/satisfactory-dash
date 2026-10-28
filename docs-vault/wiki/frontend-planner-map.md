@@ -69,6 +69,11 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   stays one entry per link and `LaidEdge.parts` indexes them: the item filter lights an edge when any part matches, the
   tooltip (`flowTitle`) lists every link with its own rate, and the Tables view is untouched. `SiteGraph` draws all
   lines, then all labels.
+- Width means rate (ADR-0062 amendment Decision 4): `lineStroke` (`lineWidth.ts`) gives a belt or pipe line 2, 3 or 4
+  from `rateStep` on its (a bundle's summed) rate, 2 with no step; a mixed line keeps its width and gets a thin
+  `stroke-surface` inner stroke (`data-mixed-inner`), never extra width. Transports keep 2 (3 mixed). The line stops
+  `LINE_UNDER_ARROW` short (`roundedOrthogonalPath`'s `trimEnd`) so it ends inside the arrowhead; see the amendment's
+  "Values chosen in build PR 2".
 - Item bubbles (ADR-0060 build PR 2): an edge's label box draws the items it carries as icon bubbles, not words
   (`bubbleRow.ts`). Distinct items by summed rate (then name), at most `BUBBLE_MAX` (3) then a "+k" chip, with the rate
   text ("mixed", "excess" beside it) under the row; links of no known item share one "?" bubble. The box dagre reserves
