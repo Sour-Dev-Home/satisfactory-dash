@@ -134,6 +134,18 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   glyph on its note's row in place of the word (the row stays, so no size or layout changes). Words mode draws the canvas as
   before. Either way the words stay in the card's `<title>` and button name and the line's `flowTitle` ("The source is
   backed up").
+- Destination caps (ADR-0062 Decision 1, build PR 3; values in the ADR's "Values chosen in build PR 3 (caps)"): `Card.caps`
+  (`capModel.ts`, pure) is one cap per kind of end no line is drawn to: a factory card's `FactoryModel.destinations` (now with
+  `rates`, summed per unit by `sumCapRates`), or in an opened factory with Storage detail off a group's or closed bubble's folded
+  storage (`foldStorage`'s `chips` keep the flows). `cardSize` adds one fixed `CAP_ROW_H` row (and the row's width) only to a
+  card with caps, so dagre and the router see a taller card. `DestinationCaps.tsx` draws the row (`CapRow`: a stub into a disc
+  with the kind's icon or glyph, a count badge, "+k" past `CAPS_MAX`), the moving part (`CapMarchStroke`) and the keyboard's
+  `CapButtons` (one roving tab stop, list "Where the cards' flows end", Enter shows the card's detail); `capLayout.ts` holds the
+  geometry, `capCandidates`/`marchingCaps` and `capStops`. The step is `rateStep` on the cap's summed rate, so a cap and a line
+  agree; unknown and stalled caps are still. The canvas draws every cap still; the moving part is drawn in `MarchLayer` (its own
+  group and mask: only the item card is a hole), at most `CAP_MARCH_MAX` (40, `marching.ts`) in the settled view, beside the
+  lines' `MARCH_MAX`. An estimated cap's stub leaves the canvas only while the layer moves it. The words are each cap's `<title>`
+  and button (`capText`, `moreCapsText` in `plannerText.ts`); the chip words stay in the description, the panel and `FactoryFacts`.
 - Item focus (ADR-0060 build PR 3), behind `planner.itemFocus` in `plannerPrefs.ts`. It is off by default and has no
   control: set the key to `on` in the browser's localStorage. Build PR 6 removes the flag after the owner's review.
   - Focus is `{ edgeKey, item }` (`edgeKeyOf`: ends, carrier, kind and unit, as `bundleFlows` groups them, so a poll that reorders edges keeps it). It clears

@@ -38,11 +38,15 @@ const SHAPES: Record<GlyphKind, ReactNode> = {
   ),
 };
 
-/** The glyph for a kind, centred on the origin; a kind this build does not know draws the "unknown" one. */
-export function BuildingGlyph({ kind }: { kind: GlyphKind }) {
+/**
+ * The glyph for a kind, centred on the origin; a kind this build does not know draws the "unknown" one. `tone` and
+ * `strokeWidth` let a caller on another background keep it legible (a destination cap draws it dark and heavier on its light
+ * chip, ADR-0062 Decision 1).
+ */
+export function BuildingGlyph({ kind, tone = "stroke-fg", strokeWidth = 1.75 }: { kind: GlyphKind; tone?: string; strokeWidth?: number }) {
   const shape = ownValue(SHAPES, kind);
   return (
-    <g data-building-glyph={shape === undefined ? "unknown" : kind} aria-hidden="true" fill="none" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="stroke-fg">
+    <g data-building-glyph={shape === undefined ? "unknown" : kind} aria-hidden="true" fill="none" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={tone}>
       {shape ?? SHAPES.unknown}
     </g>
   );

@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { MARCH_MAX } from "../src/planner/graph/marching";
+import { CAP_MARCH_MAX, MARCH_MAX } from "../src/planner/graph/marching";
 import { expect, expectNoAxeViolations, test } from "./fixtures";
 
 // ADR-0050 task 6, the graph's CSP gate: pan, zoom, the item filter and the group panel, all with zero CSP violations
@@ -486,4 +486,86 @@ test("marching dashes stay in view under the cap, stop with Motion Off, and reco
   // come in whole vsyncs (16.7 ms), so with Off at one frame this passes at 3 frames (50 ms) and fails at 4 (66.7 ms); the
   // whole-canvas repaint measured 116.7.
   if (testInfo.project.name === "desktop") expect(fitted.p95, JSON.stringify(result.frameMs)).toBeLessThanOrEqual(2 * off.p95 + 17);
+});
+
+// ADR-0062 Decision 1, the destination caps: their moving dashes run in the march layer by CSS class (never in the canvas,
+// whose any animated path repainted it whole, #808), at most CAP_MARCH_MAX in view beside the lines' own MARCH_MAX, still with
+// Motion Off; and their frame times on a 48-factory overview whose every card has caps, under the lines' regression bound.
+test("destination caps move in the march layer under their cap, stop with Motion Off, and record their frame times (48 cards)", async ({ page, mockApi }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await mockApi("planner-caps-large");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Factories: 48 factories/ });
+  await expect(svg).toBeVisible({ timeout: 15_000 });
+  const caps = svg.locator("[data-cap], [data-cap-more]");
+  expect(await caps.count()).toBeGreaterThan(100);
+  const layer = page.locator("[data-march-layer]");
+  const moving = layer.locator("[data-march-cap]");
+  await expect.poll(() => moving.count()).toBeGreaterThan(0);
+  expect(await moving.count()).toBeLessThanOrEqual(CAP_MARCH_MAX);
+  // CSS animations by class, in the layer only: nothing in the canvas animates, and no inline style anywhere.
+  const names = await moving.first().locator("[data-march]").evaluate((el) => el.getAnimations().map((a) => (a as CSSAnimation).animationName));
+  expect(names.some((n) => n.startsWith("flow-"))).toBe(true);
+  await expect(svg.locator("[data-march], [class*='animate-flow']")).toHaveCount(0);
+  await expect(svg.locator("[style]")).toHaveCount(0);
+  await expect(layer.locator("[style]")).toHaveCount(0);
+
+  const fitted = frameSummary(await frameTimes(page, 2_000));
+  const fittedMoving = await moving.count();
+  await page.getByRole("group", { name: /^Graph viewport/ }).focus();
+  for (let i = 0; i < 12; i++) await page.keyboard.press("Minus");
+  await expect.poll(() => moving.count()).toBeGreaterThan(0);
+  const allInView = frameSummary(await frameTimes(page, 2_000));
+  const allInViewMoving = await moving.count();
+  expect(allInViewMoving).toBeLessThanOrEqual(CAP_MARCH_MAX);
+
+  await page.getByLabel("Motion").selectOption("off");
+  await expect(layer).toHaveCount(0);
+  // Still, every cap draws its stub in the canvas (an estimated one's is the layer's only while it moves).
+  await expect(svg.locator("[data-cap] [data-cap-stub]")).toHaveCount(await svg.locator("[data-cap]").count());
+  const off = frameSummary(await frameTimes(page, 2_000));
+
+  const result = {
+    project: testInfo.project.name,
+    caps: await caps.count(),
+    cap: CAP_MARCH_MAX,
+    moving: { fitted: fittedMoving, allInView: allInViewMoving },
+    frameMs: { fitted, allInView, off },
+  };
+  await testInfo.attach("caps-frame-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
+  console.info(`[ADR-0062 caps frame times] ${JSON.stringify(result)}`);
+  for (const run of [fitted, allInView, off]) expect(run.frames).toBeGreaterThan(10);
+  // The lines' regression bound (desktop): moving caps (and lines) at the fitted view cost at most twice Motion Off's p95
+  // plus a frame, which a cap animated inside the canvas would fail.
+  if (testInfo.project.name === "desktop") expect(fitted.p95, JSON.stringify(result.frameMs)).toBeLessThanOrEqual(2 * off.p95 + 17);
+});
+
+test("the keyboard reaches a destination cap from the cards, moves between caps, and opens the factory (ADR-0062 Decision 1)", async ({ page, mockApi }, testInfo) => {
+  await mockApi("planner-factories");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Factories/ });
+  await expect(svg).toBeVisible();
+  // One tab stop for every cap, right after the cards' buttons.
+  const caps = page.getByRole("list", { name: "Where the cards' flows end" }).getByRole("button");
+  await expect(caps).toHaveCount(2);
+  await expect(caps.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
+  const cards = page.getByRole("list", { name: "Factories in the graph" }).getByRole("button");
+  await cards.last().focus();
+  await page.keyboard.press("Tab");
+  await expect(caps.first()).toBeFocused();
+  await expect(caps.first()).toHaveAccessibleName("Iron Plate factory sends 48 items/min to storage");
+  // The focused cap is ringed in the picture.
+  await expect(svg.locator('[data-cap="storage"] circle.stroke-accent')).toHaveCount(1);
+  await page.keyboard.press("ArrowRight");
+  await expect(caps.nth(1)).toBeFocused();
+  await expect(caps.nth(1)).toHaveAccessibleName("Iron Rod factory sends about 6 items/min to the Sink");
+  await expect(svg.locator('[data-cap="sink"] circle.stroke-accent')).toHaveCount(1);
+  await expectNoAxeViolations(page, testInfo);
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Graph" }).click();
+  await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory/ })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Where Iron Rod factory sends its output" })).toContainText("1 flow to the Sink");
 });
