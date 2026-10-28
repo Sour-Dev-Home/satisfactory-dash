@@ -1537,7 +1537,10 @@ function MarchLayer({
   shape: string;
   fadeIn: boolean;
   maskId: string;
-  /** The canvas's own height attribute: the box around it is taller by the inline svg's baseline gap, so `inset-0` would not match. */
+  /**
+   * The canvas's own height attribute. With the canvas's own height limits (`max-h-map min-h-graph-min`) it sizes the layer
+   * exactly as the canvas is sized: the box around the canvas is taller by the inline svg's baseline gap, so `inset-0` would not match.
+   */
   height: number;
 }) {
   return (
@@ -1549,7 +1552,7 @@ function MarchLayer({
       preserveAspectRatio="xMidYMid meet"
       // The canvas's 1px border is transparent here, so the two content boxes (and the viewBox in them) are the same; its
       // rounded corners clip the strokes as the canvas's clip its lines.
-      className="pointer-events-none absolute top-0 left-0 w-full rounded-card border border-transparent will-change-transform"
+      className="pointer-events-none absolute top-0 left-0 max-h-map min-h-graph-min w-full rounded-card border border-transparent will-change-transform"
     >
       <defs>
         <mask id={maskId} maskUnits="userSpaceOnUse" x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD}>
