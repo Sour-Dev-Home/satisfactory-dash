@@ -76,6 +76,14 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   draws its item's 32 px icon (64 px once that would stretch: `bubbleDetail`), the name's initials when there is none or
   it fails to load, never blank; below zoom `BUBBLE_DETAIL_ZOOM` (0.4) only plain discs. `LaidEdge.labelLines` keeps
   the words for text views and tests; the item names are in the edge's `<title>` and the Tables view.
+- Stalled marks (ADR-0062 build PR 2): a card whose product reads 0 with all its machines backed up, underfed, paused or
+  idle has `Card.stalled` (`stalledOf`), and the lines leaving it `CanvasFlow.stalled` (`withStalledFlows`; not a line
+  measured above 0; a bundle only when every part is). In marks mode (`planner.stateStyle`, the default; the toolbar's
+  "State marks" toggle, `aria-pressed`) the line ends in a stop bar in the state's tone instead of the arrowhead and its
+  transport glyph does not move, its bubbles wear the tone's ring with one corner `StateMarkGlyph`, and the card draws the
+  glyph on its note's row in place of the word (the row stays, so no size or layout changes). Words mode draws the canvas as
+  before. Either way the words stay in the card's `<title>` and button name and the line's `flowTitle` ("The source is
+  backed up").
 - Item focus (ADR-0060 build PR 3), behind `planner.itemFocus` in `plannerPrefs.ts`. It is off by default and has no
   control: set the key to `on` in the browser's localStorage. Build PR 6 removes the flag after the owner's review.
   - Focus is `{ edgeKey, item }` (`edgeKeyOf`: ends, carrier, kind and unit, as `bundleFlows` groups them, so a poll that reorders edges keeps it). It clears

@@ -32,6 +32,8 @@ const LINES_TOP = ICON_TOP + BUILDING_ICON_SIZE + LINES_GAP;
 const BASELINE_UP = 5;
 /** The baseline of a card's line `i`. */
 export const cardLineY = (i: number): number => LINES_TOP + LINE_H * (i + 1) - BASELINE_UP;
+/** The middle of a card's line `i`, where a mark drawn in its row is centred. */
+export const cardLineMid = (i: number): number => LINES_TOP + LINE_H * i + LINE_H / 2;
 /** The width of the "×N" badge for a count. */
 export const countBadgeWidth = (count: number): number => `×${count}`.length * CHAR_W_TITLE + 2 * COUNT_BADGE_PAD;
 export const LABEL_H = 18;

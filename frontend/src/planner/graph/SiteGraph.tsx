@@ -31,6 +31,7 @@ import {
   LABEL_PAD,
   NODE_PAD_X,
   PILL_H,
+  cardLineMid,
   cardLineY,
   countBadgeWidth,
   isHeadingLine,
@@ -47,7 +48,10 @@ import {
 } from "./layoutSite";
 import { useFolds } from "./foldMemory";
 import { machineCardKey, machineCards, type MachineCardText } from "./machineCards";
-import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
+import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStateStyle, useStorageDetail, type MotionPref } from "./plannerPrefs";
+import { StateMarkGlyph } from "./StateMark";
+import type { StalledKind } from "../plannerText";
+import { machineState } from "../../factory/machineState";
 import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_HALO_RADIUS, GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
@@ -118,6 +122,18 @@ const LASSO_STEP = 3;
 /** The check on a selected card's corner. */
 const CHECK_R = 10;
 const NONE_OPEN: ReadonlySet<string> = new Set();
+/** The kinds a stalled line's stop bar is drawn in (one marker each, in its tone). */
+const STALLED_KINDS: readonly StalledKind[] = ["backedUp", "underfed", "paused", "idle"];
+/** A kind's colour as a text class (`stroke-current`/`fill-current` take it): the state's tone, as `StateMark` draws it. */
+const stateMarkTone = (kind: StalledKind): string => machineState(kind)?.tone ?? "text-muted";
+/** A stalled item bubble's corner mark: its centre from the bubble's, the disc behind it, and the glyph's scale. */
+const BUBBLE_MARK_AT = 14;
+const BUBBLE_MARK_R = 8;
+const BUBBLE_MARK_SCALE = 0.6;
+/** A stalled bubble's ring: thinner than the accent focus ring (3), so the two never read alike. */
+const STALLED_RING_W = 2.5;
+/** A stalled card's mark on its note row: the glyph's scale (the row is `LINE_H` tall, the glyph box `GLYPH_BOX`). */
+const CARD_MARK_SCALE = 0.75;
 
 
 type EdgeStyle = Pick<CanvasFlow, "mixed" | "carrier" | "rate">;
@@ -237,6 +253,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const reduced = useReducedMotion();
   const visible = usePageVisible();
   const animate = motionOn(motionPref, reduced);
+  // ADR-0062 Decision 2: marks (the default) or words for a stalled group; the words stay in every title and aria text.
+  const [stateStyle, setStateStyle] = useStateStyle();
+  const marks = stateStyle === "marks";
 
   const view: FactoryView = useMemo(() => ({ flipped, unfolded, collapsed, storageDetail, machinesOpen }), [flipped, unfolded, collapsed, storageDetail, machinesOpen]);
   const scene: Scene = useMemo(
@@ -875,14 +894,15 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     if (!animate || !visible) return set;
     for (const e of transports) {
       if (set.size >= MAX_MOVING) break;
-      if (e.points.length < 2) continue;
+      // A stalled line never moves in marks mode (ADR-0062 Decision 2); words mode is today's canvas.
+      if (e.points.length < 2 || (marks && e.flow.stalled !== undefined)) continue;
       const xs = e.points.map((p) => p.x);
       const ys = e.points.map((p) => p.y);
       const box = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
       if (isInView(viewport, stage, box)) set.add(e.index);
     }
     return set;
-  }, [animate, visible, transports, viewport, stage]);
+  }, [animate, visible, transports, viewport, stage, marks]);
 
   // The drawing eases in when its shape changes (a card opened, closed or hid its upstream), not on a poll's new rates.
   const shape = useMemo(() => `${scene.cards.map((c) => c.key).join("|")}#${scene.flows.length}`, [scene]);
@@ -953,6 +973,15 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             />
           </div>
         )}
+        {/* Marks or words for a stalled group (ADR-0062 Decision 2): pressed is marks, the default. One icon at every width,
+            so the phone row stays one row. */}
+        <ToolButton
+          name="State marks"
+          iconOnly
+          pressed={marks}
+          onClick={() => setStateStyle(marks ? "words" : "marks")}
+          icon={<path d="M4 8h6M4 16h6M14 6v12" />}
+        />
         {transports.length > 0 && <MotionSelect value={motionPref} onChange={setMotionPref} />}
         {/* With item focus on, the status line stays mounted (a live region added with its words is often not read) and
             also says what focus did; the item filter's words show, focus's are for screen readers. */}
@@ -1026,6 +1055,12 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
                 <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
               </marker>
+              {/* A stalled line's end (ADR-0062 Decision 2): a bar across it in the state's tone, not an arrowhead. */}
+              {marks && STALLED_KINDS.map((kind) => (
+                <marker key={kind} id={`${markerId}-${kind}`} viewBox="0 0 10 12" refX="9" refY="6" markerWidth="10" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+                  <rect x={6} y={0} width={4} height={12} rx={1} data-stop-bar={kind} className={cn("fill-current", stateMarkTone(kind))} />
+                </marker>
+              ))}
             </defs>
             <g ref={drawingRef} key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`} className={cn(animate && "animate-graph-in")}>
               {/* During a make-room glide: the old lines and frames, where they were on screen, fading out. */}
@@ -1037,7 +1072,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   {[EdgeLine, EdgeLabel].map((Layer, layer) => (
                     <g key={layer}>
                       {ghost.layout.edges.map((e) => (
-                        <Layer key={e.index} edge={e} markerId={markerId} dim={false} moving={false} from="" to="" detail={detail} />
+                        <Layer key={e.index} edge={e} markerId={markerId} marks={marks} dim={false} moving={false} from="" to="" detail={detail} />
                       ))}
                     </g>
                   ))}
@@ -1068,6 +1103,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                           key={e.index}
                           edge={e}
                           markerId={markerId}
+                          marks={marks}
                           dim={!edgeLit(e)}
                           moving={moving.has(e.index)}
                           from={from?.title ?? ""}
@@ -1085,6 +1121,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   key={n.key}
                   node={n}
                   finding={findingsOf(n.key)}
+                  marks={marks}
                   ringed={openKey === n.key || focusKey === n.key}
                   picked={(selection !== undefined && isPicked(n.card, selection.selected)) || factoryPicked(n.card)}
                   dim={!lit(n.key)}
@@ -1317,14 +1354,34 @@ function MotionSelect({ value, onChange }: { value: MotionPref; onChange: (pref:
  *  what a click on a bubble or the chip does. Absent with the flag off: the bubbles are then only a picture. */
 type Focusable = { focused: string | null; ringed: string | null; onBubble: (item: BubbleItem) => void; onChip: () => void };
 
-type EdgeProps = { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string; detail: BubbleDetail; focusable?: Focusable | undefined };
+type EdgeProps = {
+  edge: LaidEdge;
+  markerId: string;
+  /** The state style is marks (ADR-0062 Decision 2): a stalled line draws its marks; words mode draws none. */
+  marks: boolean;
+  dim: boolean;
+  moving: boolean;
+  from: string;
+  to: string;
+  detail: BubbleDetail;
+  focusable?: Focusable | undefined;
+};
 
-/** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. */
-function EdgeLine({ edge: e, markerId, dim, from, to }: EdgeProps) {
+/** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. A stalled line in marks mode ends
+ *  in its state's stop bar instead of the arrowhead. */
+function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
+  const stalled = marks ? e.flow.stalled : undefined;
   return (
-    <g data-edge={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-edge={e.index} data-stalled={stalled} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
-      <path d={roundedOrthogonalPath(e.points)} fill="none" strokeWidth={edgeWidth(e.flow.mixed)} strokeDasharray={edgeDash(e.flow.rate)} markerEnd={`url(#${markerId})`} className={edgeClass(e.flow)} />
+      <path
+        d={roundedOrthogonalPath(e.points)}
+        fill="none"
+        strokeWidth={edgeWidth(e.flow.mixed)}
+        strokeDasharray={edgeDash(e.flow.rate)}
+        markerEnd={`url(#${stalled === undefined ? markerId : `${markerId}-${stalled}`})`}
+        className={edgeClass(e.flow)}
+      />
     </g>
   );
 }
@@ -1334,8 +1391,9 @@ function EdgeLine({ edge: e, markerId, dim, from, to }: EdgeProps) {
  * text (ADR-0060 Decision 1), and for a transport the mode's glyph (moving along the line when it may). Above every line.
  * The words for each item stay in the `<title>` and the Tables view.
  */
-function EdgeLabel({ edge: e, dim, moving, from, to, detail, focusable }: EdgeProps) {
+function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }: EdgeProps) {
   const transport = isTransport(e.flow);
+  const stalled = marks ? e.flow.stalled : undefined;
   const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
   const row = e.bubbles;
   const top = e.labelY - e.labelHeight / 2 + LABEL_PAD / 2;
@@ -1374,9 +1432,25 @@ function EdgeLabel({ edge: e, dim, moving, from, to, detail, focusable }: EdgePr
           detail={detail}
           focused={focusable?.focused === item.key}
           ringed={focusable?.ringed === item.key}
+          stalled={stalled}
           onClick={focusable === undefined ? undefined : () => focusable.onBubble(item)}
         />
       ))}
+      {/* A stalled line's state, once per row: its mark on a disc at the last bubble's top-right corner, inside the bubble's
+          box (ADR-0062 Decision 2). The ring on each bubble carries the colour; this carries the shape. */}
+      {stalled !== undefined && row.items.length > 0 && (
+        <g
+          aria-hidden="true"
+          data-bubble-mark={stalled}
+          transform={`translate(${left + at.bubbles[row.items.length - 1] + BUBBLE_MARK_AT} ${cy - BUBBLE_MARK_AT})`}
+          className="pointer-events-none"
+        >
+          <circle r={BUBBLE_MARK_R} strokeWidth={1.5} className={cn("fill-surface stroke-current", stateMarkTone(stalled))} />
+          <g transform={`scale(${BUBBLE_MARK_SCALE})`}>
+            <StateMarkGlyph kind={stalled} />
+          </g>
+        </g>
+      )}
       {at.chip !== null && (
         <g data-bubble-more={row.more} onClick={focusable?.onChip} className={cn(focusable !== undefined && "cursor-pointer")}>
           <rect
@@ -1414,6 +1488,7 @@ function ItemBubble({
   detail,
   focused = false,
   ringed = false,
+  stalled,
   onClick,
 }: {
   item: BubbleItem;
@@ -1424,6 +1499,8 @@ function ItemBubble({
   focused?: boolean;
   /** The keyboard is on its button: the accent ring. */
   ringed?: boolean;
+  /** Its line is stalled (marks mode): a ring in the state's tone, unless an accent ring is on it. */
+  stalled?: StalledKind | undefined;
   /** Focus it (item focus on); a picture only otherwise. */
   onClick?: (() => void) | undefined;
 }) {
@@ -1439,7 +1516,14 @@ function ItemBubble({
       onClick={onClick}
       className={cn(onClick !== undefined && "cursor-pointer")}
     >
-      <circle cx={cx} cy={cy} r={BUBBLE_D / 2} strokeWidth={focused ? 3 : 1} className={cn("fill-icon-chip", focused || ringed ? "stroke-accent" : "stroke-line")} />
+      <circle
+        cx={cx}
+        cy={cy}
+        r={BUBBLE_D / 2}
+        strokeWidth={focused ? 3 : stalled !== undefined && !ringed ? STALLED_RING_W : 1}
+        data-stalled-ring={stalled !== undefined && !focused && !ringed ? stalled : undefined}
+        className={cn("fill-icon-chip", focused || ringed ? "stroke-accent" : stalled !== undefined ? cn("stroke-current", stateMarkTone(stalled)) : "stroke-line")}
+      />
       {picture ? (
         <image href={url} x={cx - BUBBLE_ICON / 2} y={cy - BUBBLE_ICON / 2} width={BUBBLE_ICON} height={BUBBLE_ICON} onError={() => setFailedUrl(url)} />
       ) : (
@@ -1505,6 +1589,7 @@ function CardIcon({ iconUrl, glyph }: { iconUrl: string | undefined; glyph: Glyp
 function CardView({
   node: n,
   finding,
+  marks,
   ringed,
   picked,
   dim,
@@ -1517,6 +1602,8 @@ function CardView({
 }: {
   node: LaidNode;
   finding: number;
+  /** The state style is marks: a stalled card draws its `StateMark` on the note's row instead of the word. */
+  marks: boolean;
   ringed: boolean;
   /** Picked to designate: tinted, with a check on its corner (not colour alone). */
   picked: boolean;
@@ -1550,6 +1637,9 @@ function CardView({
     );
   }
   const stacked = card.kind === "bubble" || card.kind === "fold";
+  // Marks mode (ADR-0062 Decision 2): the stalled note's row keeps its place (the card's size is the layout's), the glyph
+  // replaces the word; the word stays in the `<title>`, the keyboard button and the Tables view.
+  const markAt = marks && card.stalled !== undefined && card.mutedFrom !== undefined ? card.mutedFrom : null;
   return (
     <g
       transform={`translate(${n.x} ${n.y})`}
@@ -1587,16 +1677,23 @@ function CardView({
         </g>
       )}
       {/* One line (a factory's name, then one line; an extractor's muted "(inferred from the node)" under it); the recipe, the other outputs and the rest are in the tooltip and the panel. */}
-      {n.lines.map((line, i) => (
-        <text
-          key={i}
-          x={NODE_PAD_X}
-          y={cardLineY(i)}
-          className={cn(isHeadingLine(card, i) ? "fill-fg-strong text-base font-semibold" : card.mutedFrom !== undefined && i >= card.mutedFrom ? "fill-muted text-sm" : "fill-fg text-sm")}
-        >
-          {line}
-        </text>
-      ))}
+      {n.lines.map((line, i) =>
+        markAt !== null && i >= markAt ? null : (
+          <text
+            key={i}
+            x={NODE_PAD_X}
+            y={cardLineY(i)}
+            className={cn(isHeadingLine(card, i) ? "fill-fg-strong text-base font-semibold" : card.mutedFrom !== undefined && i >= card.mutedFrom ? "fill-muted text-sm" : "fill-fg text-sm")}
+          >
+            {line}
+          </text>
+        ),
+      )}
+      {markAt !== null && card.stalled !== undefined && (
+        <g data-card-mark={card.stalled} transform={`translate(${NODE_PAD_X + (GLYPH_BOX * CARD_MARK_SCALE) / 2} ${cardLineMid(markAt)}) scale(${CARD_MARK_SCALE})`}>
+          <StateMarkGlyph kind={card.stalled} />
+        </g>
+      )}
       {finding > 0 && (
         <g transform={`translate(${n.width - BADGE_W - 8} ${-BADGE_H / 2})`}>
           <rect width={BADGE_W} height={BADGE_H} rx={8} className="fill-warn-solid" />

@@ -3,19 +3,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   COLLAPSED_KEY,
   DEFAULT_MOTION,
+  DEFAULT_STATE_STYLE,
   MAX_COLLAPSED,
   MAX_KEY_CHARS,
   MOTION_KEY,
+  STATE_STYLE_KEY,
   STORAGE_DETAIL_KEY,
   motionOn,
   readCollapsed,
   readMotion,
+  readStateStyle,
   readStorageDetail,
   useCollapsedUpstream,
   useMotionPref,
+  useStateStyle,
   useStorageDetail,
   writeCollapsed,
   writeMotion,
+  writeStateStyle,
   writeStorageDetail,
 } from "./plannerPrefs";
 
@@ -78,6 +83,30 @@ describe("the motion preference", () => {
   });
 });
 
+describe("the state style preference (ADR-0062 Decision 2)", () => {
+  it("is marks until chosen, and keeps only the two known values", () => {
+    expect(DEFAULT_STATE_STYLE).toBe("marks");
+    expect(readStateStyle()).toBe("marks");
+    for (const pref of ["words", "marks"] as const) {
+      writeStateStyle(pref);
+      expect(window.localStorage.getItem(STATE_STYLE_KEY)).toBe(pref);
+      expect(readStateStyle()).toBe(pref);
+    }
+    for (const junk of ["", "Words", "text", "off", "__proto__", "null"]) {
+      window.localStorage.setItem(STATE_STYLE_KEY, junk);
+      expect(readStateStyle()).toBe("marks");
+    }
+  });
+
+  it("is held in a hook that writes through", () => {
+    const { result } = renderHook(() => useStateStyle());
+    expect(result.current[0]).toBe("marks");
+    act(() => result.current[1]("words"));
+    expect(result.current[0]).toBe("words");
+    expect(window.localStorage.getItem(STATE_STYLE_KEY)).toBe("words");
+  });
+});
+
 describe("the collapsed-upstream preference", () => {
   it("is empty until a card is collapsed, and round-trips a set", () => {
     expect(readCollapsed().size).toBe(0);
@@ -128,5 +157,10 @@ describe("storage that is missing or throws", () => {
     const { result } = renderHook(() => useMotionPref());
     act(() => result.current[1]("on"));
     expect(result.current[0]).toBe("on");
+    expect(readStateStyle()).toBe("marks");
+    expect(() => writeStateStyle("words")).not.toThrow();
+    const style = renderHook(() => useStateStyle()).result;
+    act(() => style.current[1]("words"));
+    expect(style.current[0]).toBe("words");
   });
 });
