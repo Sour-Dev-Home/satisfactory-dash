@@ -94,6 +94,12 @@ describe("the machine table's filter bar (ADR-0062 F.4)", () => {
     expect(phoneRow).not.toContainElement(filters);
     // The table is below the bar, never inside it.
     expect(bar).not.toContainElement(screen.getByRole("table"));
+    // Sticky needs room to travel: the bar and the table share a flex column, not the `.panel` grid, where the bar's own
+    // auto row (its grid area, the sticky bound) would be exactly its height.
+    const scope = bar!.parentElement!;
+    expect(scope).not.toHaveClass("panel");
+    expect(scope).toHaveClass("flex", "flex-col");
+    expect(scope).toContainElement(screen.getByRole("table"));
   });
 
   it("keeps the nav when there are no machines yet", () => {

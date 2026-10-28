@@ -72,55 +72,57 @@ export function FactoryPanel({
       {snapshot.stale && <p>Showing last known factory data from {formatTime(snapshot.observedAt)}.</p>}
 
       {buildings.length === 0 ? (
-        <>
+        <div data-sticky-scope="" className={STICKY_SCOPE}>
           <FilterBar nav={nav} />
           <p>No machines yet.</p>
-        </>
+        </div>
       ) : (
         <>
           <p className="summary">
             {buildings.length} {buildings.length === 1 ? "machine" : "machines"} · {backedUpCount} backed up · {paused} paused · {noRecipe} without a recipe
           </p>
-          <FilterBar
-            nav={nav}
-            search={
-              <label className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
-                Search machines
-                <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
-              </label>
-            }
-            filters={
-              <div role="group" aria-label="Filter machines">
-                {FILTERS.map((f) => (
-                  <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-            }
-          />
+          <div data-sticky-scope="" className={STICKY_SCOPE}>
+            <FilterBar
+              nav={nav}
+              search={
+                <label className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+                  Search machines
+                  <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
+                </label>
+              }
+              filters={
+                <div role="group" aria-label="Filter machines">
+                  {FILTERS.map((f) => (
+                    <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              }
+            />
 
-          {shown.length === 0 ? (
-            <p>No machines match.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Machine</th>
-                  <th scope="col">Recipe</th>
-                  {showInputs && <th scope="col">Inputs</th>}
-                  <th scope="col">Outputs</th>
-                  <th scope="col">State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((building) => (
-                  // id is unique within one response; never persisted (stability unverified).
-                  <BuildingRow key={building.id} building={building} showInputs={showInputs} />
-                ))}
-              </tbody>
-            </table>
-          )}
+            {shown.length === 0 ? (
+              <p>No machines match.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Machine</th>
+                    <th scope="col">Recipe</th>
+                    {showInputs && <th scope="col">Inputs</th>}
+                    <th scope="col">Outputs</th>
+                    <th scope="col">State</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((building) => (
+                    // id is unique within one response; never persisted (stability unverified).
+                    <BuildingRow key={building.id} building={building} showInputs={showInputs} />
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </>
       )}
 
@@ -132,11 +134,18 @@ export function FactoryPanel({
 }
 
 /**
+ * The box the filter bar sticks within: the bar and the table, in a flex column. Not the `.panel` grid itself: a sticky
+ * grid item is bounded by its own grid area, which is one auto row exactly the bar's height, so it would never move.
+ * The gap is the panel's.
+ */
+const STICKY_SCOPE = "flex min-w-0 flex-col gap-3";
+
+/**
  * ADR-0062 F.4: the in-page nav and the table's controls, in one bar that sticks to the top of the screen while the
- * table scrolls under it (one sticky layer, never two stacked). Sticky is bounded by the section, so it lets go once the
- * table has scrolled past; no ancestor up to the page scrolls on its own (an `overflow` there would turn sticky off).
+ * table scrolls under it (one sticky layer, never two stacked). Sticky is bounded by `STICKY_SCOPE`, so it lets go once
+ * the table has scrolled past; no ancestor up to the page scrolls on its own (an `overflow` there would turn sticky off).
  * On a phone the whole bar wraps to about four touch rows, a quarter of a 390 x 844 screen, so there only the nav and the
- * search stick (two rows): the outer box becomes `contents`, which makes the inner row a child of the section and lets it stick there,
+ * search stick (two rows): the outer box becomes `contents`, which makes the inner row a child of the scope and lets it stick there,
  * while the state filters scroll away with the table above them. From `sm` the outer box sticks with all three.
  */
 function FilterBar({ nav, search, filters }: { nav?: ReactNode; search?: ReactNode; filters?: ReactNode }) {
