@@ -23,11 +23,11 @@ export const MIXED_INNER_W_FAST = 1.5;
  * A transport (train, truck, drone, Depot) draws a double line (amendment Decision 6, owner answer 3): a stroke `TRANSPORT_W`
  * wide in the line's colour with a `TRANSPORT_GAP` stroke in the canvas colour over it, which leaves two rails of
  * `TRANSPORT_RAIL_W`. One geometry for every transport, mixed or not, whatever its rate: the double line says "a vehicle
- * carries this", not how much (its rate is in the label and the `<title>`). The gap is more than twice a rail and twice a
- * fast mixed belt's core (1.5), and the footprint is wider than any belt's (4), so a transport never reads as a mixed belt or
+ * carries this", not how much (its rate is in the label and the `<title>`). The gap is twice a rail and twice a fast mixed
+ * belt's core (1.5), and the footprint (6) is wider than any belt's (4), so a transport never reads as a mixed belt or
  * as a width step: a mixed belt is a warn line with a thin core, a transport two thin rails with a wide gap.
  */
-export const TRANSPORT_RAIL_W = 1.25;
+export const TRANSPORT_RAIL_W = 1.5;
 export const TRANSPORT_GAP = 3;
 export const TRANSPORT_W = 2 * TRANSPORT_RAIL_W + TRANSPORT_GAP;
 

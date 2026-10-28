@@ -156,8 +156,13 @@ const edgeDash = (rate: CanvasFlow["rate"]) => (rate === "measured" ? undefined 
  */
 const ARROW_REF_X = 5;
 const LINE_UNDER_ARROW = 3.2;
-/** A transport's double line (`TRANSPORT_W`, 5.5) stops where the head is 5.6 wide, so its rails never stick out past the head. */
-const DOUBLE_UNDER_ARROW = 4.8;
+/**
+ * A transport's double line (`TRANSPORT_W`, 6) ends where the head is 6 wide, so its rails never stick out beside it. The
+ * marker rides the path's end, so the double line has its own marker placed further back (`DOUBLE_ARROW_REF_X`): the line
+ * stops `DOUBLE_UNDER_ARROW` short, the tip stays 0.8 past the route's end and the base at 7.2 short, as on a belt.
+ */
+const DOUBLE_ARROW_REF_X = 2.5;
+const DOUBLE_UNDER_ARROW = 5.2;
 /** A mixed line's inner stroke stops before the arrowhead's base (7.2 short of the end), or at a stop bar's back (3 short). */
 const INNER_TRIM = 8;
 const INNER_TRIM_STALLED = 3;
@@ -1335,6 +1340,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               <marker id={markerId} viewBox="0 0 10 10" refX={ARROW_REF_X} refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
                 <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
               </marker>
+              <marker id={`${markerId}-double`} viewBox="0 0 10 10" refX={DOUBLE_ARROW_REF_X} refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+                <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
+              </marker>
               {/* A stalled line's end (ADR-0062 Decision 2): a bar across it in the state's tone, not an arrowhead. */}
               {marks && STALLED_KINDS.map((kind) => (
                 <marker key={kind} id={`${markerId}-${kind}`} viewBox="0 0 10 12" refX="9" refY="6" markerWidth="10" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
@@ -1740,7 +1748,7 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
         fill="none"
         strokeWidth={stroke.width}
         strokeDasharray={dash}
-        markerEnd={`url(#${stalled === undefined ? markerId : `${markerId}-${stalled}`})`}
+        markerEnd={`url(#${stalled !== undefined ? `${markerId}-${stalled}` : stroke.double ? `${markerId}-double` : markerId})`}
         className={edgeClass(e.flow)}
       />
       {stroke.inner !== null && stroke.double && (

@@ -115,6 +115,23 @@ describe("a transport's double line", () => {
     expect(svg.querySelector("[style]")).toBeNull();
   });
 
+  it("ends in its own arrowhead, wide enough at the line's end to cover both rails (a belt's head is 4 wide there)", async () => {
+    wideScreen(true);
+    const svg = await openGraph();
+    const truck = outer(lineFor(svg, /^Truck/));
+    const id = /^url\(#(.+)\)$/.exec(truck.getAttribute("marker-end")!)![1];
+    expect(id).toMatch(/-double$/);
+    const widthAtEnd = (markerId: string) => {
+      // The head is 8 long and 8 wide (viewBox 10, markerWidth 8) and rides the line's end at refX: its width there is its
+      // distance from the tip.
+      const m = svg.querySelector(`marker[id="${CSS.escape(markerId)}"]`)!;
+      expect(m.getAttribute("markerWidth")).toBe("8");
+      return (10 - Number(m.getAttribute("refX"))) * 0.8;
+    };
+    expect(widthAtEnd(id)).toBeGreaterThanOrEqual(TRANSPORT_W);
+    expect(widthAtEnd(id.replace(/-double$/, ""))).toBeCloseTo(LINE_W_FAST);
+  });
+
   it("keeps the line's colour and dashes: a measured transport solid and muted, an estimated one dashed on both rails alike", async () => {
     wideScreen(true);
     const svg = await openGraph();

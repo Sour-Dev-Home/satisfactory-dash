@@ -102,7 +102,7 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   lines, then all labels.
 - Width means rate (ADR-0062 amendment Decision 4): `lineStroke` (`lineWidth.ts`) gives a belt or pipe line 2, 3 or 4
   from `rateStep` on its (a bundle's summed) rate, 2 with no step; a mixed line keeps its width and gets a thin
-  `stroke-surface` inner stroke (`data-mixed-inner`), never extra width. Transports draw a 5.5 double line (above). The line stops
+  `stroke-surface` inner stroke (`data-mixed-inner`), never extra width. Transports draw a 6 double line (above) into their own arrowhead marker (`-double`). The line stops
   `LINE_UNDER_ARROW` short (`roundedOrthogonalPath`'s `trimEnd`) so it ends inside the arrowhead; see the amendment's
   "Values chosen in build PR 2".
 - Marching dashes (ADR-0062 amendment build PR 3, `marching.ts`): a belt or pipe line with a measured or estimated rate

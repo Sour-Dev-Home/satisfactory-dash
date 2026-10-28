@@ -379,9 +379,10 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
   Motion control now shows there.
 
 ### Values chosen in build PR 4 (2026-10-28)
-- **The double line** (`lineWidth.ts`, `lineStroke`'s `double`). A transport's line is a stroke `TRANSPORT_W` 5.5 wide in
+- **The double line** (`lineWidth.ts`, `lineStroke`'s `double`). A transport's line is a stroke `TRANSPORT_W` 6 wide in
   its line colour with a `TRANSPORT_GAP` 3 stroke in `stroke-surface` (the canvas colour) over it: two rails of
-  `TRANSPORT_RAIL_W` 1.25 with a gap between them. Drawn as a "hollow" stroke rather than two offset paths: SVG has no offset
+  `TRANSPORT_RAIL_W` 1.5 with a gap between them (rails 1.5, not 1.25, after `ui-reviewer`: at zoom 0.4 a 1.25 rail is 0.5 px
+  and the two blur into one pale line). Drawn as a "hollow" stroke rather than two offset paths: SVG has no offset
   path, and the hollow stroke follows the rounded orthogonal corners exactly. The gap's dashes are the line's own at the same
   offset (an estimated transport `8 5`, an unknown one `2 5`), so each dash is two short rails. Colour is `edgeClass` as
   before: muted (warn when mixed, `stroke-line` when unknown). Today a transport part is never mixed (`transportPart` sets
@@ -390,16 +391,18 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
   inside), and both clear 3:1 on surface and canvas (`lineWidth.test.ts`); an unknown transport's `stroke-line` is the
   unknown belt's colour, unchanged.
 - **Unlike a mixed belt.** A mixed belt is a warn line 2 to 4 wide whose core (0.5 to 1.5) is never wider than its two rails
-  together. A transport's gap (3) is more than twice a rail and at least twice any mixed core, and its footprint (5.5) is past
-  every width step (4), so the two never share proportions; a non-mixed transport is also muted, not warn, and carries its
+  together. A transport's gap (3) is as wide as its two rails together and at least twice any mixed core, and its footprint (6)
+  is past every width step (4), so the two never share proportions; a non-mixed transport is also muted, not warn, and carries its
   glyph. `lineWidth.test.ts` keeps these inequalities.
 - **Spacing does not follow the rate.** Decision 4's "width means rate" is for belts and pipes. A transport's rate is an
   average over trips, its glyph already says "a vehicle carries this", and a gap that grew with the rate would make the double
   line's footprint (or its rails) read as one of the belt widths. So one fixed geometry for every transport; the rate is in
   the label, the `<title>` and (build PR 5) the step word. **Owner check:** stepping the gap by rate is the alternative.
-- **The arrowhead.** The double line stops `DOUBLE_UNDER_ARROW` 4.8 short of its route's end (a belt's 3.2), where the head
-  (8 long, 8 wide at its base, tip 0.8 past the end) is 5.6 wide, so the rails never stick out beside it. The gap stops 8
-  short as a mixed line's core does, so the rails close against the head's base; a stalled transport's line ends inside its
+- **The arrowhead.** A marker rides its path's end, so the double line has its own (`<markerId>-double`, the same head, 8
+  long and 8 wide at its base) placed at `DOUBLE_ARROW_REF_X` 2.5 (a belt's is 5), and the line stops `DOUBLE_UNDER_ARROW`
+  5.2 short of its route's end (a belt's 3.2). The head is then 6 wide where the line ends, so the rails never stick out
+  beside it, and its tip (0.8 past the route's end) and base (7.2 short) are where a belt's are. The gap stops 8 short as a
+  mixed line's core does, before the base, so the rails close against it; a stalled transport's line ends inside its
   stop bar (12 tall), its gap 3 short.
 - **The moving glyph leaves the canvas.** Before, a moving glyph was an SVG `animateMotion` inside the canvas `<svg>`, which
   repaints the whole canvas every frame, as a marching dash did before #808. It now rides its line in `MarchLayer`: a

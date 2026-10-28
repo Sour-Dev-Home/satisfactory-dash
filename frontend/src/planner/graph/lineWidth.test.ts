@@ -47,14 +47,14 @@ describe("lineStroke: width means rate (ADR-0062 amendment Decision 4)", () => {
         expect(lineStroke({ carrier, mixed: true, ratePerMinute, unit: "items/min" }), `${carrier} mixed ${ratePerMinute}`).toEqual(double);
       }
     }
-    expect([TRANSPORT_RAIL_W, TRANSPORT_GAP, TRANSPORT_W]).toEqual([1.25, 3, 5.5]);
+    expect([TRANSPORT_RAIL_W, TRANSPORT_GAP, TRANSPORT_W]).toEqual([1.5, 3, 6]);
     expect(lineStroke(belt(30)).double).toBe(false);
     expect(lineStroke(belt(30, true)).double).toBe(false);
   });
 
-  it("keeps a transport's double line unlike any mixed belt: a gap over twice a rail and wider than any belt's core", () => {
+  it("keeps a transport's double line unlike any mixed belt: a gap as wide as its rails together, twice any belt's core", () => {
     expect(TRANSPORT_W - TRANSPORT_GAP).toBeCloseTo(2 * TRANSPORT_RAIL_W);
-    expect(TRANSPORT_GAP).toBeGreaterThan(2 * TRANSPORT_RAIL_W);
+    expect(TRANSPORT_GAP).toBeGreaterThanOrEqual(2 * TRANSPORT_RAIL_W);
     for (const rate of [null, 60, ITEMS_MID_FROM, ITEMS_FAST_FROM]) {
       const mixed = lineStroke(belt(rate, true));
       // A mixed belt's core is never wider than its rails together; a transport's gap is: the proportions differ.
