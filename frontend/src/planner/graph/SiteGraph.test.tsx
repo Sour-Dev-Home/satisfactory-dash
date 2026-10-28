@@ -422,40 +422,247 @@ describe("the graph's readable chrome", () => {
     expect(fades().length).toBeGreaterThan(1);
   });
 
-  it("opens the panel as a drawer from lg and brings the group into the part left of it", async () => {
+});
+
+describe("the floating group panel (the owner, 2026-10-27: an overlay, not a full-height drawer)", () => {
+  const nums = (re: RegExp, s: string) => re.exec(s)!.slice(1).map(Number);
+  /** A card's box on screen (stage px): its translate inside the drawing, through the view's translate and scale. */
+  const cardRect = (svg: HTMLElement, text: string) => {
+    const g = [...svg.querySelectorAll("[data-node]")].find((el) => el.textContent?.includes(text))!;
+    const [x, y] = nums(/translate\((-?[\d.e-]+) (-?[\d.e-]+)\)/, g.getAttribute("transform")!);
+    const [vx, vy, k] = nums(/translate\((-?[\d.e-]+) (-?[\d.e-]+)\) scale\(([\d.e-]+)\)/, transformOf(svg));
+    const rect = g.querySelector("rect.fill-surface-2")!;
+    return { left: vx + x! * k!, top: vy + y! * k!, width: Number(rect.getAttribute("width")) * k!, height: Number(rect.getAttribute("height")) * k! };
+  };
+  const overlayBox = () => {
+    const fo = document.querySelector("[data-overlay] foreignObject")!;
+    const [x, y, width, height] = ["x", "y", "width", "height"].map((a) => Number(fo.getAttribute(a)));
+    return { fo, x: x!, y: y!, width: width!, height: height! };
+  };
+  const covers = (o: ReturnType<typeof overlayBox>, c: ReturnType<typeof cardRect>) =>
+    o.x < c.left + c.width && c.left < o.x + o.width && o.y < c.top + c.height && c.top < o.y + o.height;
+  const largeScreen = () =>
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("min-width"), addEventListener: () => {}, removeEventListener: () => {} }));
+  /** jsdom lays nothing out: every element says it is `h` tall, so the content measures `h` and the frame has no border. */
+  const contentHeight = (h: number) => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(h);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(h);
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  it("from lg stands beside the clicked card, as tall as its content, placed by SVG attributes only", async () => {
+    largeScreen();
+    contentHeight(200);
     const svg = await openGraph();
-    const tx = (el: Element) => Number(/translate\((-?[\d.e-]+)/.exec(el.getAttribute("transform")!)![1]);
-    const storage = [...svg.querySelectorAll(":scope > g > g")].find((g) => g.hasAttribute("transform") && g.textContent?.includes("Storage"))!;
-    const left = () => tx(svg.querySelector(":scope > g")!) + scaleOf(svg) * tx(storage);
-    const before = left();
-    const real = window.getComputedStyle.bind(window);
-    // From lg the panel's wrapper is absolute (the CSS is not loaded in jsdom): say so for the panel's wrapper only.
-    vi.spyOn(window, "getComputedStyle").mockImplementation((el, pseudo) =>
-      el.querySelector?.("aside")
-        ? new Proxy(real(el, pseudo), {
-            get: (target, prop) => {
-              const value: unknown = Reflect.get(target, prop);
-              return prop === "position" ? "absolute" : typeof value === "function" ? value.bind(target) : value;
-            },
-          })
-        : real(el, pseudo),
-    );
-    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
-    fireEvent.click(await groupButton(/Storage/));
-    await screen.findByRole("complementary");
-    // The stage is 1000 wide in jsdom, the drawer 800: the card must now end inside the 200 px left of it.
-    expect(left()).toBeLessThan(before);
-    expect(left() + scaleOf(svg) * 120).toBeLessThanOrEqual(200 + 1);
-    vi.restoreAllMocks();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    const panel = await screen.findByRole("complementary", { name: "Miner Mk.2" });
+    const o = overlayBox();
+    expect(o.fo.contains(panel)).toBe(true);
+    expect(o.height).toBe(200);
+    expect(o.width).toBe(352);
+    expect(["right", "left", "below", "above"]).toContain(o.fo.getAttribute("data-side"));
+    expect(covers(o, cardRect(svg, "Miner Mk.2"))).toBe(false);
+    // No fixed full height: the frame and the panel fill the foreignObject, which is the content's height (above).
+    const frame = o.fo.firstElementChild!;
+    expect(frame.className).not.toMatch(/inset-y-0|h-screen|min-h/);
+    expect(panel.className).not.toMatch(/inset-y-0|h-screen|min-h/);
+    // The CSP forbids inline styles: nothing in the overlay carries one.
+    const overlay = document.querySelector("[data-overlay]")!;
+    expect([overlay, ...overlay.querySelectorAll("*")].every((el) => el.getAttribute("style") === null)).toBe(true);
   });
 
-  it("leaves the view alone when the panel is stacked (not absolute)", async () => {
-    const svg = await openGraph();
-    const before = transformOf(svg);
-    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(800);
+  it("caps its height inside the canvas and scrolls past it", async () => {
+    largeScreen();
+    contentHeight(5000);
+    await openGraph();
     fireEvent.click(await groupButton(/Miner Mk\.2/));
     await screen.findByRole("complementary");
-    expect(transformOf(svg)).toBe(before);
-    vi.restoreAllMocks();
+    const o = overlayBox();
+    // jsdom's stage is 1000 x 600; the margin is 12 px each side.
+    expect(o.height).toBe(600 - 24);
+  });
+
+  it("keeps the heading and Close outside the part that scrolls, and marks the scroll", async () => {
+    contentHeight(100);
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    const panel = await screen.findByRole("complementary", { name: "Miner Mk.2" });
+    const o = overlayBox();
+    // The shadow is not clipped to the foreignObject's box, and the frame's edge reads over the lines without it.
+    expect(o.fo).toHaveClass("overflow-visible");
+    const frame = o.fo.firstElementChild as HTMLElement;
+    expect(frame).toHaveClass("border-info-edge", "overflow-hidden");
+    const header = panel.querySelector("[data-overlay-header]")!;
+    const body = panel.querySelector("[data-overlay-body]") as HTMLElement;
+    expect(body).toHaveClass("overflow-y-auto");
+    expect(body.contains(header)).toBe(false);
+    expect(within(header as HTMLElement).getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(within(header as HTMLElement).getByRole("heading", { name: "Miner Mk.2" })).toBeInTheDocument();
+    expect(body.contains(within(panel).getByText(/^\d+ machines? · /))).toBe(true);
+    // Not scrolled, nothing below: no rule under the header, no fade.
+    expect(frame).not.toHaveAttribute("data-scrolled");
+    expect(frame.querySelector("[data-overlay-more]")).toBeNull();
+    // More below the cap: the fade shows; scrolled down, the header draws its rule (group-data-scrolled).
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(400);
+    fireEvent.scroll(body);
+    expect(frame.querySelector("[data-overlay-more]")).toHaveClass("opacity-100");
+    vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockReturnValue(50);
+    fireEvent.scroll(body);
+    expect(frame).toHaveAttribute("data-scrolled", "true");
+    expect(header).toHaveClass("group-data-scrolled:border-line");
+  });
+
+  it("follows the card when the view pans", async () => {
+    largeScreen();
+    contentHeight(100);
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    const before = overlayBox();
+    const viewport = screen.getByRole("group", { name: /^Graph viewport/ });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
+    const after = overlayBox();
+    expect(after.y).not.toBe(before.y);
+    expect(screen.getByRole("complementary")).toBeInTheDocument();
+  });
+
+  it("below lg lies over the canvas's bottom (not stacked under it), and the view moves so the card stays clear", async () => {
+    const svg = await openGraph();
+    fireEvent.click(await groupButton(/Storage/));
+    const panel = await screen.findByRole("complementary");
+    const o = overlayBox();
+    expect(o.fo.getAttribute("data-side")).toBe("bottom");
+    // Unmeasured in jsdom, it takes the most it may: half the 600 px stage, its bottom 12 px above the canvas's.
+    expect(o.height).toBe(300);
+    expect(o.y + o.height).toBe(600 - 12);
+    // Capped at the token's width, centred on the 1000 px stage (not a banner across it).
+    expect(o.width).toBe(352);
+    expect(o.x).toBe((1000 - 352) / 2);
+    // Inside the canvas's box: the overlay svg sits over the viewport, in the same positioned wrapper.
+    const overlay = document.querySelector("[data-overlay]")!;
+    expect(overlay).toHaveClass("absolute", "inset-0");
+    expect(overlay.parentElement!.contains(screen.getByRole("group", { name: /^Graph viewport/ }))).toBe(true);
+    expect(covers(o, cardRect(svg, "Storage"))).toBe(false);
+    expect(panel.contains(document.activeElement)).toBe(true);
+  });
+
+  it("closes on a click on the canvas's background, not on a card; focus stays on the canvas", async () => {
+    const svg = await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary", { name: "Miner Mk.2" });
+    // A click on a card is not the background: it opens that card instead.
+    const card = [...svg.querySelectorAll("[data-node]")].find((el) => el.textContent?.includes("Storage"))!;
+    fireEvent.click(card.querySelector("rect")!);
+    expect(await screen.findByRole("complementary")).not.toHaveAccessibleName("Miner Mk.2");
+    fireEvent.click(svg);
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: /^Graph viewport/ })).toHaveFocus();
+  });
+
+  it("closes with Escape from the canvas too, handing focus back to the card", async () => {
+    await openGraph();
+    const button = await groupButton(/^Miner Mk\.2\b/);
+    fireEvent.click(button);
+    await screen.findByRole("complementary");
+    fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+  });
+
+  it("a background click that ends a drag does not close it", async () => {
+    const svg = await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    fireEvent.pointerDown(svg, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+    pointer("pointermove", 1, 180, 150);
+    pointer("pointerup", 1, 180, 150);
+    fireEvent.click(svg);
+    expect(screen.getByRole("complementary")).toBeInTheDocument();
+  });
+
+  it("is exposed to screen readers: no aria-hidden on it or above it, and no role=img", async () => {
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    const panel = await screen.findByRole("complementary", { name: "Miner Mk.2" });
+    for (let el: Element | null = panel; el !== null; el = el.parentElement) expect(el).not.toHaveAttribute("aria-hidden", "true");
+    const overlay = document.querySelector("[data-overlay]")!;
+    expect(overlay.closest("[role=img]")).toBeNull();
+    expect(overlay.querySelector("[role=img]")).toBeNull();
+  });
+
+  it("switching to another card while open keeps one overlay, now holding that card", async () => {
+    const svg = await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary", { name: "Miner Mk.2" });
+    const card = [...svg.querySelectorAll("[data-node]")].find((el) => el.textContent?.includes("Storage"))!;
+    fireEvent.click(card.querySelector("rect")!);
+    await screen.findByRole("complementary");
+    expect(document.querySelectorAll("[data-overlay]")).toHaveLength(1);
+    expect(screen.getAllByRole("complementary")).toHaveLength(1);
+    expect(screen.getByRole("complementary")).not.toHaveAccessibleName("Miner Mk.2");
+  });
+
+  it("follows its content's height when a poll changes it (ResizeObserver)", async () => {
+    largeScreen();
+    contentHeight(100);
+    const observers: Array<() => void> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: () => void) {
+          observers.push(cb);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    expect(overlayBox().height).toBe(100);
+    contentHeight(260);
+    act(() => observers.forEach((cb) => cb()));
+    expect(overlayBox().height).toBe(260);
+    contentHeight(40);
+    act(() => observers.forEach((cb) => cb()));
+    expect(overlayBox().height).toBe(40);
+    vi.unstubAllGlobals();
+  });
+
+  it("moves from beside the card to the bottom when the screen narrows below lg while open", async () => {
+    let wide = true;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() {
+        return query.includes("64rem") ? wide : true;
+      },
+      addEventListener: (_: string, l: () => void) => listeners.add(l),
+      removeEventListener: (_: string, l: () => void) => listeners.delete(l),
+    }));
+    contentHeight(150);
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    expect(overlayBox().fo.getAttribute("data-side")).not.toBe("bottom");
+    wide = false;
+    act(() => listeners.forEach((l) => l()));
+    expect(overlayBox().fo.getAttribute("data-side")).toBe("bottom");
+    expect(screen.getByRole("complementary")).toBeInTheDocument();
+    wide = true;
+    act(() => listeners.forEach((l) => l()));
+    expect(overlayBox().fo.getAttribute("data-side")).not.toBe("bottom");
+  });
+
+  it("every position it draws is a finite number at the zoom extremes", async () => {
+    largeScreen();
+    contentHeight(150);
+    await openGraph();
+    fireEvent.click(await groupButton(/Miner Mk\.2/));
+    await screen.findByRole("complementary");
+    for (const name of ["Zoom in", "Zoom out"]) {
+      for (let i = 0; i < 25; i++) fireEvent.click(screen.getByRole("button", { name }));
+      const o = overlayBox();
+      expect([o.x, o.y, o.width, o.height].every(Number.isFinite)).toBe(true);
+    }
   });
 });
