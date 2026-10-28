@@ -111,8 +111,19 @@ export const AgentPowerGeneratorSchema = PowerGeneratorSchema.extend({
 });
 export const AgentPowerSchema = z.object({
   circuits: z.array(AgentPowerCircuitSchema).max(AGENT_INPUT_MAX_CIRCUITS),
-  // S4-B: OPTIONAL, the mod sends it; the Node agent is frozen on FRM (ADR-0058 Decision 5).
-  generators: z.array(AgentPowerGeneratorSchema).max(AGENT_INPUT_MAX_GENERATORS).optional(),
+  // S4-B: OPTIONAL, the mod sends it; the Node agent is frozen on FRM (ADR-0058 Decision 5) and never does. Sent ONCE PER
+  // READ (owner, 2026-10-28): only on the power part of a snapshot in which the sender read generators, at the factory
+  // cadence, not with every power reading. The read time is the snapshot's own `observedAt`, so there is no input field for
+  // it; the response's `generatorsReadAt` is backend-derived and a sender's is dropped.
+  generators: z
+    .array(AgentPowerGeneratorSchema)
+    .max(AGENT_INPUT_MAX_GENERATORS)
+    .optional()
+    .describe(
+      "S4-B, once per read: present = the sender read generators in this snapshot, and the list REPLACES the backend's " +
+        "last one ([] = read, none found). Absent = no read in this snapshot: the backend keeps the last list and serves " +
+        "it until it is older than 3 × factorySeconds. A sender sends it at least once per factorySeconds while it reads.",
+    ),
 });
 const AgentProductionRateSchema = ProductionRateSchema.omit({ unit: true }).extend({ name: boundedString, className: boundedString });
 export const AgentFactoryBuildingSchema = FactoryBuildingSchema.omit({ state: true }).extend({
