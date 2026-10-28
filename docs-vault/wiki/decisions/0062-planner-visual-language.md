@@ -307,9 +307,12 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
   Off at one frame (16.7) this passes at 3 frames (50) and fails at 4 (66.7); the baseline above (116.7) fails it. If the
   layer alone does not bring it under, the next levers are a `steps()` timing (a dash offset update about 15 times a second)
   and pausing the march while a pan or zoom runs.
-  **TODO (owner's box run, and CI's after the fix):** record the numbers here and confirm or change `MARCH_MAX`:
-  - 1440 px: fitted [NEEDS MEASUREMENT], all in view [NEEDS MEASUREMENT], off [NEEDS MEASUREMENT]
-  - 390 px: fitted [NEEDS MEASUREMENT], all in view [NEEDS MEASUREMENT], off [NEEDS MEASUREMENT]
+  **Measured after the fix** (CI headless, software raster, PR #808's last e2e run, 2026-10-28; p50 / p95 / max ms over 2 s):
+  - 1440 px: fitted (4 marching) 16.7 / 16.8 / 33.3; all in view (60 marching) 16.7 / 16.8 / 33.4; off 16.7 / 16.8 / 16.8
+  - 390 px: fitted (2 marching) 16.7 / 16.7 / 16.8; all in view (25 marching) 16.7 / 16.8 / 16.8; off 16.7 / 16.8 / 16.8
+  Every case holds one frame (60 fps) at p95, so the layer alone was enough and the `steps()` and pause levers are not
+  needed. `MARCH_MAX` stays 60: by the rule below it could rise, but 60 marching lines already fill the fitted view of a
+  210-line factory, and a larger cap is only worth it once a real save shows a view with more.
   Rule for the cap: if "all in view" p95 stays within a frame (about 17 ms) of "off", the cap may rise; if it passes
   33 ms, lower it (Revisit: animate only the hovered or selected path).
 - **Screenshots.** Planner screenshots run under reduced motion (`e2e/states.spec.ts`) and with animations disabled, so
