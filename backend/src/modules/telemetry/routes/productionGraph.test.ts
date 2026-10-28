@@ -281,4 +281,32 @@ describe("GET production-graph: designations (ADR-0055 Decision 5)", () => {
     expect(failing.body.data).toEqual(base);
     expect((await get(build({ rows, factory, designations: store(async () => []) }))).body.data).toEqual(base);
   });
+
+  it("ADR-0061: each factory carries its designation's parent, and matching is identical with and without parents", async () => {
+    const PID = "22222222-2222-4222-8222-222222222222";
+    const EID = "33333333-3333-4333-8333-333333333333";
+    const at = "2026-10-27T10:00:00.000Z";
+    const d = (id: string, name: string, members: ReturnType<typeof member>[], parentId?: string | null) => ({
+      id, name, mode: "core", members, createdAt: at, updatedAt: at, ...(parentId !== undefined && { parentId }),
+    });
+    // E owns no machines (a parent only), P is top level with m1, the child C (DID) sits in E with m2.
+    const nested = [d(EID, "Area", [], null), d(PID, "Top", [member("m1", 1)], null), d(DID, "Child", [member("m2", 2)], EID)];
+    const flat = nested.map(({ parentId: _dropped, ...rest }) => rest);
+    const res = await get(build({ rows, factory, designations: store(async () => nested) }));
+    expect(ProductionGraphResponseSchema.parse(res.body)).toEqual(res.body);
+    const withParents = res.body.data;
+    const without = (await get(build({ rows, factory, designations: store(async () => flat) }))).body.data;
+
+    const byDesignation = new Map<string, { parentDesignationId: string | null }>(withParents.factories.map((f: { designationId: string; parentDesignationId: string | null }) => [f.designationId, f]));
+    expect(byDesignation.get(DID)?.parentDesignationId).toBe(EID);
+    expect(byDesignation.get(PID)?.parentDesignationId).toBeNull();
+    // A parent with no members of its own has no factory in the graph (Decision 2: the client rolls it up).
+    expect(byDesignation.has(EID)).toBe(false);
+    expect(withParents.factories.every((f: { designationId: string | null; parentDesignationId: string | null }) => f.designationId !== null || f.parentDesignationId === null)).toBe(true);
+
+    // Matching, nodes and factories are unchanged by parents: only parentDesignationId differs.
+    const strip = (data: { factories: { parentDesignationId?: unknown }[] }) => ({ ...data, factories: data.factories.map(({ parentDesignationId: _p, ...f }) => f) });
+    expect(strip(withParents)).toEqual(strip(without));
+    expect(without.factories.every((f: { parentDesignationId: unknown }) => f.parentDesignationId === null)).toBe(true);
+  });
 });

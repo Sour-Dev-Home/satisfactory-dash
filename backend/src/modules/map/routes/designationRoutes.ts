@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   CreatePlannerDesignationRequestSchema,
   DeletePlannerDesignationResponseSchema,
+  PLANNER_DESIGNATION_MAX_DEPTH,
   PlannerDesignationSchema,
   PlannerDesignationsResponseSchema,
   ReplacePlannerDesignationsRequestSchema,
@@ -38,9 +39,21 @@ export interface DesignationRoutesDeps {
 
 const DesignationIdSchema = z.uuid();
 
+/** ADR-0061 Contracts 4: the 409s of a write whose resulting tree breaks a rule (the store checks it under its lock). */
+function refuseHierarchy<T extends { kind: string }>(outcome: T): asserts outcome is Exclude<T, { kind: "cycle" | "depth" | "shape" }> {
+  if (outcome.kind === "cycle") throw new ApiFailure("designation_cycle", "A factory cannot sit inside itself");
+  if (outcome.kind === "depth") throw new ApiFailure("designation_depth", `Factories nest at most ${PLANNER_DESIGNATION_MAX_DEPTH} levels deep`);
+  if (outcome.kind === "shape") throw new ApiFailure("designation_shape", "A factory with no machines of its own needs factories inside it");
+}
+
 /**
  * ADR-0055 Decision 5: Planner designations. Mounted AFTER the servers router (its membership check and member-write guard
  * cover these paths). Without a database there is no table, so every route answers 503.
+ *
+ * ADR-0061 (nesting): create and replace take `parentId`; PUT never changes it. A missing parent is 409 `designation_stale`,
+ * then `designation_cycle`, `designation_depth` and `designation_shape` (no members and no children), each checked by the
+ * store on the whole resulting set. DELETE of a parent moves its children up to its own parent, and deletes an ancestor it
+ * leaves with no members and no children; the response stays `{ deleted: true }` (a client re-reads the list).
  */
 export function createDesignationRoutes(directory: ServerDirectory<unknown>, deps?: DesignationRoutesDeps): Router {
   const router = Router();
@@ -63,14 +76,6 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     if (!parsed.success) throw new BadRequestError("The request body is not valid");
     return parsed.data;
   };
-  /**
-   * ADR-0061 build PR 1 loosened the contract (members may be empty on a parent, `parentId` is accepted). Until the nesting
-   * route (build PR 2) stores parents, a write that uses either is refused exactly as before the loosening: 400.
-   * TODO(ADR-0061 PR 2): remove this and its rows in designationRoutes.test.ts in the change that stores `parent_id`.
-   */
-  const refuseNestingUntilServed = (entries: readonly { members: readonly unknown[]; parentId?: string | null }[]): void => {
-    if (entries.some((e) => e.members.length === 0 || e.parentId !== undefined)) throw new BadRequestError("The request body is not valid");
-  };
 
   router.get(routePath(endpoints.plannerDesignations.list.route), async (req, res) => {
     const { serverId } = resolveServer(directory, req);
@@ -86,13 +91,20 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     const { serverId } = resolveServer(directory, req);
     if (!deps) throw new ServiceUnavailableError();
     const body = parseBody(CreatePlannerDesignationRequestSchema, req.body);
-    refuseNestingUntilServed([body]);
-    const outcome = await deps.store.create(serverId, { userId: userIdOf(res), name: body.name, mode: body.mode, members: body.members });
+    const outcome = await deps.store.create(serverId, {
+      userId: userIdOf(res),
+      name: body.name,
+      mode: body.mode,
+      members: body.members,
+      ...(body.parentId !== undefined && { parentId: body.parentId }),
+    });
     if (outcome.kind === "no_server") throw new ServerNotFoundError();
     if (outcome.kind === "cap") throw new ApiFailure("designation_cap", "This server already has the most designations allowed");
     if (outcome.kind === "overlap") {
       throw new ApiFailure("designation_overlap", "A building is already in another designation", undefined, undefined, outcome.other);
     }
+    if (outcome.kind === "stale") throw new ApiFailure("designation_stale", "The parent designation no longer exists");
+    refuseHierarchy(outcome);
     res.status(201);
     sendValidated(res, PlannerDesignationSchema, outcome.designation);
   });
@@ -102,7 +114,6 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     const { serverId } = resolveServer(directory, req);
     if (!deps) throw new ServiceUnavailableError();
     const body = parseBody(ReplacePlannerDesignationsRequestSchema, req.body);
-    refuseNestingUntilServed(body.put);
     const outcome = await deps.store.replace(serverId, {
       userId: userIdOf(res),
       expect: body.expect,
@@ -116,7 +127,8 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     if (outcome.kind === "overlap") {
       throw new ApiFailure("designation_overlap", "A building is already in another designation", undefined, undefined, outcome.other);
     }
-    sendValidated(res, ReplacePlannerDesignationsResponseSchema, { designations: outcome.designations, removedIds: outcome.removedIds });
+    refuseHierarchy(outcome);
+    sendValidated(res, ReplacePlannerDesignationsResponseSchema,{ designations: outcome.designations, removedIds: outcome.removedIds });
   });
 
   router.put(routePath(endpoints.plannerDesignations.update.route), parseLarge, async (req, res) => {

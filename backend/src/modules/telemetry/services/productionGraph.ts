@@ -32,7 +32,7 @@ import {
   type Arc,
   type Filter,
 } from "./connectionGraph.js";
-import { reduceFactories, type ReductionStats } from "./factoryReduction.js";
+import { reduceFactories, type DesignationRef, type ReductionStats } from "./factoryReduction.js";
 import { buildingName, classOfId } from "./buildingNames.js";
 import { buildLogisticsEdges } from "./logisticsEdges.js";
 import { DEPOT_CLASS, classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type TreeGroup } from "./plannerFlows.js";
@@ -199,7 +199,7 @@ interface Group {
   siteKey: string;
   loop: boolean;
   /** The designation every machine of this group belongs to (the group key includes it), or null. */
-  designation: { id: string; name: string } | null;
+  designation: DesignationRef | null;
 }
 
 /** A place flow passes between terminals: a pass-through component, or one conveyor joining two terminals directly. */
@@ -276,7 +276,7 @@ export function buildProductionGraphWithStats(
   resourceNodes: readonly ResourceNode[] = [],
   trainRoutes: readonly TrainRouteRecord[] | null = null,
   /** ADR-0055 Decision 5: building id -> the designation that holds it. Absent or empty = fully automatic (as before). */
-  designated: ReadonlyMap<string, { id: string; name: string }> = new Map(),
+  designated: ReadonlyMap<string, DesignationRef> = new Map(),
 ): ProductionGraphResult {
   if (edges === "unsupported") {
     return emptyGraph("unsupported", [{ code: "updateFrm", text: "No production graph; update FRM to 1.5.4 or newer for belt detail." }]);
@@ -1014,7 +1014,7 @@ export function buildProductionGraphWithStats(
 
   // ---- logical factories (ADR-0055 Decision 4, PR 6b): over the capped nodes, edges and transports; rules in factoryReduction.ts ----
   const reduceStarted = performance.now();
-  const designatedNodes = new Map<string, { id: string; name: string }>();
+  const designatedNodes = new Map<string, DesignationRef>();
   for (const grp of kept) if (grp.designation) designatedNodes.set(grp.key, grp.designation);
   const reduction = reduceFactories({ nodes, edges: keptEdges, transports, snap, ...(designatedNodes.size > 0 ? { designations: designatedNodes } : {}) });
   const reduceMs = Math.round((performance.now() - reduceStarted) * 100) / 100;
