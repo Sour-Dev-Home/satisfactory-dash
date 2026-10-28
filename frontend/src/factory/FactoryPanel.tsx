@@ -6,8 +6,13 @@ import { cn } from "../lib/cn";
 import { MACHINES_ANCHOR } from "../lib/deepLinks";
 import { useHashTarget } from "../lib/useHashTarget";
 import { machineState } from "./machineState";
+import { ShowAllRows } from "./ShowAllRows";
+import { useRowCap } from "./useRowCap";
 
 const isMachinesAnchor = (id: string) => id === MACHINES_ANCHOR;
+
+/** ADR-0062 F.5: the table's first render shows this many machines, then "Show all", so the page height is bounded. */
+export const FACTORY_ROW_CAP = 50;
 
 type Filter = "all" | "backedUp" | "paused" | "noRecipe";
 
@@ -54,6 +59,8 @@ export function FactoryPanel({
       active.match(b) &&
       (!needle || b.name.toLowerCase().includes(needle) || (b.recipe ?? "").toLowerCase().includes(needle)),
   );
+  // ADR-0062 F.5: after the filter and search, so a search reaches a machine past the cap. A new filter or search caps again.
+  const rowCap = useRowCap(shown, FACTORY_ROW_CAP, `${filter}\n${needle}`);
   const paused = buildings.filter((b) => b.isPaused).length;
   const noRecipe = buildings.filter((b) => b.recipe === null).length;
   // An older backend sends no ingredients at all: no Inputs column rather than an empty one.
@@ -115,13 +122,19 @@ export function FactoryPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((building) => (
+                  {rowCap.visible.map((building, i) => (
                     // id is unique within one response; never persisted (stability unverified).
-                    <BuildingRow key={building.id} building={building} showInputs={showInputs} />
+                    <BuildingRow
+                      key={building.id}
+                      building={building}
+                      showInputs={showInputs}
+                      focusRef={rowCap.expanded && i === FACTORY_ROW_CAP ? rowCap.firstRevealedRef : undefined}
+                    />
                   ))}
                 </tbody>
               </table>
             )}
+            <ShowAllRows rowCap={rowCap} noun="machines" />
           </div>
         </>
       )}
@@ -166,10 +179,24 @@ function FilterBar({ nav, search, filters }: { nav?: ReactNode; search?: ReactNo
   );
 }
 
-function BuildingRow({ building, showInputs }: { building: FactoryBuilding; showInputs: boolean }) {
+/**
+ * `focusRef`: on the first row "Show all" revealed, whose name takes focus (focusable from script only, never a tab stop),
+ * so the reader carries on at the row after the one they stopped at.
+ */
+function BuildingRow({
+  building,
+  showInputs,
+  focusRef,
+}: {
+  building: FactoryBuilding;
+  showInputs: boolean;
+  focusRef?: (el: HTMLElement | null) => void;
+}) {
   return (
     <tr>
-      <th scope="row">{building.name}</th>
+      <th scope="row" ref={focusRef} tabIndex={focusRef ? -1 : undefined}>
+        {building.name}
+      </th>
       <td>
         {building.recipe ?? "No recipe"}
         <Clock percent={building.clockSpeedPercent} />
