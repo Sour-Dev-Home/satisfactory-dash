@@ -168,6 +168,9 @@
 
   /* Overlays: the header's dropdowns sit above the page, fit any screen and scroll when long. */
   --z-popover: 10;
+  /* A bar that sticks to the top while its section scrolls under it (the Factory page's filters, ADR-0062 F.4): above
+     the content, below the header's dropdowns. */
+  --z-sticky: 5;
   --popover-width: min(24rem, calc(100vw - 2rem));
   --popover-max-height: min(70vh, 36rem);
 

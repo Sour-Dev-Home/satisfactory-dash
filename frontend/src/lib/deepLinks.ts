@@ -9,6 +9,8 @@ export const FACTORY_SEARCH_PARAM = "q";
 export const FACTORY_ITEM_PARAM = "item";
 /** The production history section's id on the Factory page. */
 export const HISTORY_ANCHOR = "history";
+/** The machine table's section id on the Factory page (its in-page nav, ADR-0062 F.4). */
+export const MACHINES_ANCHOR = "machines";
 
 /** A circuit card's id on the Power page. */
 export const circuitAnchor = (circuitGroupId: number): string => `circuit-${circuitGroupId}`;
