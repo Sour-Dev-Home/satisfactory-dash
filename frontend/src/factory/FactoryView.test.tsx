@@ -446,6 +446,35 @@ describe("FactoryView deep links + #history jump, on a real history (#351)", () 
     expect(window.location.search).toContain("q=iron");
   });
 
+  // ADR-0062 F.1: the summary sits first and its link jumps down to the full list, keeping the search.
+  it("puts the bottleneck summary above the table, and its link jumps to the full list", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.pushState(null, "", "/app/factory?q=Smelter");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const summary = await screen.findByRole("heading", { name: "3 bottlenecks" });
+    const table = await screen.findByRole("searchbox", { name: "Search machines" });
+    expect(summary.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole("link", { name: "Full list of bottlenecks" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Bottlenecks" })).toHaveFocus());
+    expect(window.location.hash).toBe("#bottlenecks");
+    expect(window.location.search).toBe("?q=Smelter");
+  });
+
+  it("the Planner's #bottlenecks-heading link lands on the full list too", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.pushState(null, "", "/app/factory#bottlenecks-heading");
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Bottlenecks" })).toHaveFocus());
+  });
+
   it("typing in the machine search doesn't steal focus back from the box, with #history open", async () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");

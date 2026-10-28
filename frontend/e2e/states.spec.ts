@@ -261,6 +261,9 @@ const CASES: StateCase[] = [
   { scenario: "bottlenecks-old-frm", path: "/app/factory", shows: /Update FRM to 1.5.4/ },
   { scenario: "bottlenecks-too-large", path: "/app/factory", shows: /connection data is too large/ },
   { scenario: "bottlenecks-not-received", path: "/app/factory", shows: /agent hasn't sent belt data yet/ },
+  // ADR-0062 F.1, the summary above the table: none to report, and the read failing (the default shows three causes).
+  { scenario: "bottlenecks-empty", path: "/app/factory", shows: "No machine is underfed or backed up." },
+  { scenario: "bottlenecks-error", path: "/app/factory", shows: /credentials for the game server were rejected/ },
   { scenario: "bottlenecks-empty", path: "/app/factory", shows: /No bottlenecks/ },
   { scenario: "bottlenecks-unknown-kind", path: "/app/factory", shows: /smart splitter upstream filters Limestone/ },
   // ADR-0050 task 5, the Planner page. The fixtures were observed at

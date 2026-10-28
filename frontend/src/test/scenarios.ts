@@ -800,6 +800,8 @@ export const SCENARIOS = {
   "bottlenecks-not-received": { bottlenecks: ok(bottlenecksNotReceived) },
   "bottlenecks-empty": { bottlenecks: ok(bottlenecksEmpty) },
   "bottlenecks-unknown-kind": { bottlenecks: ok(bottlenecksUnknownKind) },
+  // ADR-0062 F.1: the read failing, so the summary at the top shows the panel error in its reserved box (and the list too).
+  "bottlenecks-error": { bottlenecks: fail(502, errorUpstreamAuthRejected) },
   // ADR-0050 task 5, the Planner page at /app/planner (default shows two sites, a loop, a mixed belt, an estimated edge and
   // a machine on no conveyor yet): an empty factory, belt data unavailable (older FRM, over the cap), the data stale, a
   // bottleneck finding on a planner machine (the per-site count), and the read failing.

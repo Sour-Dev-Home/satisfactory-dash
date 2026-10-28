@@ -9,6 +9,7 @@ import { useSelectedServer } from "../servers/ServerContext";
 import { Loadable } from "../ui/Skeleton";
 import { FactorySkeleton } from "./FactorySkeleton";
 import { ItemHistorySection, SinceYesterdayView } from "./FactoryHistory";
+import { BottleneckSummaryView } from "./BottleneckSummary";
 import { BottlenecksView } from "./BottlenecksView";
 import { FactoryPanel } from "./FactoryPanel";
 import { itemLabels } from "./itemLabels";
@@ -60,6 +61,10 @@ export function FactoryView() {
   // reserved box instead, and the table never waits on it past the page budget.
   return (
     <Loadable pending={firstLoad} skeleton={<FactorySkeleton />} className="grid gap-4">
+      {/* The most actionable part first (ADR-0062 F.1), in a fixed-height box so its late read moves nothing below it. */}
+      <ErrorBoundary label="Bottleneck summary">
+        <BottleneckSummaryView />
+      </ErrorBoundary>
       <ErrorBoundary label="Since yesterday">
         <SinceYesterdayView labels={labels} />
       </ErrorBoundary>
@@ -78,7 +83,7 @@ export function FactoryView() {
       <ErrorBoundary label="Production history">
         <ItemHistorySection labels={labels} item={item} onItem={(value) => setParam(FACTORY_ITEM_PARAM, value)} />
       </ErrorBoundary>
-      {/* Last, so its loading and its varying height move nothing above it (ADR-0032's shift budget). */}
+      {/* The full list last, so its loading and its varying height move nothing above it (ADR-0032's shift budget). */}
       <ErrorBoundary label="Bottlenecks">
         <BottlenecksView />
       </ErrorBoundary>
