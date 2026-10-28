@@ -66,6 +66,16 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   - `overviewScene(graph, models, path, tree)` draws the parent's parts (top level for an empty path), each group owned
     by its shown card (`levelOwner`), so flows inside one card vanish and flows that leave the parent are not drawn;
     `Scene.path` and the name "Factories in <parent>". Merge picks only plain factories at the top level until PR 5.
+  - Blow up (build PR 4, same flag): `overviewScene(..., expanded)` replaces each expanded card by a frame of its parts (a
+    parent's factories, or a factory's groups as group cards), depth first, at most `EXPAND_MAX_DEPTH` (2) frames deep and
+    `EXPAND_MAX_CARDS` (60, measured: see the ADR's note) cards; flows re-aggregate at the finest card. `Card.blowUp`
+    (parts, noun, fits) draws an Expand pill (drawn disabled past the cap: "Too large to expand here; open it", and a click
+    or its hidden button opens the factory); `Frame.expands` and `Frame.parent` mark a blow-up's frame, a nested dagre
+    compound node (`roomForNestedTabs` keeps a nested top `NESTED_FRAME_RISE` below its parent's, so the tabs keep apart
+    and the Collapse pills' `PILL_HIT` targets never meet). The toolbar's Expand all, disabled, says why. Keyboard:
+    hidden "Expand <name> in place ..." buttons, focus into the frame, Escape on a part collapses it; toolbar Expand all
+    (`expandAllKeys`) and Collapse all. Remembered per path in `foldMemory` (`expanded`, `overviewFoldsKey`). Opening a
+    card inside a frame pushes its chain (`pathBelow`). Cards glide by the make-room tween; reduced motion jumps.
 - A node with `stale: true` (#728 cause 11: built only from conveyor ends that name machines the latest factory read
   lacks) wears the clock glyph and prints only the muted `STALE_NODE_NOTE` (`graphModel.ts`), wrapped to the card's line
   limits; the tooltip, the side panel and the Tables view say the whole sentence.

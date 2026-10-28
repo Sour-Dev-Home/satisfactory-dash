@@ -8,7 +8,7 @@ import { useReducedMotion } from "../../overview/reducedMotion";
 import type { FactoryTree } from "../factoryTree";
 import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
-import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
+import { TOO_LARGE_TO_EXPAND, expandAllKeys, factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
 import { minedRates, reachFor, siteItems } from "./graphModel";
 import type { FactoryModel } from "./hierarchy";
 import { BuildingGlyph, GLYPH_BOX } from "./buildingGlyphs";
@@ -32,6 +32,7 @@ import {
   LABEL_PAD,
   NODE_PAD_X,
   PILL_H,
+  PILL_HIT,
   cardLineMid,
   cardLineY,
   countBadgeWidth,
@@ -47,7 +48,7 @@ import {
   type LaidNode,
   type SiteLayout,
 } from "./layoutSite";
-import { useFolds } from "./foldMemory";
+import { overviewFoldsKey, useFolds } from "./foldMemory";
 import { machineCardKey, machineCards, type MachineCardText } from "./machineCards";
 import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStateStyle, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { StateMarkGlyph } from "./StateMark";
@@ -116,7 +117,8 @@ const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
 const PILL_MIN_W = 24;
-const PILL_HIT = 44;
+/** Why the toolbar's blow-up "Expand all" is disabled: every card here would pass `EXPAND_MAX_CARDS`. */
+const NOTHING_FITS = "Nothing here fits under the cap; open a factory to see its parts.";
 /** A glyph crosses its edge at this many units a second, within these bounds; at most this many edges move at once. */
 const GLYPH_SPEED = 40;
 const GLYPH_MIN_S = 4;
@@ -211,21 +213,47 @@ const ICON_PROPS = { viewBox: "0 0 24 24", "aria-hidden": true, className: "size
  * A toolbar button: an icon below `sm` (a 44 px square, the name for assistive tech), the words from `sm` up. `iconOnly` keeps the
  * icon at every width, with the name as its tooltip (the owner, 2026-10-27: zoom, fit and Select read as the usual icons).
  */
-function ToolButton({ name, icon, onClick, disabled, pressed, iconOnly }: { name: string; icon: ReactNode; onClick: () => void; disabled?: boolean; pressed?: boolean; iconOnly?: boolean }) {
+/** `description`: why the button is as it is (a disabled one's reason), as its tooltip and its accessible description. */
+function ToolButton({
+  name,
+  icon,
+  onClick,
+  disabled,
+  pressed,
+  iconOnly,
+  description,
+}: {
+  name: string;
+  icon: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  pressed?: boolean;
+  iconOnly?: boolean;
+  description?: string | undefined;
+}) {
+  const describedBy = useId();
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={pressed}
-      title={iconOnly ? name : undefined}
-      className="inline-flex min-h-touch min-w-touch items-center justify-center"
-    >
-      <svg {...ICON_PROPS} className={iconOnly ? "size-5" : "size-5 sm:hidden"}>
-        {icon}
-      </svg>
-      <span className={iconOnly ? "sr-only" : "sr-only sm:not-sr-only"}>{name}</span>
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-pressed={pressed}
+        aria-describedby={description === undefined ? undefined : describedBy}
+        title={description ?? (iconOnly ? name : undefined)}
+        className="inline-flex min-h-touch min-w-touch items-center justify-center"
+      >
+        <svg {...ICON_PROPS} className={iconOnly ? "size-5" : "size-5 sm:hidden"}>
+          {icon}
+        </svg>
+        <span className={iconOnly ? "sr-only" : "sr-only sm:not-sr-only"}>{name}</span>
+      </button>
+      {description !== undefined && (
+        <span id={describedBy} className="sr-only">
+          {description}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -244,7 +272,14 @@ const usePageVisible = () =>
 /** What the canvas shows: one site (an older backend), the factory overview (one level of the tree, ADR-0061), or one opened factory. */
 export type GraphTarget =
   | { kind: "site"; site: PlannerSite }
-  | { kind: "overview"; models: readonly FactoryModel[]; tree?: FactoryTree | undefined; path?: readonly string[] | undefined }
+  | {
+      kind: "overview";
+      models: readonly FactoryModel[];
+      tree?: FactoryTree | undefined;
+      path?: readonly string[] | undefined;
+      /** ADR-0061 Decision 5, behind `planner.nesting`: a card can blow up in place into its parts (needs `tree`). */
+      blowUp?: boolean | undefined;
+    }
   | { kind: "factory"; model: FactoryModel };
 
 /** The groups picked to designate (ADR-0055 Decision 5), shared with the Groups table's ticks. */
@@ -295,9 +330,16 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
 export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, factoryPicks, onPopOut }: SiteGraphProps) {
   // View state of this session, per factory (it outlives this canvas: foldMemory): which bubbles differ from their
   // default, which folds are open; and the viewer's saved choices: whose upstream is hidden, storage shown, motion.
-  const [folds, setFolds] = useFolds(target.kind === "factory" ? target.model.factory.key : target.kind === "site" ? target.site.key : null);
+  // Blow-up (ADR-0061 Decision 5) works on a level of the factory tree; its choices are remembered per path, like folds.
+  const blowUpTree = target.kind === "overview" && target.blowUp === true ? target.tree : undefined;
+  const levelPath = target.kind === "overview" ? (target.path ?? []) : [];
+  const [folds, setFolds] = useFolds(
+    target.kind === "factory" ? target.model.factory.key : target.kind === "site" ? target.site.key : blowUpTree !== undefined ? overviewFoldsKey(levelPath) : null,
+  );
   const { flipped, unfolded } = folds;
   const machinesOpen = folds.machines ?? NONE_OPEN;
+  const expanded = folds.expanded ?? NONE_OPEN;
+  const setExpanded = (next: ReadonlySet<string>) => setFolds({ expanded: next });
   const setFlipped = (next: ReadonlySet<string>) => setFolds({ flipped: next });
   const setUnfolded = (next: ReadonlySet<string>) => setFolds({ unfolded: next });
   const setMachinesOpen = (next: ReadonlySet<string>) => setFolds({ machines: next });
@@ -313,8 +355,13 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 
   const view: FactoryView = useMemo(() => ({ flipped, unfolded, collapsed, storageDetail, machinesOpen }), [flipped, unfolded, collapsed, storageDetail, machinesOpen]);
   const scene: Scene = useMemo(
-    () => (target.kind === "site" ? siteScene(target.site, graph) : target.kind === "overview" ? overviewScene(graph, target.models, target.path, target.tree) : factoryScene(graph, target.model, view)),
-    [target, graph, view],
+    () =>
+      target.kind === "site"
+        ? siteScene(target.site, graph)
+        : target.kind === "overview"
+          ? overviewScene(graph, target.models, target.path, target.tree, blowUpTree === undefined ? undefined : expanded)
+          : factoryScene(graph, target.model, view),
+    [target, graph, view, blowUpTree, expanded],
   );
   const overview = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
   const rates = useMemo(() => minedRates(graph.edges), [graph.edges]);
@@ -389,7 +436,22 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const machineButtons = useRef(new Map<string, HTMLButtonElement>());
   // Where the keyboard goes once an opened or closed group has been drawn: its first machine's button, or its own.
   const focusAfter = useRef<string | null>(null);
+  // A card just blown up from the keyboard: once its frame is drawn, the keyboard goes to the frame's first part.
+  const focusFrame = useRef<string | null>(null);
+  // The picture before a blow-up or a collapse, and the card's key: the cards glide from there (below).
+  const blowGlide = useRef<{ layout: SiteLayout; key: string } | null>(null);
   useEffect(() => {
+    const blown = focusFrame.current;
+    if (blown !== null) {
+      const frame = layout.frames.find((f) => f.expands === blown);
+      // Its parts, or a remembered blow-up's inside it; the first in the tab order (left to right, then down).
+      const within = new Set(frame === undefined ? [] : [frame.key, ...layout.frames.filter((f) => f.parent === frame.key).map((f) => f.key)]);
+      const first = layout.nodes.filter((n) => n.card.frame !== undefined && within.has(n.card.frame)).sort((a, b) => a.x - b.x || a.y - b.y)[0];
+      if (first !== undefined) {
+        focusFrame.current = null;
+        focusAfter.current = first.key;
+      }
+    }
     const key = focusAfter.current;
     if (key === null) return;
     const el = machineButtons.current.get(key) ?? buttons.current.get(key);
@@ -492,6 +554,34 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       settle,
     );
   }, [layout, roomShown, animate, runTween, cancelTween, settle]);
+  // A blow-up or a collapse (ADR-0061 Decision 5): every card glides from where it was, by the same tween (`--duration-slow`,
+  // `--ease-standard`); a part comes out of the card it was in, and a card that comes back grows out of its frame's corner.
+  // Reduced motion or Motion: Off jumps (the new picture is already drawn).
+  useLayoutEffect(() => {
+    const from = blowGlide.current;
+    if (from === null || from.layout === layout) return;
+    blowGlide.current = null;
+    const ms = animate ? tweenMs() : 0;
+    const drawing = drawingRef.current;
+    if (ms <= 0 || drawing === null) return;
+    cancelTween();
+    const was = new Map(from.layout.nodes.map((n) => [n.key, { x: n.x, y: n.y }]));
+    const source = was.get(from.key) ?? from.layout.frames.find((f) => f.expands === from.key);
+    const now = new Map(layout.nodes.map((n) => [n.key, n]));
+    const gliding = [...drawing.querySelectorAll<SVGGElement>("[data-node]")].flatMap((el) => {
+      const end = now.get(el.getAttribute("data-node") ?? "");
+      const start = end === undefined ? undefined : (was.get(end.key) ?? source);
+      return end === undefined || start === undefined || Math.hypot(end.x - start.x, end.y - start.y) < 1 ? [] : [{ el, start, end }];
+    });
+    if (gliding.length === 0) return;
+    runTween(
+      ms,
+      (t) => {
+        for (const m of gliding) m.el.setAttribute("transform", `translate(${m.start.x + (m.end.x - m.start.x) * t} ${m.start.y + (m.end.y - m.start.y) * t})`);
+      },
+      settle,
+    );
+  }, [layout, animate, runTween, cancelTween, settle]);
   // An open group that left the graph (a poll) shows no panel.
   const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
   const clipped = clippedEdges(viewport, layout, stage);
@@ -806,6 +896,13 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         focusAfter.current = machineOf;
         return;
       }
+      // On a part of a blown-up card (ADR-0061 Decision 5): collapse that frame, and the keyboard returns to the card.
+      const blownFrom = event.target instanceof HTMLElement ? event.target.dataset.blownFrom : undefined;
+      if (blownFrom !== undefined && expanded.has(blownFrom)) {
+        event.preventDefault();
+        collapseBlowUp(blownFrom, true);
+        return;
+      }
       if (selection !== undefined && selection.selected.size > 0) {
         event.preventDefault();
         selection.replace(new Set());
@@ -876,6 +973,47 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setMachinesOpen(toggled(machinesOpen, card.key));
     if (fromKeyboard) focusAfter.current = opening ? machineCardKey(card.key, card.machines.ids[0] ?? null) : card.key;
   };
+  /**
+   * ADR-0061 Decision 5: blows a card up in place (when it fits under the cap) or collapses its frame. From the keyboard,
+   * focus goes to the frame's first part, and back to the card on collapse. The cards glide from where they were.
+   */
+  const expandBlowUp = (card: Card, fromKeyboard = false) => {
+    if (dragged.current || card.blowUp === undefined) return;
+    // Past the cap the pill and its button say "open it": they open the factory, as the card's own click does.
+    if (!card.blowUp.fits) {
+      if (card.kind === "factory") onOpenFactory?.(card.key);
+      return;
+    }
+    blowGlide.current = { layout, key: card.key };
+    setExpanded(new Set([...expanded, card.key]));
+    revealFrame.current = card.key;
+    // From the mouse too when the keyboard was on the canvas (the card's own button goes with the card): into the frame.
+    const active = document.activeElement;
+    const viewportEl = viewportRef.current;
+    if (fromKeyboard || (viewportEl !== null && active !== null && active !== viewportEl && viewportEl.contains(active))) focusFrame.current = card.key;
+  };
+  /**
+   * A group whose panel is open and that a collapse takes off the canvas: its panel closes rather than hiding, or blowing
+   * the card up again would reopen it unasked. `blownUp` is the collapsing card's key, or undefined for all of them.
+   */
+  const closePanelLeaving = (blownUp: string | undefined) => {
+    if (openKey === null) return;
+    const outer = layout.frames.filter((f) => f.expands !== undefined && (blownUp === undefined || f.expands === blownUp)).map((f) => f.key);
+    const leaving = new Set([...outer, ...layout.frames.filter((f) => f.parent !== undefined && outer.includes(f.parent)).map((f) => f.key)]);
+    const frame = layout.nodes.find((n) => n.key === openKey)?.card.frame;
+    if (frame === undefined || !leaving.has(frame)) return;
+    setOpenKey(null);
+    setOpenMachine(null);
+  };
+  const collapseBlowUp = (key: string, fromKeyboard = false) => {
+    if (dragged.current) return;
+    blowGlide.current = { layout, key };
+    const next = new Set(expanded);
+    next.delete(key);
+    setExpanded(next);
+    closePanelLeaving(key);
+    if (fromKeyboard) focusAfter.current = key;
+  };
   const focusMachine = (n: LaidNode, key: string, i: number) => {
     setFocusKey(key);
     const at = machineSlot(i, n.card.machines === undefined ? 1 : machineSlots(n.card.machines));
@@ -919,6 +1057,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const findingsOf = (key: string) => findingsByCard.get(key) ?? 0;
   // Tab order follows the picture: left to right, then top to bottom.
   const tabOrder = useMemo(() => [...layout.nodes].sort((a, b) => a.x - b.x || a.y - b.y || a.key.localeCompare(b.key)), [layout]);
+  // Each blow-up frame's key to the card it stands for (ADR-0061 Decision 5): Escape on a part collapses it.
+  const blowUpOf = useMemo(() => new Map(layout.frames.flatMap((f): [string, string][] => (f.expands === undefined ? [] : [[f.key, f.expands]]))), [layout]);
   const stops = useMemo(() => (itemFocusOn ? bubbleStops(layout.edges, tabOrder.map((n) => n.key)) : []), [itemFocusOn, layout, tabOrder]);
   const stopNames = useMemo(() => {
     const names = new Map<string, string>();
@@ -985,6 +1125,17 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const shape = useMemo(() => `${scene.cards.map((c) => c.key).join("|")}#${scene.flows.length}`, [scene]);
 
   const canSwitchStorage = scene.hasStorage;
+  // Blow-up's toolbar control (ADR-0061 Decision 5): "Collapse all" while anything is blown up, else "Expand all", which
+  // blows up what fits under the cap (disabled when nothing does).
+  const anyBlownUp = scene.frames.some((f) => f.expands !== undefined);
+  const canBlowUp = blowUpTree !== undefined && (anyBlownUp || scene.cards.some((c) => c.blowUp !== undefined));
+  const anyFits = scene.cards.some((c) => c.blowUp?.fits === true);
+  const setAllBlownUp = () => {
+    if (blowUpTree === undefined || target.kind !== "overview") return;
+    blowGlide.current = { layout, key: "" };
+    if (anyBlownUp) closePanelLeaving(undefined);
+    setExpanded(anyBlownUp ? new Set() : expandAllKeys(graph, target.models, levelPath, blowUpTree, expanded));
+  };
   const canFold = scene.bubbleKeys.length > 0 || anyMachinesOpen;
   const factoryPicked = (card: Card) => card.kind === "factory" && factoryPicks !== undefined && factoryPicks.selected.has(card.key);
 
@@ -1020,8 +1171,17 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           />
           <ToolButton name="Fit to view" iconOnly onClick={() => setView(fit)} icon={<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z" />} />
         </div>
-        {(canFold || canSwitchStorage) && (
+        {(canFold || canSwitchStorage || canBlowUp) && (
           <div role="group" aria-label="Detail" className="flex gap-2">
+            {canBlowUp && (
+              <ToolButton
+                name={anyBlownUp ? "Collapse all" : "Expand all"}
+                onClick={setAllBlownUp}
+                disabled={!anyBlownUp && !anyFits}
+                description={!anyBlownUp && !anyFits ? NOTHING_FITS : undefined}
+                icon={anyBlownUp ? <path d="M8 4l4 4 4-4M8 20l4-4 4 4" /> : <path d="M8 8l4-4 4 4M8 16l4 4 4-4" />}
+              />
+            )}
             {canFold && (
               <ToolButton
                 name={everyBubbleOpen ? "Collapse all" : "Expand all"}
@@ -1159,7 +1319,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               {/* The lines and frames of the picture now (faded in during a glide), then the cards over them. */}
               <g ref={freshRef}>
                 {layout.frames.map((f) => (
-                  <Frame key={f.key} frame={f} onCollapse={() => collapseBubble(f.bubbleKey)} />
+                  <Frame key={f.key} frame={f} onCollapse={() => (f.expands === undefined ? collapseBubble(f.bubbleKey) : collapseBlowUp(f.expands))} />
                 ))}
                 {/* Every line first, then every label: a label is never under another edge's line (2026-10-27). */}
                 {[EdgeLine, EdgeLabel].map((Layer, layer) => (
@@ -1209,6 +1369,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   ringedMachine={focusKey ?? (openKey === n.key ? openMachine : null)}
                   onMachine={(m) => activateMachine(n.card, m)}
                   onToggleMachines={() => toggleMachines(n.card)}
+                  onBlowUp={() => expandBlowUp(n.card)}
                 />
               ))}
               {/* Over the cards: the focused item's detail card, and one that is closing (shrinking back to its bubble). */}
@@ -1245,7 +1406,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             />
           ))}
           {/* The keyboard's way into the cards: real buttons, visually hidden, ringing the focused card in the picture. */}
-          <ul aria-label={scene.level === "overview" ? "Factories in the graph" : scene.level === "site" ? "Groups in the graph" : "Cards in the graph"} className="m-0 list-none p-0">
+          <ul
+            aria-label={scene.level === "overview" && scene.noun !== "card" ? "Factories in the graph" : scene.level === "site" ? "Groups in the graph" : "Cards in the graph"}
+            className="m-0 list-none p-0"
+          >
             {tabOrder.map((n) => {
               const card = n.card;
               const count = findingsOf(n.key);
@@ -1266,6 +1430,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                     aria-pressed={picksFactory ? factoryPicked(card) : picks && selection !== undefined ? isPicked(card, selection.selected) : undefined}
                     aria-expanded={picks ? undefined : card.kind === "group" ? openKey === n.key : card.kind === "factory" ? undefined : false}
                     aria-controls={!picks && card.kind === "group" && openKey === n.key ? panelId : undefined}
+                    // A part of a blown-up card: Escape collapses that frame (ADR-0061 Decision 5).
+                    data-blown-from={card.frame === undefined ? undefined : blowUpOf.get(card.frame)}
                     onClick={(e) => {
                       dragged.current = false;
                       activate(card, e.shiftKey || e.ctrlKey || e.metaKey);
@@ -1304,15 +1470,49 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               );
             })}
           </ul>
-          {(layout.frames.length > 0 || tabOrder.some((n) => n.card.upstream !== undefined || n.card.machines !== undefined)) && (
+          {(layout.frames.length > 0 || tabOrder.some((n) => n.card.upstream !== undefined || n.card.machines !== undefined || n.card.blowUp !== undefined)) && (
             <ul aria-label="Open and close parts of the graph" className="m-0 list-none p-0">
               {layout.frames.map((f) => (
                 <li key={f.key}>
-                  <button type="button" onClick={() => setFlipped(toggled(flipped, f.bubbleKey))} className="sr-only">
-                    {`Collapse ${f.title}`}
-                  </button>
+                  {f.expands === undefined ? (
+                    <button type="button" onClick={() => setFlipped(toggled(flipped, f.bubbleKey))} className="sr-only">
+                      {`Collapse ${f.title}`}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-expanded={true}
+                      onClick={() => {
+                        dragged.current = false;
+                        collapseBlowUp(f.expands!, true);
+                      }}
+                      className="sr-only"
+                    >
+                      {`Collapse ${f.description ?? f.title}`}
+                    </button>
+                  )}
                 </li>
               ))}
+              {tabOrder.flatMap((n) =>
+                n.card.blowUp === undefined
+                  ? []
+                  : [
+                      <li key={`blow-up|${n.key}`}>
+                        <button
+                          type="button"
+                          // Past the cap it opens the factory, as its name says, so it neither expands nor is disabled.
+                          aria-expanded={n.card.blowUp.fits ? false : undefined}
+                          onClick={() => {
+                            dragged.current = false;
+                            expandBlowUp(n.card, true);
+                          }}
+                          className="sr-only"
+                        >
+                          {blowUpName(n.card)}
+                        </button>
+                      </li>,
+                    ],
+              )}
               {tabOrder.flatMap((n) =>
                 n.card.upstream === undefined
                   ? []
@@ -1777,9 +1977,10 @@ function Frame({ frame: f, onCollapse }: { frame: LaidFrame; onCollapse: () => v
   const title = f.title.length > room ? `${f.title.slice(0, room - 1)}…` : f.title;
   const tabY = -FRAME_HEADER_H / 2;
   return (
-    <g transform={`translate(${f.x} ${f.y})`} data-frame={f.bubbleKey}>
-      <rect width={f.width} height={f.height} rx={10} strokeWidth={1} strokeDasharray="6 4" className="fill-surface stroke-line" />
-      <title>{f.title}</title>
+    // A blow-up's frame (ADR-0061 Decision 5) is drawn the same, with the stronger edge of an opened group's frame.
+    <g transform={`translate(${f.x} ${f.y})`} data-frame={f.bubbleKey} data-blow-up-frame={f.expands === undefined ? undefined : ""}>
+      <rect width={f.width} height={f.height} rx={10} strokeWidth={1} strokeDasharray="6 4" className={cn("fill-surface", f.expands === undefined ? "stroke-line" : "stroke-muted")} />
+      <title>{f.description ?? f.title}</title>
       <rect x={NODE_PAD_X} y={tabY} width={title.length * CHAR_W_BODY + NODE_PAD_X} height={FRAME_HEADER_H} className="fill-surface" />
       <text x={NODE_PAD_X + NODE_PAD_X / 2} y={0} dominantBaseline="central" className="fill-fg text-sm">
         {title}
@@ -1830,6 +2031,7 @@ function CardView({
   ringedMachine,
   onMachine,
   onToggleMachines,
+  onBlowUp,
 }: {
   node: LaidNode;
   finding: number;
@@ -1848,6 +2050,8 @@ function CardView({
   ringedMachine: string | null;
   onMachine: (machine: MachineCardText) => void;
   onToggleMachines: () => void;
+  /** ADR-0061 Decision 5: blow the card up in place (its Expand pill; nothing when the card is past the cap). */
+  onBlowUp: () => void;
 }) {
   const card = n.card;
   if (card.machines?.open === true && machines !== undefined) {
@@ -1954,8 +2158,36 @@ function CardView({
           </text>
         </g>
       )}
+      {/* ADR-0061 Decision 5: a factory card blows up in place, by the same pill. Past the cap it is drawn disabled, its
+          tooltip says to open the factory instead, and a click does that (the hidden button says and does the same). */}
+      {card.blowUp !== undefined && (
+        <g
+          transform={`translate(${n.width - EXPAND_W - 8} ${n.height - PILL_H / 2})`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onBlowUp();
+          }}
+          data-blow-up={card.blowUp.fits ? "" : "disabled"}
+          className="cursor-pointer"
+        >
+          <title>{blowUpName(card)}</title>
+          <rect y={(PILL_H - PILL_HIT) / 2} width={EXPAND_W} height={PILL_HIT} className="fill-transparent" />
+          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} strokeDasharray={card.blowUp.fits ? undefined : "4 3"} className={card.blowUp.fits ? "fill-surface-2 stroke-muted" : "fill-surface stroke-line"} />
+          <text x={EXPAND_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className={cn("text-sm font-semibold", card.blowUp.fits ? "fill-fg" : "fill-muted")}>
+            Expand
+          </text>
+        </g>
+      )}
     </g>
   );
+}
+
+/** The words of a card's blow-up control (the drawn pill's tooltip and the hidden button), ADR-0061 Decision 5. */
+function blowUpName(card: Card): string {
+  const b = card.blowUp;
+  if (b === undefined) return "";
+  const parts = `${b.parts} ${b.parts === 1 ? (b.noun === "factories" ? "factory" : "group") : b.noun}`;
+  return b.fits ? `Expand ${card.label} in place into its ${parts}` : `Expand ${card.label} in place: ${TOO_LARGE_TO_EXPAND} (${parts})`;
 }
 
 /** Collapse upstream: a minus hides what only feeds this card, and leaves a "+N" that shows it again. The invisible rect

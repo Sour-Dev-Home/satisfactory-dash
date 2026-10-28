@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { clearFoldMemory, FOLDS_KEY, FOLDS_MAX, readFolds, writeFolds } from "./foldMemory";
+import { clearFoldMemory, FOLDS_KEY, FOLDS_MAX, overviewFoldsKey, readFolds, writeFolds } from "./foldMemory";
 
 const folds = (flipped: string[], unfolded: string[] = []) => ({ flipped: new Set(flipped), unfolded: new Set(unfolded) });
 
@@ -58,6 +58,25 @@ describe("fold memory", () => {
     expect(readFolds("old").machines?.size).toBe(0);
     expect([...readFolds("old").flipped]).toEqual(["b1"]);
     expect([...(readFolds("bad").machines ?? [])]).toEqual(["ok"]);
+  });
+
+  it("remembers an overview level's blow-ups per path (ADR-0061 Decision 5), apart from any factory", () => {
+    const top = overviewFoldsKey([]);
+    const inMain = overviewFoldsKey(["factory|main"]);
+    expect(new Set([top, inMain, "factory|main"]).size).toBe(3);
+    writeFolds(top, { ...folds([]), expanded: new Set(["factory|main"]) });
+    writeFolds(inMain, { ...folds([]), expanded: new Set(["factory|child"]) });
+    clearFoldMemory();
+    expect([...(readFolds(top).expanded ?? [])]).toEqual(["factory|main"]);
+    expect([...(readFolds(inMain).expanded ?? [])]).toEqual(["factory|child"]);
+    // An entry from before the field reads as none; a bad one keeps its strings.
+    window.sessionStorage.setItem(FOLDS_KEY, JSON.stringify([["old", { flipped: ["b1"], unfolded: [] }], ["bad", { flipped: [], unfolded: [], expanded: ["ok", 2] }]]));
+    clearFoldMemory();
+    expect(readFolds("old").expanded?.size).toBe(0);
+    expect([...(readFolds("bad").expanded ?? [])]).toEqual(["ok"]);
+    // Collapsing everything forgets the level.
+    writeFolds(top, { ...folds([]), expanded: new Set() });
+    expect(readFolds(top).expanded?.size).toBe(0);
   });
 
   it("holds the choices in memory when sessionStorage throws", () => {

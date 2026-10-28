@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ProductionGraphSchema, type PlannerFactory, type ProductionGraph } from "@satisfactory-dash/shared";
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
 import { AUTO_KEY, C1, C2, P, T, treeDesignation, treeEdge, treeFactory, treeId, treeNode, treeWorld as world } from "../test/plannerTree";
-import { buildFactoryTree, designatedKeyOf, levelOf, levelOwner, ownKeyOf, resolvePath } from "./factoryTree";
+import { buildFactoryTree, designatedKeyOf, levelOf, levelOwner, ownKeyOf, pathBelow, resolvePath } from "./factoryTree";
 import { overviewScene } from "./graph/canvasScene";
 import { factoryModels } from "./graph/hierarchy";
 
@@ -151,6 +151,24 @@ describe("paths", () => {
     expect(levelOf(tree, [top, p]).parent?.key).toBe(p);
     expect(levelOf(tree, [top, p]).entries).toHaveLength(3);
     expect(levelOf(tree, [AUTO_KEY]).parent).toBeUndefined();
+  });
+});
+
+describe("pathBelow (opening a card drawn inside a blow-up, ADR-0061 Decision 5)", () => {
+  const { graph, designations } = world();
+  const tree = buildFactoryTree(graph, designations);
+  const top = designatedKeyOf(T);
+  const mid = designatedKeyOf(P);
+  it("is the chain from the level down to the card, root first", () => {
+    expect(pathBelow(tree, null, top)).toEqual([top]);
+    expect(pathBelow(tree, null, mid)).toEqual([top, mid]);
+    expect(pathBelow(tree, null, designatedKeyOf(C1))).toEqual([top, mid, designatedKeyOf(C1)]);
+    expect(pathBelow(tree, top, designatedKeyOf(C2))).toEqual([mid, designatedKeyOf(C2)]);
+    expect(pathBelow(tree, mid, ownKeyOf(mid))).toEqual([ownKeyOf(mid)]);
+  });
+  it("gives a key the level does not hold back alone, for the path's validation to trim", () => {
+    expect(pathBelow(tree, null, "nothing")).toEqual(["nothing"]);
+    expect(pathBelow(tree, mid, AUTO_KEY)).toEqual([AUTO_KEY]);
   });
 });
 

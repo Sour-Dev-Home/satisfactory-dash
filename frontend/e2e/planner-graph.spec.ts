@@ -226,6 +226,28 @@ test.describe("the factory canvas", () => {
     await expect(svg.locator("[style]")).toHaveCount(0);
     await expectNoAxeViolations(page, testInfo);
   });
+
+  // ADR-0061 build PR 4: a factory card blows up in place into its groups, by keyboard alone, behind `planner.nesting`.
+  test("with the nesting flag on, the keyboard blows a factory up in place and Escape collapses it", async ({ page, mockApi }, testInfo) => {
+    await page.addInitScript(() => window.localStorage.setItem("planner.nesting", "on"));
+    await mockApi("planner-factories");
+    await page.goto("/app/planner");
+    await page.getByRole("button", { name: "Graph" }).click();
+    // Named loosely: blowing up changes the counts in the name.
+    const overview = page.getByRole("img", { name: /^Graph of Factories/ });
+    await expect(overview).toHaveAccessibleName(/^Graph of Factories: 2 factories/);
+    await page.getByRole("button", { name: "Expand Iron Rod factory in place into its 2 groups" }).focus();
+    await page.keyboard.press("Enter");
+    // The frame replaces the card, the keyboard is on its first group, and the canvas's name says what is blown up.
+    await expect(overview.locator("[data-blow-up-frame]")).toHaveCount(1);
+    await expect(overview).toHaveAccessibleName(/Blown up in place: Iron Rod factory\./);
+    await expect(page.getByRole("list", { name: "Cards in the graph" }).getByRole("button", { name: /In Iron Rod factory/ }).first()).toBeFocused();
+    await expect(overview.locator("[style]")).toHaveCount(0);
+    await expectNoAxeViolations(page, testInfo);
+    await page.keyboard.press("Escape");
+    await expect(overview.locator("[data-blow-up-frame]")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Open factory: Iron Rod factory/ })).toBeFocused();
+  });
 });
 
 // ADR-0055 PR 10a: the text form of the lasso, by keyboard alone: tick a group, "Designate selected", name it, Enter.

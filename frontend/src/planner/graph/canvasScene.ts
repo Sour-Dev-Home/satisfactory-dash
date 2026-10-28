@@ -1,4 +1,4 @@
-import type { PlannerEdge, PlannerNode, PlannerRate, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
+import { PLANNER_DESIGNATION_MAX_DEPTH, type PlannerEdge, type PlannerNode, type PlannerRate, type PlannerSite, type ProductionGraph } from "@satisfactory-dash/shared";
 import {
   aggregateRateText,
   bubbleTitle,
@@ -19,7 +19,7 @@ import {
   UNKNOWN_FLOW_NOTE,
   type StalledKind,
 } from "../plannerText";
-import { levelOf, levelOwner, type FactoryTree } from "../factoryTree";
+import { levelOf, levelOwner, type FactoryTree, type TreeNode } from "../factoryTree";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
 import {
   INFERRED_FROM_NODE,
@@ -115,7 +115,30 @@ export interface Card {
   bubbleKey: string | undefined;
   /** A group of several machines whose ids the graph lists: it can open into a frame of one small card per machine. */
   machines?: CardMachines | undefined;
+  /** ADR-0061 Decision 5, the overview with the `planner.nesting` flag: the card can blow up in place into its parts. */
+  blowUp?: CardBlowUp | undefined;
 }
+
+/** What a closed card would show blown up (`overviewScene` with `expanded`). */
+export interface CardBlowUp {
+  /** How many cards its frame would hold: a parent's parts, or a factory's groups. */
+  parts: number;
+  noun: "factories" | "groups";
+  /** Whether that stays within `EXPAND_MAX_CARDS` visible cards; past it the control says to open the factory instead. */
+  fits: boolean;
+}
+
+/**
+ * ADR-0061 Decision 5's budget: at most this many cards are drawn after blowing up. A blow-up that would pass it is not
+ * offered ("Too large to expand here; open it"), so the layout stays within ADR-0050 Decision 3's 100 ms. The ADR said
+ * 120; build PR 4 measured frames as dagre's cost (115 cards two frames deep took about 180 ms, 61 about 95 ms), so by the
+ * ADR's rule the cap came down to 60 (see the ADR's note and `layoutScene.blowUp.test.ts`).
+ */
+export const EXPAND_MAX_CARDS = 60;
+/** Blow-up frames nest at most this deep in one scene; a card inside the second opens by navigating. */
+export const EXPAND_MAX_DEPTH = 2;
+/** The words of a blow-up that would pass `EXPAND_MAX_CARDS` (the drawn pill's tooltip and the hidden button). */
+export const TOO_LARGE_TO_EXPAND = "Too large to expand here; open it";
 
 /** An expandable group's machines (`groupMachines`). */
 export interface CardMachines {
@@ -146,11 +169,19 @@ export function groupMachines(node: Pick<PlannerNode, "count" | "machineIds">, o
 }
 
 export interface Frame {
-  /** `frame|<bubble key>`: distinct from every card key. */
+  /** `frame|<bubble key>` (or `frame|<card key>` for a blow-up): distinct from every card key. */
   key: string;
+  /** The bubble it opens (a blow-up's: the card key it stands for, so `data-frame` names it either way). */
   bubbleKey: string;
   title: string;
+  /** The cards directly inside it (a nested frame's are its own). */
   cardKeys: string[];
+  /** A blow-up (ADR-0061 Decision 5): the key of the card it replaced, which Collapse brings back. Absent = a bubble's. */
+  expands?: string | undefined;
+  /** The frame this one sits in (blow-ups nest up to `EXPAND_MAX_DEPTH`). Absent = the top level. */
+  parent?: string | undefined;
+  /** The frame's tooltip and accessible words ("Main base, blown up into 3 factories"); absent = the title. */
+  description?: string | undefined;
 }
 
 export interface CanvasFlow {
@@ -578,24 +609,140 @@ function factoryCard(model: FactoryModel): Card {
  * Decision 3) it shows the parts of the path's last element, or the top level for an empty path: each group belongs to
  * its shown ancestor, so flows inside one card vanish and flows between cards are summed. Without a tree, every factory.
  */
-export function overviewScene(graph: ProductionGraph, models: readonly FactoryModel[], path: readonly string[] = [], tree?: FactoryTree): Scene {
+export function overviewScene(
+  graph: ProductionGraph,
+  models: readonly FactoryModel[],
+  path: readonly string[] = [],
+  tree?: FactoryTree,
+  /** ADR-0061 Decision 5 (the `planner.nesting` flag): the cards blown up in place. Absent = no card can blow up. */
+  expanded?: ReadonlySet<string>,
+): Scene {
   const level = tree === undefined ? undefined : levelOf(tree, path);
   const shown = level === undefined ? models : level.entries.map((n) => n.card);
-  const owner = tree === undefined ? factoryOfNode(graph) : levelOwner(graph, tree, level?.parent?.key ?? null);
-  const cards = shown.map(factoryCard);
+  const blown = tree === undefined || level === undefined || expanded === undefined ? undefined : blowUp(graph, tree, level.entries, expanded);
+  const owner = blown?.owner ?? (tree === undefined ? factoryOfNode(graph) : levelOwner(graph, tree, level?.parent?.key ?? null));
+  const cards = blown?.cards ?? shown.map(factoryCard);
+  const factoriesOnly = cards.every((c) => c.kind === "factory");
   return {
     level: "overview",
     name: level?.parent === undefined ? "Factories" : `Factories in ${nameOr(level.parent.name, UNNAMED_FACTORY)}`,
     path: level?.parent === undefined ? [] : [...path],
     cards,
-    frames: [],
+    frames: blown?.frames ?? [],
     flows: withStalledFlows(cards, aggregateFlows(flowParts(graph), (key) => owner.get(key)).map(canvasFlow)),
     bubbleKeys: [],
     foldKeys: [],
     hasStorage: false,
     openByDefault: true,
-    noun: shown.length === 1 ? "factory" : "factories",
+    noun: !factoriesOnly ? "card" : cards.length === 1 ? "factory" : "factories",
   };
+}
+
+/**
+ * ADR-0061 Decision 5, blow up: each card of the level whose key is in `expanded` is replaced by a frame holding its parts,
+ * in scene order, depth first: a parent's child factories (its own machines among them), or a factory's groups (each a
+ * group card). A part can blow up again inside it, `EXPAND_MAX_DEPTH` frames deep at most. A blow-up that would take the
+ * scene past `EXPAND_MAX_CARDS` cards stays closed, whatever `expanded` says (a stale session entry, a poll that grew a
+ * factory), so the cap holds for any input. Every group belongs to the finest card drawn for it, so flows re-aggregate
+ * at that card: into a blown-up factory's groups, between a blown-up parent's children. Pure; never throws.
+ */
+function blowUp(graph: ProductionGraph, tree: FactoryTree, entries: readonly TreeNode[], expanded: ReadonlySet<string>) {
+  const factoryOf = factoryOfNode(graph);
+  // Each tree node's own groups (a leaf's, or a parent's own machines), in the graph's order: a group is drawn once.
+  const groupsOf = new Map<string, PlannerNode[]>();
+  const treeKeyOf = new Map<string, string>();
+  for (const n of graph.nodes) {
+    const f = factoryOf.get(n.key);
+    const t = f === undefined ? undefined : tree.ofFactory.get(f);
+    if (t === undefined) continue;
+    treeKeyOf.set(n.key, t);
+    const list = groupsOf.get(t);
+    if (list === undefined) groupsOf.set(t, [n]);
+    else list.push(n);
+  }
+  const childrenOf = (t: TreeNode): TreeNode[] => t.childKeys.flatMap((k) => tree.nodes.get(k) ?? []);
+  const partsOf = (t: TreeNode): number => (t.kind === "parent" ? childrenOf(t).length : (groupsOf.get(t.key)?.length ?? 0));
+  const rates = minedRates(graph.edges);
+  const cards: Card[] = [];
+  const frames: Frame[] = [];
+  const closed = new Set<string>();
+  const openedLeaves = new Set<string>();
+  const offered: { at: number; parts: number; noun: CardBlowUp["noun"] }[] = [];
+  let count = entries.length;
+  const inFrame = (card: Card, frame: Frame | undefined): Card => {
+    if (frame === undefined) return card;
+    frame.cardKeys.push(card.key);
+    return { ...card, frame: frame.key, description: sentences([card.description, `In ${frame.title}`]) };
+  };
+  const visit = (t: TreeNode, frame: Frame | undefined, depth: number) => {
+    const parts = partsOf(t);
+    const noun = t.kind === "parent" ? "factories" : "groups";
+    const blowable = depth < EXPAND_MAX_DEPTH && parts > 0;
+    if (blowable && expanded.has(t.key) && count - 1 + parts <= EXPAND_MAX_CARDS) {
+      count += parts - 1;
+      const title = nameOr(t.name, UNNAMED_FACTORY);
+      const f: Frame = {
+        key: `frame|${t.key}`,
+        bubbleKey: t.key,
+        expands: t.key,
+        title,
+        cardKeys: [],
+        description: `${title}, blown up into ${plural(parts, noun === "factories" ? "factory" : "group", noun)}${frame === undefined ? "" : `. In ${frame.title}`}`,
+        ...(frame === undefined ? {} : { parent: frame.key }),
+      };
+      frames.push(f);
+      if (t.kind === "parent") for (const c of childrenOf(t)) visit(c, f, depth + 1);
+      else {
+        openedLeaves.add(t.key);
+        for (const n of groupsOf.get(t.key) ?? []) cards.push(inFrame(groupCard(n, [], rates), f));
+      }
+      return;
+    }
+    closed.add(t.key);
+    if (blowable) offered.push({ at: cards.length, parts, noun });
+    cards.push(inFrame(factoryCard(t.card), frame));
+  };
+  for (const t of entries) visit(t, undefined, 0);
+  // Whether each closed card would fit is known once every blow-up is placed: the count only grows.
+  for (const o of offered) cards[o.at] = { ...cards[o.at], blowUp: { parts: o.parts, noun: o.noun, fits: count - 1 + o.parts <= EXPAND_MAX_CARDS } };
+  // Each group's card: its own when its factory is blown up, else the closed card above it (none outside the level).
+  const owner = new Map<string, string>();
+  for (const [nodeKey, start] of treeKeyOf) {
+    let at: string | null = start;
+    for (let guard = 0; at !== null && guard <= PLANNER_DESIGNATION_MAX_DEPTH + 1; guard++) {
+      if (openedLeaves.has(at)) {
+        owner.set(nodeKey, nodeKey);
+        break;
+      }
+      if (closed.has(at)) {
+        owner.set(nodeKey, at);
+        break;
+      }
+      at = tree.nodes.get(at)?.parentKey ?? null;
+    }
+  }
+  return { cards, frames, owner };
+}
+
+/**
+ * "Expand all" on the overview: blows up every card that fits, the level's cards first and then their parts, a round per
+ * frame depth, each kept only while the scene stays within `EXPAND_MAX_CARDS`. Returns `expanded` with those keys added.
+ */
+export function expandAllKeys(graph: ProductionGraph, models: readonly FactoryModel[], path: readonly string[], tree: FactoryTree, expanded: ReadonlySet<string>): Set<string> {
+  const next = new Set(expanded);
+  for (let round = 0; round < EXPAND_MAX_DEPTH; round++) {
+    const scene = overviewScene(graph, models, path, tree, next);
+    let count = scene.cards.length;
+    let added = false;
+    for (const c of scene.cards) {
+      if (c.blowUp === undefined || count - 1 + c.blowUp.parts > EXPAND_MAX_CARDS) continue;
+      next.add(c.key);
+      count += c.blowUp.parts - 1;
+      added = true;
+    }
+    if (!added) break;
+  }
+  return next;
 }
 
 // ---- storage -------------------------------------------------------------------------------------------------------
@@ -821,7 +968,10 @@ export function sceneSummary(scene: Scene, loops: number): string {
   const n = scene.cards.length;
   const noun = scene.noun === "factories" || scene.noun === "factory" ? (n === 1 ? "factory" : "factories") : n === 1 ? scene.noun : `${scene.noun}s`;
   const c = `${scene.flows.length} ${scene.flows.length === 1 ? "connection" : "connections"}`;
-  return `Graph of ${scene.name}: ${n} ${noun}, ${c}${loops > 0 ? `, ${loops} in a loop` : ""}. The Tables view lists the same.`;
+  // Blow-ups (ADR-0061 Decision 5) are named, so the label says the picture is not the level's cards alone.
+  const blown = scene.frames.filter((f) => f.expands !== undefined).map((f) => f.title);
+  const where = blown.length === 0 ? " The Tables view lists the same." : ` Blown up in place: ${blown.join(", ")}. The Tables view lists this level's factories.`;
+  return `Graph of ${scene.name}: ${n} ${noun}, ${c}${loops > 0 ? `, ${loops} in a loop` : ""}.${where}`;
 }
 
 /** The scene the canvas shows for a view of the graph: one factory, the factory overview, or (an older backend) one site. */

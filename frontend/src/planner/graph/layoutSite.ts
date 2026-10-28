@@ -72,6 +72,10 @@ export interface LaidFrame {
   key: string;
   bubbleKey: string;
   title: string;
+  /** A blow-up's (ADR-0061 Decision 5): the card it replaced, its parent frame and its words (see `Frame`). */
+  expands?: string | undefined;
+  parent?: string | undefined;
+  description?: string | undefined;
   x: number;
   y: number;
   width: number;
@@ -149,8 +153,9 @@ export function cardSize(card: Card): CardSize {
   }
   const row = BUILDING_ICON_SIZE + (card.count === undefined ? 0 : BUILDING_ICON_GAP + countBadgeWidth(card.count));
   const text = Math.max(row, ...card.lines.map((l, i) => l.length * (isHeadingLine(card, i) ? CHAR_W_TITLE : CHAR_W_BODY)));
-  // A card that can open into its machines keeps room for its Expand pill (at the bottom right) beside the upstream one.
-  const expandable = card.machines !== undefined;
+  // A card that can open into its machines (or blow up, ADR-0061 Decision 5) keeps room for its Expand pill (at the bottom
+  // right) beside the upstream one.
+  const expandable = card.machines !== undefined || card.blowUp !== undefined;
   return {
     title: card.title,
     lines: card.lines,
@@ -166,6 +171,14 @@ export function cardSize(card: Card): CardSize {
 /** The Collapse pill in a frame's header (an opened bubble's, an opened group's), and the Expand pill on a group card. */
 export const COLLAPSE_W = 76;
 export const EXPAND_W = 68;
+/** The invisible target round a pill: its height grown to the touch size (`--spacing-touch`), centred on the pill. */
+export const PILL_HIT = 44;
+/**
+ * How far a nested frame's top edge stands below its parent's (ADR-0061 Decision 5). Both Collapse pills sit at their own
+ * frame's right edge, and the parent's inset is only dagre's padding, so they line up: a full touch target apart, their
+ * hit rects only meet, and the title tabs keep `PILL_HIT - FRAME_HEADER_H` between them.
+ */
+export const NESTED_FRAME_RISE = PILL_HIT;
 /** A group card that can open is at least this wide: its upstream pill, the Expand pill and the gaps round them. */
 export const EXPANDABLE_MIN_W = 8 + 48 + 8 + EXPAND_W + 8;
 /** One machine's card in an opened group: three `text-sm` lines (its name, its state, its output or fuel). */
@@ -353,7 +366,8 @@ function hashOf(text: string): string {
  */
 function signature(scene: Scene, sizes: readonly CardSize[], labels: readonly { width: number; height: number }[], drawn: readonly CanvasFlow[]): string {
   const cards = scene.cards.map((c, i) => `${c.key}\u0001${sizes[i].width}\u0001${sizes[i].height}`).join("\u0002");
-  const frames = scene.frames.map((f) => `${f.key}\u0001${f.cardKeys.join("\u0003")}`).join("\u0002");
+  // A blow-up's frame names its parent frame: the same cards nested otherwise are another placement.
+  const frames = scene.frames.map((f) => `${f.key}\u0001${f.parent ?? ""}\u0001${f.cardKeys.join("\u0003")}`).join("\u0002");
   const flows = drawn.map((f, i) => `${f.from}\u0001${f.to}\u0001${labels[i].width}\u0001${labels[i].height}\u0001${isTransport(f) ? "t" : "b"}`).join("\u0002");
   return hashOf(`${cards}\u0004${frames}\u0004${flows}`);
 }
@@ -416,13 +430,18 @@ function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
   const nodesep = scene.frames.length > 0 ? NODE_SEP + FRAME_HEADER_H / 2 : NODE_SEP;
   // Loops are broken here (`returnFlows`), so dagre gets a graph without cycles. `tight-tree` gave the fewest crossings
   // under the orthogonal router (ADR-0059).
-  g.setGraph({ rankdir: "LR", ranker: "tight-tree", nodesep, ranksep: RANK_SEP, edgesep: 10, marginx: MARGIN, marginy: MARGIN });
+  // A frame inside a frame grows its parent upward to clear its tab and pill (`roomForNestedTabs`): the margin keeps that inside.
+  const nested = scene.frames.some((f) => f.parent !== undefined);
+  g.setGraph({ rankdir: "LR", ranker: "tight-tree", nodesep, ranksep: RANK_SEP, edgesep: 10, marginx: MARGIN, marginy: nested ? MARGIN + NESTED_FRAME_RISE : MARGIN });
   g.setDefaultEdgeLabel(() => ({}));
   scene.cards.forEach((c, i) => g.setNode(c.key, { width: sizes[i].width, height: sizes[i].height }));
   for (const f of scene.frames) {
     g.setNode(f.key, {});
     for (const k of f.cardKeys) g.setParent(k, f.key);
   }
+  // A blow-up inside a blow-up (ADR-0061 Decision 5) is a compound node inside a compound node.
+  const frameKeys = new Set(scene.frames.map((f) => f.key));
+  for (const f of scene.frames) if (f.parent !== undefined && frameKeys.has(f.parent)) g.setParent(f.key, f.parent);
   // Each flow as dagre sees it: a return flow reversed, so its route comes back target to source and is flipped below.
   const returns = returnFlows(
     scene.cards.map((c) => c.key),
@@ -476,6 +495,7 @@ function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
     const box = { x: p.x - p.width / 2, y: p.y - p.height / 2, width: p.width, height: p.height };
     frames.set(f.key, box);
   }
+  roomForNestedTabs(scene.frames, frames);
   // Every route source to target, a return flow's turned back round.
   const paths = drawn.map((_, i) => {
     const route = (edgeAt(i).points ?? []).map((p: Point) => ({ x: p.x, y: p.y }));
@@ -502,6 +522,24 @@ function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
     // Our router failing on a shape: dagre's own routes still draw every flow (corners left sharp).
     stats.routerFailures++;
     return placed;
+  }
+}
+
+/**
+ * A blow-up inside a blow-up (ADR-0061 Decision 5): dagre leaves less room between a compound node's border and a nested
+ * one's than the nested frame's tab needs (half of it stands above its top edge), so the tabs would overlap, and the two
+ * Collapse pills, one above the other at the right edge, would share their touch targets. Each frame that holds another
+ * grows upward until its top is `NESTED_FRAME_RISE` above the inner one's, innermost first so the growth reaches the top.
+ * Frames are listed before the blow-ups inside them.
+ */
+export function roomForNestedTabs(list: readonly Pick<Frame, "key" | "parent">[], boxes: Map<string, Box>): void {
+  for (const f of [...list].reverse()) {
+    const parent = f.parent === undefined ? undefined : boxes.get(f.parent);
+    const inner = boxes.get(f.key);
+    if (parent === undefined || inner === undefined) continue;
+    const top = inner.y - NESTED_FRAME_RISE;
+    if (parent.y <= top) continue;
+    boxes.set(f.parent!, { ...parent, y: top, height: parent.height + (parent.y - top) });
   }
 }
 
@@ -566,18 +604,26 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
   const cols = Math.max(1, Math.ceil(Math.sqrt(scene.cards.length)));
   const cellW = Math.max(NODE_MIN_W, ...sizes.map((s) => s.width)) + RANK_SEP;
   const cellH = Math.max(0, ...sizes.map((s) => s.height)) + NODE_SEP + FRAME_HEADER_H;
+  // Room above the first row for a frame's tab, or for a parent frame grown above a nested one (`roomForNestedTabs`).
+  const head = scene.frames.some((f) => f.parent !== undefined) ? NESTED_FRAME_RISE : FRAME_HEADER_H;
   const centres = new Map<string, Point>();
-  scene.cards.forEach((c, i) => centres.set(c.key, { x: MARGIN + (i % cols) * cellW + cellW / 2, y: MARGIN + FRAME_HEADER_H + Math.floor(i / cols) * cellH + cellH / 2 }));
+  scene.cards.forEach((c, i) => centres.set(c.key, { x: MARGIN + (i % cols) * cellW + cellW / 2, y: MARGIN + head + Math.floor(i / cols) * cellH + cellH / 2 }));
   const sizeOf = new Map(scene.cards.map((c, i) => [c.key, sizes[i]]));
   const frames = new Map<string, Box>();
-  for (const f of scene.frames) {
-    const boxes = f.cardKeys.flatMap((k) => (centres.has(k) ? [{ c: centres.get(k)!, s: sizeOf.get(k)! }] : []));
+  // Innermost first (a frame is listed before the blow-ups inside it), so a frame's box holds its nested frames' boxes.
+  for (const f of [...scene.frames].reverse()) {
+    const boxes = [
+      ...f.cardKeys.flatMap((k) => (centres.has(k) ? [{ x: centres.get(k)!.x - sizeOf.get(k)!.width / 2, y: centres.get(k)!.y - sizeOf.get(k)!.height / 2, ...sizeOf.get(k)! }] : [])),
+      ...scene.frames.flatMap((inner) => (inner.parent === f.key && frames.has(inner.key) ? [frames.get(inner.key)!] : [])),
+    ];
     if (boxes.length === 0) continue;
-    const left = Math.min(...boxes.map((b) => b.c.x - b.s.width / 2)) - NODE_SEP / 2;
-    const right = Math.max(...boxes.map((b) => b.c.x + b.s.width / 2)) + NODE_SEP / 2;
-    const topEdge = Math.min(...boxes.map((b) => b.c.y - b.s.height / 2)) - NODE_SEP / 2;
-    const bottom = Math.max(...boxes.map((b) => b.c.y + b.s.height / 2)) + NODE_SEP / 2;
+    const left = Math.min(...boxes.map((b) => b.x)) - NODE_SEP / 2;
+    const right = Math.max(...boxes.map((b) => b.x + b.width)) + NODE_SEP / 2;
+    const topEdge = Math.min(...boxes.map((b) => b.y)) - NODE_SEP / 2;
+    const bottom = Math.max(...boxes.map((b) => b.y + b.height)) + NODE_SEP / 2;
     frames.set(f.key, { x: left, y: topEdge, width: right - left, height: bottom - topEdge });
+    // Grown now, before its parent is boxed round it.
+    roomForNestedTabs(scene.frames.filter((inner) => inner.parent === f.key), frames);
   }
   const paths = drawn.map((f) => {
     const a = centres.get(f.from)!;
@@ -585,7 +631,7 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
     return [leaves(a, sizeOf.get(f.from)!, b), leaves(b, sizeOf.get(f.to)!, a)];
   });
   const rows = Math.ceil(scene.cards.length / cols);
-  return { centres, frames, paths, stack: drawn.map(() => 0), labelAt: drawn.map(() => null), width: MARGIN * 2 + cols * cellW, height: MARGIN * 2 + FRAME_HEADER_H + rows * cellH };
+  return { centres, frames, paths, stack: drawn.map(() => 0), labelAt: drawn.map(() => null), width: MARGIN * 2 + cols * cellW, height: MARGIN * 2 + head + rows * cellH };
 }
 
 function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[]): Placed {
@@ -616,9 +662,10 @@ function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasF
  */
 export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutFocus): SiteLayout {
   const own = scene.cards.map(cardSize);
-  // The overview's factory cards are peers: one height, so the row reads evenly.
-  const tallest = scene.level === "overview" ? Math.max(0, ...own.map((s) => s.height)) : 0;
-  const sizes = tallest === 0 ? own : own.map((s) => ({ ...s, height: tallest }));
+  // The overview's factory cards are peers: one height, so the row reads evenly (a blown-up factory's groups keep theirs).
+  const peer = (i: number) => scene.cards[i].kind === "factory";
+  const tallest = scene.level === "overview" ? Math.max(0, ...own.filter((_, i) => peer(i)).map((s) => s.height)) : 0;
+  const sizes = tallest === 0 ? own : own.map((s, i) => (peer(i) ? { ...s, height: tallest } : s));
   const known = new Set(scene.cards.map((c) => c.key));
   const flows = scene.flows.filter((f) => known.has(f.from) && known.has(f.to));
   // Links between the same two cards on the same carrier are one line with one label (2026-10-27); `parts` keeps each.
@@ -657,7 +704,9 @@ export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutF
   });
   const frames: LaidFrame[] = scene.frames.flatMap((f: Frame) => {
     const b = p.frames.get(f.key);
-    return b === undefined ? [] : [{ key: f.key, bubbleKey: f.bubbleKey, title: f.title, ...b }];
+    if (b === undefined) return [];
+    const blown = f.expands === undefined ? {} : { expands: f.expands, parent: f.parent, description: f.description };
+    return [{ key: f.key, bubbleKey: f.bubbleKey, title: f.title, ...blown, ...b }];
   });
   // A transport's glyph stands in its own label pill, at the left, so no label can cover it and parallel transports (one
   // path, stacked labels) each keep theirs; a moving glyph travels the path instead (SiteGraph's Edge).

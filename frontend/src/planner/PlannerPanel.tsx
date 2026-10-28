@@ -10,7 +10,7 @@ import { useDesignationChanges } from "./designationChanges";
 import { DesignateBar, DesignatedControls, DesignatedMarker, ErrorLine } from "./DesignationParts";
 import { useDesignations } from "./DesignationContext";
 import { STALE_TEXT } from "./designationText";
-import { buildFactoryTree, levelOf, levelOwner, resolvePath, type FactoryTree, type TreeNodeKind } from "./factoryTree";
+import { buildFactoryTree, levelOf, levelOwner, pathBelow, resolvePath, type FactoryTree, type TreeNodeKind } from "./factoryTree";
 import type { PathChange } from "./PlannerView";
 import { readNesting } from "./graph/plannerPrefs";
 import { MergeBar, SplitBar } from "./MergeSplitParts";
@@ -141,6 +141,7 @@ function FactoryOverview({
   path,
   findings,
   onOpen,
+  blowUp = false,
   viewMode: [view, setMode],
 }: {
   graph: Graph;
@@ -148,7 +149,10 @@ function FactoryOverview({
   /** ADR-0061 Decision 3: the path to the parent whose parts this shows; empty at the top level. */
   path: readonly string[];
   findings: readonly Bottleneck[] | undefined;
-  onOpen: (key: string) => void;
+  /** A factory chosen: the path elements from this level down to it (one, unless it was drawn inside a blow-up). */
+  onOpen: (keys: readonly string[]) => void;
+  /** ADR-0061 Decision 5 (the `planner.nesting` flag): the canvas's cards can blow up in place. */
+  blowUp?: boolean;
   /** Held by the page, so coming back from a factory shows the same view. */
   viewMode: [ViewMode, (mode: ViewMode) => void];
 }) {
@@ -201,9 +205,9 @@ function FactoryOverview({
       {view === "graph" ? (
         <LazySiteGraph
           graph={graph}
-          target={{ kind: "overview", models, tree, path: parent === undefined ? [] : path }}
+          target={{ kind: "overview", models, tree, path: parent === undefined ? [] : path, blowUp }}
           findings={findings}
-          onOpenFactory={onOpen}
+          onOpenFactory={(key) => onOpen(pathBelow(tree, parent?.key ?? null, key))}
           factoryPicks={factoryPicks}
         />
       ) : (
@@ -218,7 +222,7 @@ function FactoryOverview({
                 model={m}
                 kind={kind}
                 findings={findings}
-                onOpen={() => onOpen(m.factory.key)}
+                onOpen={() => onOpen([m.factory.key])}
                 pick={
                   factoryPicks === undefined || !mergeable.has(m.factory.key)
                     ? undefined
@@ -618,7 +622,8 @@ export function PlannerPanel({
             path={valid}
             findings={findings}
             viewMode={overviewMode}
-            onOpen={(key) => go([...valid, key])}
+            blowUp={nesting}
+            onOpen={(keys) => go([...valid, ...keys])}
           />
         </>
       ) : (

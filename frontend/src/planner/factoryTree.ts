@@ -279,6 +279,23 @@ export function levelOf(tree: FactoryTree, path: readonly string[]): { parent: T
 }
 
 /**
+ * The path elements from the level under `parentKey` (null = the top level) down to `key`, root first: what opening a card
+ * drawn inside a blow-up (ADR-0061 Decision 5) appends to the path, so the address stays a chain of parts. A key the level
+ * does not hold comes back alone (the path's validation then trims it, with its note).
+ */
+export function pathBelow(tree: FactoryTree, parentKey: string | null, key: string): string[] {
+  const chain: string[] = [];
+  for (let at: string | null = key, guard = 0; at !== null && guard <= PLANNER_DESIGNATION_MAX_DEPTH + 1; guard++) {
+    const node = tree.nodes.get(at);
+    if (node === undefined) break;
+    chain.unshift(at);
+    if (node.parentKey === parentKey) return chain;
+    at = node.parentKey;
+  }
+  return [key];
+}
+
+/**
  * ADR-0061 Decision 4, validation: the longest prefix of `path` in which the first element is top level and each other is
  * a part of the one before. Never throws; a shorter result means the tail named a factory that is no longer there.
  */
