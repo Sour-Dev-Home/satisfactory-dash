@@ -474,3 +474,68 @@ describe("mapLive (ADR-0038 M3, #353): forwarded to the injected sink, never sto
     expect(() => ingest.ingest(agentSnapshotRequestWithMapLive, T0)).not.toThrow();
   });
 });
+
+describe("generators once per read (ADR-0058 S4-B)", () => {
+  const coal = { className: "Desc_Coal_C", name: "Coal", amount: 40 };
+  const generator = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    name: "Coal-Powered Generator",
+    className: "Build_GeneratorCoal_C",
+    circuitGroupId: 0,
+    currentMW: 75,
+    capacityMW: 75,
+    isProducing: true,
+    fuel: coal,
+    supplement: null,
+    ...extra,
+  });
+  const withGenerators = (t: ReturnType<typeof setup>, generators: object[] | undefined, extra: Partial<SnapshotRequest> = {}) =>
+    t.running({ power: { ...agentSnapshotRequestFull.power!, ...(generators !== undefined ? { generators } : {}) } as never, ...extra });
+
+  it("derives the list (the backend's units, explicit fields) and serves it with the power part's later readings", () => {
+    const t = setup();
+    t.ingest.ingest(withGenerators(t, [generator("g1", { unit: "m3", sneaky: true, fuel: { ...coal, unit: "m3" } })]), T0);
+    t.advance(5000);
+    t.ingest.ingest(t.running(), T0 + 5000); // a power part without generators keeps the list
+    const power = t.store.read("power");
+    expect(power.generatorsReadAt).toBe(new Date(T0).toISOString());
+    expect(power.generators).toEqual([
+      { id: "g1", name: "Coal-Powered Generator", className: "Build_GeneratorCoal_C", circuitGroupId: 0, currentMW: 75, capacityMW: 75, isProducing: true, fuel: { ...coal, unit: "items" }, supplement: null },
+    ]);
+  });
+
+  it("a sender that never sends generators (the FRM agent) leaves both fields out", () => {
+    const t = setup();
+    t.ingest.ingest(t.running(), T0);
+    const power = t.store.read("power");
+    expect(power).not.toHaveProperty("generators");
+    expect(power).not.toHaveProperty("generatorsReadAt");
+  });
+
+  it("a new session drops the old list; a read in the session-change snapshot itself is kept", () => {
+    const t = setup();
+    t.ingest.ingest(withGenerators(t, [generator("old")]), T0);
+    t.advance(5000);
+    t.ingest.ingest(t.running({ status: { ...statusRunning.data, gamePaused: false, sessionName: "Another save" } }), T0 + 5000);
+    expect(t.store.read("power")).not.toHaveProperty("generators");
+    t.advance(5000);
+    t.ingest.ingest(withGenerators(t, [generator("new")], { status: { ...statusRunning.data, gamePaused: false, sessionName: "Third save" } }), T0 + 10_000);
+    expect(t.store.read("power").generators?.map((g) => g.id)).toEqual(["new"]);
+  });
+
+  it("the game clock going backwards (the power reset) drops the list too", () => {
+    const t = setup();
+    t.ingest.ingest(withGenerators(t, [generator("old")], { status: { ...statusRunning.data, gamePaused: false, totalGameDurationSeconds: 1000 } }), T0);
+    t.advance(5000);
+    t.ingest.ingest(t.running({ status: { ...statusRunning.data, gamePaused: false, totalGameDurationSeconds: 10 } }), T0 + 5000);
+    expect(t.store.read("power")).not.toHaveProperty("generators");
+  });
+
+  it("an unreachable snapshot keeps the list", () => {
+    const t = setup();
+    t.ingest.ingest(withGenerators(t, []), T0);
+    t.advance(5000);
+    t.ingest.ingest({ ...agentSnapshotRequestUnreachable, observedAt: new Date(T0 + 5000).toISOString() }, T0 + 5000);
+    expect(t.store.read("power")).toMatchObject({ generators: [], generatorsReadAt: new Date(T0).toISOString() });
+  });
+});

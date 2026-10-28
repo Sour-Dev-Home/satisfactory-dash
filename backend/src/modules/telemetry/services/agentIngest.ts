@@ -4,7 +4,7 @@ import { sessionKey, type HistoryRecorder } from "./historyRecorder.js";
 import type { MachineObservation, ObservationSink } from "./observationBoard.js";
 import type { PowerHistoryStore, PowerSampleCircuit } from "./powerHistoryStore.js";
 import type { LatestSnapshotStore } from "./agentSnapshotStore.js";
-import { deriveFactory, derivePower, fuseByCircuit, fuseFromCircuits } from "./snapshotDerive.js";
+import { deriveFactory, deriveGenerators, derivePower, fuseByCircuit, fuseFromCircuits } from "./snapshotDerive.js";
 import type { UnitResolver } from "./productionService.js";
 
 /**
@@ -88,6 +88,17 @@ export class AgentIngest implements AgentSnapshotSink {
     const fusePower = power ?? store.freshPower();
     const factory =
       snapshot.factory !== undefined ? deriveFactory(snapshot.factory, fuseFromCircuits(fusePower !== undefined ? fuseByCircuit(fusePower) : undefined), this.deps.resolveUnit) : undefined;
+    // S4-B (ADR-0058): generators come once per read, on the power part; the store keeps the list apart from that part.
+    const agentGenerators = snapshot.power?.generators;
+    const generators = agentGenerators !== undefined ? deriveGenerators(agentGenerators, this.deps.resolveUnit) : undefined;
+    const { status } = snapshot;
+    // A series must never span a new session or the game clock going backwards (ADR-0006).
+    const sessionChanged =
+      status !== undefined &&
+      this.lastSession !== undefined &&
+      (status.sessionName !== this.lastSession || status.totalGameDurationSeconds < (this.lastGameDuration ?? 0));
+    // Before recording, so the old session's list goes and a read in this same snapshot (the new session's) is kept.
+    if (sessionChanged) store.dropGenerators(observedAtMs);
     store.record({
       reachable: true,
       observedAtMs,
@@ -96,6 +107,7 @@ export class AgentIngest implements AgentSnapshotSink {
       power,
       factory,
       players: snapshot.players,
+      generators,
       autoPause: snapshot.settings?.autoPause,
       autoPausePending: snapshot.settings?.pending,
     });
@@ -108,15 +120,9 @@ export class AgentIngest implements AgentSnapshotSink {
     const paused = snapshot.paused ?? snapshot.status?.gamePaused ?? null;
     if (paused === true) this.wasPaused = true;
 
-    const { status } = snapshot;
     if (status !== undefined) {
       observations.publishStatus({ observedAt: observedAtMs, intervalMs: cadence.statusSeconds * 1000, paused: paused ?? status.gamePaused, session: status.sessionName });
-      if (
-        this.lastSession !== undefined &&
-        (status.sessionName !== this.lastSession || status.totalGameDurationSeconds < (this.lastGameDuration ?? 0))
-      ) {
-        powerStore.reset(); // a series must never span a new session or the game clock going backwards (ADR-0006)
-      }
+      if (sessionChanged) powerStore.reset();
       this.lastSession = status.sessionName;
       this.lastGameDuration = status.totalGameDurationSeconds;
     }

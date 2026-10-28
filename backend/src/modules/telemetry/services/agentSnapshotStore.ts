@@ -1,4 +1,4 @@
-import type { Cadence, Factory, Power, ServerPlayersResponse, Status } from "@satisfactory-dash/shared";
+import type { Cadence, Factory, Power, PowerGenerator, ServerPlayersResponse, Status } from "@satisfactory-dash/shared";
 import { ownValue } from "@satisfactory-dash/shared";
 import { ApiFailure } from "../../../platform/errorResponse.js";
 import { observed } from "../../../platform/snapshot.js";
@@ -30,6 +30,8 @@ export interface RecordedSnapshot {
   power?: Power;
   factory?: Factory;
   players?: ServerPlayersResponse;
+  /** S4-B: the generators read in this snapshot (`[]` = read, none found); absent = no read, the kept list stays. */
+  generators?: PowerGenerator[];
   /** The game's auto-pause setting, read in this snapshot (never present on an unreachable one). */
   autoPause?: boolean;
   /** The agent's `settings.pending`: the auto-pause change waits to be applied by the game (absent = not pending). */
@@ -74,6 +76,13 @@ export class LatestSnapshotStore {
   private lastReceivedAtMs: number | undefined;
   private lastPowerAtMs: number | undefined;
   private autoPauseReading: { autoPause: boolean; pending: boolean; observedAtMs: number } | undefined;
+  /**
+   * S4-B (ADR-0058 "generators once per read"): the last generator read, held apart from `parts.power` because each power
+   * part replaces that part whole and most carry no generators. Never persisted (ADR-0052): absent after a restart.
+   */
+  private generatorsRead: { list: PowerGenerator[]; readAtMs: number } | undefined;
+  /** After a drop (new session), a read older than this belongs to the old session and is not taken. */
+  private generatorsFloorMs: number | undefined;
 
   constructor(
     private readonly cadence: () => Cadence,
@@ -106,6 +115,13 @@ export class LatestSnapshotStore {
         (this.parts as Record<SnapshotPart, unknown>)[part] = { data, observedAtMs: snapshot.observedAtMs };
         this.restored.delete(part);
       }
+    }
+    // S4-B: a read replaces the kept list only when it is newer, so a late or retried snapshot cannot put an older list back.
+    const generators = snapshot.generators;
+    if (generators !== undefined) {
+      const kept = this.generatorsRead;
+      const newer = kept !== undefined ? snapshot.observedAtMs > kept.readAtMs : snapshot.observedAtMs >= (this.generatorsFloorMs ?? -Infinity);
+      if (newer) this.generatorsRead = { list: generators, readAtMs: snapshot.observedAtMs };
     }
     this.notifyIfReachabilityChanged(reachableBefore);
     if (snapshot.power !== undefined) this.lastPowerAtMs = snapshot.receivedAtMs;
@@ -173,6 +189,23 @@ export class LatestSnapshotStore {
     return { ...reading, stale: this.now() - reading.observedAtMs > STALE_AFTER_INTERVALS * this.cadence().statusSeconds * 1000 };
   }
 
+  /**
+   * S4-B: forget the kept generator list (a new session or power reset). `atMs` is the observation time of the snapshot
+   * that showed the change: a later read (that snapshot's own included) is taken, an older one (the old session) is not.
+   */
+  dropGenerators(atMs: number): void {
+    this.generatorsRead = undefined;
+    this.generatorsFloorMs = Math.max(this.generatorsFloorMs ?? -Infinity, atMs);
+  }
+
+  /** The power part as served: the kept generator list and its read time, both or neither, while the read is at most
+   *  three factory intervals old (ADR-0058 S4-B, the same three-interval rule as a stale part). */
+  private withGenerators(power: Power): Power {
+    const kept = this.generatorsRead;
+    if (kept === undefined || this.now() - kept.readAtMs > STALE_AFTER_INTERVALS * this.cadence().factorySeconds * 1000) return power;
+    return { ...power, generators: kept.list, generatorsReadAt: new Date(kept.readAtMs).toISOString() };
+  }
+
   /** The latest power reading unless it is stale (older than three power intervals) or none arrived: what a machine's
    *  fuse is joined from when a factory reading is classified. Unknown is undefined, never assumed healthy. */
   freshPower(): Power | undefined {
@@ -209,7 +242,9 @@ export class LatestSnapshotStore {
     if (this.reachable === undefined) {
       throw new ApiFailure("upstream_unreachable", "This server's agent has not reported yet");
     }
-    const stored = this.parts[part] as { data: NonNullable<StoredParts[K]>["data"]; observedAtMs: number } | undefined;
+    const kept = this.parts[part] as { data: NonNullable<StoredParts[K]>["data"]; observedAtMs: number } | undefined;
+    // S4-B: the power part is served with the kept generator list, which is held apart from it (see generatorsRead).
+    const stored = kept !== undefined && part === "power" ? { ...kept, data: this.withGenerators(kept.data as Power) as NonNullable<StoredParts[K]>["data"] } : kept;
     if (!this.reachable) {
       if (stored === undefined) {
         throw new ApiFailure("upstream_unreachable", "The game server could not be reached by its agent");
