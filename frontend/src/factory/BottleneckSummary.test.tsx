@@ -83,7 +83,7 @@ describe("BottleneckSummary", () => {
   it("one calm line and no link when there are none", () => {
     renderSummary(bottlenecksEmpty.data);
     expect(screen.getByRole("heading", { name: "No bottlenecks" })).toBeInTheDocument();
-    expect(screen.getByText("No machine is underfed or backed up.")).toBeInTheDocument();
+    expect(screen.getByText("All machines are fed and flowing.")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
@@ -108,9 +108,19 @@ describe("BottleneckSummary", () => {
     expect(lines(skeleton.container)).toHaveLength(BOTTLENECK_SUMMARY_CAP);
   });
 
-  it("cuts a long line with an ellipsis instead of wrapping it", () => {
+  it("keeps each cause on one line, cutting only the machine's name so the state and the count stay", () => {
     renderSummary(base);
-    for (const li of screen.getAllByRole("listitem")) expect(li).toHaveClass("truncate");
+    for (const li of screen.getAllByRole("listitem")) {
+      expect(li).toHaveClass("whitespace-nowrap");
+      const parts = [...li.children];
+      expect(parts.filter((p) => p.classList.contains("truncate"))).toEqual([li.querySelector("[data-machine]")]);
+      for (const p of parts) if (!p.hasAttribute("data-machine")) expect(p).toHaveClass("shrink-0");
+    }
+  });
+
+  it("names the region the same whatever the count", () => {
+    renderSummary(base);
+    expect(screen.getByRole("region", { name: "Bottleneck summary" })).toBeInTheDocument();
   });
 });
 

@@ -41,13 +41,16 @@ export function BottleneckSummary({ data }: { data: Bottlenecks }) {
   const top = data.findings.slice(0, BOTTLENECK_SUMMARY_CAP);
   const head = (
     <>
-      <h3 id="bottleneck-summary-heading" className="m-0 min-w-0 truncate">
+      <h3 className="m-0 min-w-0 truncate">
         {bottleneckSummaryCount(data)}
       </h3>
       {top.length > 0 && (
         // The name starts with the visible words (WCAG 2.5.3) and says which list.
         <Link
           to={{ search: location.search, hash: `#${BOTTLENECKS_ANCHOR}` }}
+          // Always a push: on the same URL react-router would replace, keep the history index and so the page's
+          // once-per-navigation jump (useHashTarget) would not fire again after the reader scrolled away.
+          replace={false}
           aria-label="Full list of bottlenecks"
           className="inline-flex min-h-touch shrink-0 items-center"
         >
@@ -57,18 +60,26 @@ export function BottleneckSummary({ data }: { data: Bottlenecks }) {
     </>
   );
   return (
-    <Frame aria-labelledby="bottleneck-summary-heading" data-bottleneck-summary="" head={head}>
+    // A fixed region name: the heading's count changes with every poll.
+    <Frame aria-label="Bottleneck summary" data-bottleneck-summary="" head={head}>
       {top.length === 0 ? (
-        <p className={cn(ROW, "m-0 text-muted")}>No machine is underfed or backed up.</p>
+        <p className={cn(ROW, "m-0 text-muted")}>All machines are fed and flowing.</p>
       ) : (
-        <ol aria-label="Worst bottlenecks" className="grid">
+        // Tailwind's reset drops the markers, and Safari then drops the list role: say it.
+        <ol role="list" aria-label="Worst bottlenecks" className="grid">
           {top.map((f) => (
-            <li key={f.buildingId} className={ROW}>
+            // One line, the same height as ROW: only the machine's name is cut, so the state and the count always show.
+            // The spaces between the parts are for the text (copy, screen readers); the gap does the spacing on screen.
+            <li key={f.buildingId} className="flex min-h-lh gap-1 whitespace-nowrap py-0.5 text-sm">
               {/* Underfed in the info colour and backed up in amber, as in the full list (#586). */}
-              <span className={f.state === "underfed" ? "text-info" : "text-warn"}>{stateLabel(f.state)}</span>
-              {" · "}
-              <span className="text-fg">{machineLabel(f)}</span>
-              {(f.affectedCount ?? 1) > 1 && <span className="text-muted"> · {f.affectedCount} machines</span>}
+              <span className={cn("shrink-0", f.state === "underfed" ? "text-info" : "text-warn")}>{stateLabel(f.state)} ·</span>{" "}
+              <span data-machine="" className="min-w-0 truncate text-fg">{machineLabel(f)}</span>
+              {(f.affectedCount ?? 1) > 1 && (
+                <>
+                  {" "}
+                  <span className="shrink-0 text-muted">· {f.affectedCount} machines</span>
+                </>
+              )}
             </li>
           ))}
         </ol>
@@ -106,7 +117,8 @@ function SummaryError({ error }: { error: unknown }) {
       </div>
       {error != null && (
         <div className="col-start-1 row-start-1 grid">
-          <PanelError error={error} title="Bottlenecks" />
+          {/* Its own title, so the page doesn't carry two "Bottlenecks" headings while the full list says the same. */}
+          <PanelError error={error} title="Bottleneck summary" />
         </div>
       )}
     </div>
