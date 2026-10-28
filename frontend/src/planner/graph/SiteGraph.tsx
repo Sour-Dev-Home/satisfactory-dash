@@ -58,6 +58,7 @@ import { GLYPH_HALO_RADIUS, GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W } from "./cardBadges";
 import { motionPathAround, roundedOrthogonalPath } from "./edgeShapes";
+import { lineStroke } from "./lineWidth";
 import {
   BUBBLE_D,
   BUBBLE_ICON,
@@ -145,7 +146,23 @@ function edgeClass(e: EdgeStyle) {
   return e.carrier === "pipe" ? "stroke-info" : e.rate === "unknown" ? "stroke-line" : "stroke-muted";
 }
 const edgeDash = (rate: CanvasFlow["rate"]) => (rate === "measured" ? undefined : rate === "estimated" ? "8 5" : "2 5");
-const edgeWidth = (mixed: boolean) => (mixed ? 3 : 2);
+/**
+ * The arrowhead (`markerUnits="userSpaceOnUse"`, so it keeps its size on every width): 8 units long, 8 wide at its base,
+ * its viewBox 10 wide. It is placed at its middle (`ARROW_REF_X`) and the line stops `LINE_UNDER_ARROW` short of its end, so
+ * the line ends where the head is 4 wide (the widest line) and never blunts the tip; the tip stays 0.8 past the route's
+ * end, under the card, as before. A stalled line's stop bar (marks mode) needs no trim: the line ends inside the bar.
+ */
+const ARROW_REF_X = 5;
+const LINE_UNDER_ARROW = 3.2;
+/** A mixed line's inner stroke stops before the arrowhead's base (7.2 short of the end), or at a stop bar's back (3 short). */
+const INNER_TRIM = 8;
+const INNER_TRIM_STALLED = 3;
+/**
+ * A dashed or dotted mixed line's inner dashes: each one unit shorter (its gap one longer) and centred in the line's dash by
+ * `INNER_DASH_OFFSET`, so each dash's hole is closed at both ends instead of splitting the dash in two.
+ */
+const innerDash = (dash: string | undefined) => dash?.split(" ").map((n, i) => Number(n) + (i % 2 === 0 ? -1 : 1)).join(" ");
+const INNER_DASH_OFFSET = -0.5;
 
 /** The overflow fades, one per edge: where it sits, the gradient direction towards the drawing, and the edge's name. */
 const FADES = [
@@ -1056,7 +1073,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             className={cn("max-h-map min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode && !pickingFactories ? "cursor-crosshair" : "cursor-grab")}
           >
             <defs>
-              <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+              <marker id={markerId} viewBox="0 0 10 10" refX={ARROW_REF_X} refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
                 <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
               </marker>
               {/* A stalled line's end (ADR-0062 Decision 2): a bar across it in the state's tone, not an arrowhead. */}
@@ -1372,20 +1389,34 @@ type EdgeProps = {
 };
 
 /** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. A stalled line in marks mode ends
- *  in its state's stop bar instead of the arrowhead. */
+ *  in its state's stop bar instead of the arrowhead. Its width is its rate's step (`lineStroke`; a bundle's summed rate),
+ *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. */
 function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
   const stalled = marks ? e.flow.stalled : undefined;
+  const stroke = lineStroke(e.flow);
+  const dash = edgeDash(e.flow.rate);
   return (
     <g data-edge={e.index} data-stalled={stalled} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
       <path
-        d={roundedOrthogonalPath(e.points)}
+        d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? LINE_UNDER_ARROW : 0)}
         fill="none"
-        strokeWidth={edgeWidth(e.flow.mixed)}
-        strokeDasharray={edgeDash(e.flow.rate)}
+        strokeWidth={stroke.width}
+        strokeDasharray={dash}
         markerEnd={`url(#${stalled === undefined ? markerId : `${markerId}-${stalled}`})`}
         className={edgeClass(e.flow)}
       />
+      {stroke.inner !== null && (
+        <path
+          d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? INNER_TRIM : INNER_TRIM_STALLED)}
+          fill="none"
+          strokeWidth={stroke.inner}
+          strokeDasharray={innerDash(dash)}
+          strokeDashoffset={dash === undefined ? undefined : INNER_DASH_OFFSET}
+          data-mixed-inner=""
+          className="stroke-surface"
+        />
+      )}
     </g>
   );
 }
@@ -1902,13 +1933,28 @@ function Legend({ modes }: { modes: readonly string[] }) {
   return <LegendSamples modes={modes} />;
 }
 
+/** A legend sample at the base width (its rows for the width steps come with amendment build PR 5); a mixed belt's sample
+ *  wears the inner stroke, as on the canvas. */
+function LegendLine({ edge }: { edge: EdgeStyle }) {
+  const stroke = lineStroke({ ...edge, ratePerMinute: null, unit: "items/min" });
+  const dash = edgeDash(edge.rate);
+  return (
+    <>
+      <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={stroke.width} strokeDasharray={dash} className={edgeClass(edge)} />
+      {stroke.inner !== null && (
+        <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={stroke.inner} strokeDasharray={innerDash(dash)} strokeDashoffset={dash === undefined ? undefined : INNER_DASH_OFFSET} className="stroke-surface" />
+      )}
+    </>
+  );
+}
+
 function LegendSamples({ modes }: { modes: readonly string[] }) {
   return (
     <ul aria-label="Line styles" className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-sm text-muted">
       {LEGEND.map(({ label, edge }) => (
         <li key={label} className="flex items-center gap-2">
           <svg aria-hidden="true" viewBox="0 0 32 6" className="h-1.5 w-8 shrink-0">
-            <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={edgeWidth(edge.mixed)} strokeDasharray={edgeDash(edge.rate)} className={edgeClass(edge)} />
+            <LegendLine edge={edge} />
           </svg>
           <span>{label}</span>
         </li>

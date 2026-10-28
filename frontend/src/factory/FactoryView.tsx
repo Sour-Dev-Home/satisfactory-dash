@@ -12,6 +12,7 @@ import { ItemHistorySection, SinceYesterdayView } from "./FactoryHistory";
 import { BottleneckSummaryView } from "./BottleneckSummary";
 import { BottlenecksView } from "./BottlenecksView";
 import { FactoryPanel } from "./FactoryPanel";
+import { FactorySectionsNav } from "./FactorySectionsNav";
 import { itemLabels } from "./itemLabels";
 
 /**
@@ -73,6 +74,7 @@ export function FactoryView() {
         <FactoryPanel
           snapshot={factory.data}
           refetchFailed={factory.isRefetchError}
+          nav={<FactorySectionsNav />}
           search={search}
           onSearch={(value) => {
             setSearch(value);

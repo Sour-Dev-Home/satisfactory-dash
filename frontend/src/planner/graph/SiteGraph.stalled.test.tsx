@@ -97,7 +97,7 @@ describe("words mode", () => {
     const svg = await openGraph();
     expect(screen.getByRole("button", { name: "State marks" })).toHaveAttribute("aria-pressed", "false");
     expect(svg.querySelector("[data-state-mark], [data-stop-bar], [data-stalled], [data-stalled-ring]")).toBeNull();
-    const ends = new Set([...svg.querySelectorAll("[data-edge] path")].map((p) => p.getAttribute("marker-end")));
+    const ends = new Set([...svg.querySelectorAll("[data-edge] path[marker-end]")].map((p) => p.getAttribute("marker-end")));
     expect(ends.size).toBe(1);
     expect(printed(smelterCard(svg))).toContain("Backed up");
     expectWordsKept(svg);

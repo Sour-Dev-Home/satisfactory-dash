@@ -157,7 +157,7 @@ export function ItemHistorySection({
   const setItem = onItem ?? setLocalItem;
   useHashTarget(isHistoryAnchor);
   return (
-    <section id={HISTORY_ANCHOR} aria-labelledby="production-history-heading" className="panel grid gap-3">
+    <section id={HISTORY_ANCHOR} aria-labelledby="production-history-heading" className="panel grid scroll-mt-4 gap-3">
       <h3 id="production-history-heading">Production history</h3>
       <div role="group" aria-label="Production history range" className="flex flex-wrap gap-2">
         {RANGES.map((r) => (

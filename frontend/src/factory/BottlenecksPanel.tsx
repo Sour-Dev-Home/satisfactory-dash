@@ -57,7 +57,7 @@ function AffectedMachines({ finding }: { finding: Bottleneck }) {
 export function BottlenecksPanel({ data, limit }: { data: Bottlenecks; limit: number }) {
   const notes = sectionNotes(data);
   return (
-    <section id={BOTTLENECKS_ANCHOR} aria-labelledby="bottlenecks-heading" className="panel content-start">
+    <section id={BOTTLENECKS_ANCHOR} aria-labelledby="bottlenecks-heading" className="panel scroll-mt-4 content-start">
       <h3 id="bottlenecks-heading">Bottlenecks</h3>
       {data.findings.length === 0 ? (
         <p>No bottlenecks: no machine is underfed or backed up.</p>
