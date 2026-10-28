@@ -265,8 +265,8 @@ function ViewToggle({ view, onPick }: { view: ViewMode; onPick: (mode: ViewMode)
 /** One level up; the browser's Back does the same, since opening one is a history entry (PlannerView). */
 function BackButton({ label, onBack }: { label: string; onBack: () => void }) {
   return (
-    <button type="button" onClick={onBack} className="inline-flex min-h-touch items-center gap-1 justify-self-start">
-      <svg viewBox="0 0 24 24" aria-hidden className="size-5" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+    <button type="button" onClick={onBack} className="inline-flex min-h-touch min-w-0 max-w-full items-center gap-1 justify-self-start break-words text-left">
+      <svg viewBox="0 0 24 24" aria-hidden className="size-5 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
         <path d="M15 5l-7 7 7 7" />
       </svg>
       {label}
@@ -279,7 +279,7 @@ function BackButton({ label, onBack }: { label: string; onBack: () => void }) {
  * where the viewer is (`aria-current`). The keyboard and screen-reader way to any ancestor.
  */
 function Breadcrumb({ tree, path, onGo }: { tree: FactoryTree; path: readonly string[]; onGo: (next: readonly string[]) => void }) {
-  const crumbs = [{ key: "", name: "All factories" }, ...path.map((key) => ({ key, name: tree.nodes.get(key)?.name ?? key }))];
+  const crumbs = [{ key: "", name: "All factories" }, ...path.map((key) => ({ key, name: tree.nodes.get(key)?.name ?? "Factory" }))];
   return (
     <nav aria-label="Factory path">
       <ol className="m-0 flex list-none flex-wrap items-center gap-x-1 p-0 text-sm">
@@ -291,7 +291,7 @@ function Breadcrumb({ tree, path, onGo }: { tree: FactoryTree; path: readonly st
               </span>
             )}
             {i === crumbs.length - 1 ? (
-              <span aria-current="page" className="break-words">
+              <span aria-current="page" className="min-w-0 break-words">
                 {crumb.name}
               </span>
             ) : (
@@ -525,7 +525,8 @@ export function PlannerPanel({
     const raw = pathKey === "" ? [] : pathKey.split(PATH_SEP);
     return tree !== undefined ? resolvePath(tree, raw) : graph.sites.some((s) => s.key === raw[0]) ? raw.slice(0, 1) : [];
   }, [tree, pathKey, graph.sites]);
-  const trimming = pathSettled && valid.length < path.length;
+  // Compared as text too: a key holding the separator reads as two, and must not pass for its valid prefix.
+  const trimming = pathSettled && (valid.length < path.length || valid.join(PATH_SEP) !== pathKey);
   // The address is the outside system here: a bad tail is replaced (and that entry marked, so `trimmed` says it).
   useEffect(() => {
     if (trimming) onPath(valid, "trim");

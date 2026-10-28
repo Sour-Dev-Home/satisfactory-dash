@@ -203,7 +203,9 @@ function rollup(graph: ProductionGraph, tree: FactoryTree, node: TreeNode, parts
     sharedNodeCount: parts.reduce((sum, p) => sum + p.card.factory.sharedNodeCount, 0),
     parentDesignationId: null,
   };
-  return { ...factoryModelOf(graph, factory), atLeast: new Set([...atLeast].filter((c) => shown.has(c))) };
+  const model = factoryModelOf(graph, factory);
+  // A group two parts share is counted once (the parts' own counts would count it twice).
+  return { ...model, factory: { ...factory, sharedNodeCount: model.sharedNodes.length }, atLeast: new Set([...atLeast].filter((c) => shown.has(c))) };
 }
 
 /**
