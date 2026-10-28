@@ -108,6 +108,8 @@ export function marchingLines(candidates: readonly MarchCandidate[], view: View,
 export const CARD_STACK_OFFSET = 5;
 /** A card's corner (an open group's is 10; a line never meets a corner, so one radius serves the mask). */
 const CARD_RX = 8;
+/** A card's badge and pills sit at least this far in from its sides (SiteGraph's `CardView`: 8). */
+export const CARD_DECOR_INSET = 8;
 
 /** Something the canvas draws over its lines, as a box with a corner radius: a hole in the march layer's mask. */
 export interface MarchHole extends Box {
@@ -122,6 +124,10 @@ export interface MarchHole extends Box {
 export function marchHoles(
   nodes: readonly { x: number; y: number; width: number; height: number; card: { kind: string } }[],
   edges: readonly { labelX: number; labelY: number; labelWidth: number; labelHeight: number }[],
+  /** How tall the controls are that a card centres on its top and bottom edges (its warn badge, its pills): half of it sticks
+   *  out above and below. Those stand `CARD_DECOR_INSET` in from the sides, so the hole for them leaves the sides, where lines
+   *  meet the card, alone. */
+  decor = 0,
 ): MarchHole[] {
   const out: MarchHole[] = [];
   for (const e of edges) {
@@ -129,6 +135,9 @@ export function marchHoles(
   }
   for (const n of nodes) {
     out.push({ x: n.x, y: n.y, width: n.width, height: n.height, rx: CARD_RX });
+    if (decor > 0 && n.width > 2 * CARD_DECOR_INSET) {
+      out.push({ x: n.x + CARD_DECOR_INSET, y: n.y - decor / 2, width: n.width - 2 * CARD_DECOR_INSET, height: n.height + decor, rx: 0 });
+    }
     if (n.card.kind === "bubble" || n.card.kind === "fold") {
       out.push({ x: n.x + CARD_STACK_OFFSET, y: n.y + CARD_STACK_OFFSET, width: n.width, height: n.height, rx: CARD_RX });
     }

@@ -297,7 +297,8 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
   dashes, then its moving dashes (a mixed one's inner dashes in step); for a measured line, its pulses as before. The cover
   and dashes stop at the arrowhead's base (7.2 short of the end, `MARCH_TRIM`), so the canvas's arrowhead shows. The canvas
   draws its labels and cards over its lines, and the layer is over everything, so its strokes are under a luminance mask with
-  a hole for every label pill, every card (and a bubble's or fold's pile) and the open or closing item card (`marchHoles`).
+  a hole for every label pill, every card (with the badge and pills it centres on its top and bottom edges, and a bubble's or
+  fold's pile) and the open or closing item card (`marchHoles`); nothing marches while a lasso is drawn (it is over the lines).
   Visible differences while marching, none in a still frame or a screenshot (reduced motion draws no layer): a marching line
   is drawn over every other line where they cross, and an estimated one's cover cuts a gap the line's width in the line or
   frame border it crosses. Marching now also stops under reduced motion in script, with Motion "On" as well (its CSS already

@@ -966,10 +966,20 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const viewNow = useMemo(() => ({ view: viewport, stage }), [viewport, stage]);
   const settledView = useSettled(viewNow, MARCH_SETTLE_MS);
   const marching = useMemo(
-    () => (animate && !reduced && visible && ghost === null ? marchingLines(marchable, settledView.view, settledView.stage) : new Map<number, RateStep>()),
-    [animate, reduced, visible, ghost, marchable, settledView],
+    () =>
+      animate && !reduced && visible && ghost === null && lasso === null
+        ? marchingLines(marchable, settledView.view, settledView.stage)
+        : new Map<number, RateStep>(),
+    [animate, reduced, visible, ghost, lasso, marchable, settledView],
   );
-  const holes = useMemo(() => marchHoles(layout.nodes, layout.edges), [layout]);
+  // The march layer's mask: every label pill and card (with its badge and pills), and the open or closing item card.
+  const cardHoles = useMemo(() => marchHoles(layout.nodes, layout.edges, Math.max(BADGE_H, PILL_H)), [layout]);
+  const openEdgeKey = focus?.edgeKey;
+  const closingEdgeKey = closingCard?.edgeKey;
+  const holes = useMemo(
+    () => [...cardHoles, ...[openEdgeKey, closingEdgeKey].flatMap((key) => focusCardHole(key === undefined ? undefined : edgeByKey.get(key)))],
+    [cardHoles, openEdgeKey, closingEdgeKey, edgeByKey],
+  );
 
   // The drawing eases in when its shape changes (a card opened, closed or hid its upstream), not on a poll's new rates.
   const shape = useMemo(() => `${scene.cards.map((c) => c.key).join("|")}#${scene.flows.length}`, [scene]);
@@ -1214,7 +1224,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               edges={layout.edges}
               marching={marching}
               dim={(e) => !edgeLit(e)}
-              holes={[...holes, ...[focus, closingCard].flatMap((f) => (f === null ? [] : focusCardHole(cardOf(f))))]}
+              holes={holes}
               bounds={{ width: layout.width, height: layout.height }}
               stage={stage}
               viewport={viewport}
@@ -1484,9 +1494,9 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
 }
 
 /** The open (or closing) item card's box, at its full size, as a hole in the march layer's mask. */
-function focusCardHole(c: { edge: LaidEdge } | null): MarchHole[] {
-  if (c === null) return [];
-  return [{ x: c.edge.labelX - FOCUS_CARD_W / 2, y: c.edge.labelY - FOCUS_CARD_H / 2, width: FOCUS_CARD_W, height: FOCUS_CARD_H, rx: CARD_RX }];
+function focusCardHole(edge: LaidEdge | undefined): MarchHole[] {
+  if (edge === undefined) return [];
+  return [{ x: edge.labelX - FOCUS_CARD_W / 2, y: edge.labelY - FOCUS_CARD_H / 2, width: FOCUS_CARD_W, height: FOCUS_CARD_H, rx: CARD_RX }];
 }
 
 /**

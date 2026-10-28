@@ -106,8 +106,8 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   An animated path inside the canvas repainted the whole canvas every frame; in the layer it repaints only the layer. The
   canvas draws every line still, always; the layer draws over it an estimated line's moving dashes (over a `stroke-surface`
   cover, `data-march-cover`, that hides the still dashes) or a measured line's pulses, each in `[data-march-edge]`. Its
-  luminance mask has a hole for every label pill, card (and a bubble's or fold's pile) and the open item card
-  (`marchHoles`), so a stroke never shows over them. Each stroke stops at the arrowhead's base (`MARCH_TRIM`), so the canvas's
+  luminance mask has a hole for every label pill, card (its edge badge and pills, a bubble's or fold's pile) and the open
+  item card (`marchHoles`), so a stroke never shows over them; nothing marches while a lasso is drawn. Each stroke stops at the arrowhead's base (`MARCH_TRIM`), so the canvas's
   arrowhead is never painted over.
 - Item bubbles (ADR-0060 build PR 2): an edge's label box draws the items it carries as icon bubbles, not words
   (`bubbleRow.ts`). Distinct items by summed rate (then name), at most `BUBBLE_MAX` (3) then a "+k" chip, with the rate
