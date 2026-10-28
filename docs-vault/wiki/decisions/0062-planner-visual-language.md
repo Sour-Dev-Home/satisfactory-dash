@@ -117,6 +117,13 @@ filter but text search. The two pages describe the same machines in different te
 
 Proposals 2 and 3 come after build PRs 1 and 4 below.
 
+**Interim scope of item 5 (2026-10-28).** Item 5 is built before item 2, so until the table is grouped it is one group: the
+filtered and searched list shows its first `FACTORY_ROW_CAP` (50) machines, then "Showing 50 of N machines" and "Show all N
+machines" under it (`factory/useRowCap.ts`, `factory/ShowAllRows.tsx`). The cap applies after the filter and search, so a search
+(or a `?q=` link) reaches any machine. "Show all" moves focus to the first newly shown row; changing the filter or search caps the
+list again, while the 30 s poll keeps it open. The phone's cards are the same table, so the same cap. Item 2 calls `useRowCap` once
+per group.
+
 ## Build plan (each PR from `main`, no stacking)
 
 | # | PR | Files | Proof |
