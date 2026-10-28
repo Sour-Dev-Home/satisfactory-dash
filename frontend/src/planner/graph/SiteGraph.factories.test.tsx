@@ -124,7 +124,8 @@ describe("an opened factory", () => {
 
   it("draws the train as a glyph on its edge, named in the legend and the edge's tooltip", async () => {
     const svg = await openPlate();
-    expect(svg.querySelector('[data-glyph="train"]')).not.toBeNull();
+    // At rest in the canvas, or moving in the march layer over it.
+    expect(svg.parentElement!.querySelector('[data-glyph="train"]')).not.toBeNull();
     const titles = [...svg.querySelectorAll("title")].map((t) => t.textContent);
     expect(titles.some((t) => t?.startsWith("Train, route Ore Run: Miner Mk.2 to Main Depot"))).toBe(true);
     const legend = screen.getByRole("list", { name: "Line styles" });
@@ -256,16 +257,21 @@ describe("drill-down into a bubble", () => {
 
 describe("the transport motion", () => {
   beforeEach(() => answer(productionGraphFactories));
-  const moving = (svg: HTMLElement) => svg.querySelectorAll("animateMotion");
+  // A moving glyph rides its line in the march layer over the canvas (ADR-0062 amendment build PR 4), never in the canvas.
+  const moving = (svg: HTMLElement) => svg.parentElement!.querySelectorAll("[data-march-layer] animateMotion");
 
   it("moves the glyph along its edge under System when the operator has not asked for reduced motion", async () => {
     wideScreen(false);
     const svg = await openPlate();
     expect(moving(svg)).toHaveLength(1);
-    const edge = svg.querySelector("animateMotion")!;
+    const edge = moving(svg)[0]!;
     expect(edge.getAttribute("path")).toMatch(/^M[\d. -]+L/);
     expect(edge.getAttribute("repeatCount")).toBe("indefinite");
     expect(edge.closest("g[data-moving]")?.getAttribute("data-moving")).toBe("true");
+    expect(edge.closest("g[data-moving]")?.querySelector('[data-glyph="train"]')).not.toBeNull();
+    // The canvas animates nothing and leaves out the moving glyph's resting copy.
+    expect(svg.querySelector("animateMotion")).toBeNull();
+    expect(svg.querySelector('[data-glyph="train"]')).toBeNull();
   });
 
   it("stays still under System with reduced motion, and the toggle's On overrides that", async () => {

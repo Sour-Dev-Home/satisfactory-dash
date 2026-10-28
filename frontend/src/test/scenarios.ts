@@ -614,6 +614,28 @@ export const plannerCapsLarge = (() => {
   return { ...productionGraphFactories, data: { ...base, nodes: [...groups, ...ends], edges, transports: [], factories, topologyHash: "sha256-planner-caps-large" } };
 })();
 
+/**
+ * ADR-0062 amendment build PR 4, the transport glyphs' measurement: the caps' 48-factory overview (its lines march and its
+ * caps move too, so this is everything that moves at once) with 48 transports between the factories, more than the glyphs'
+ * cap (40): each factory to the one in the next chain, and every fourth of the first 32 also two chains on. Every mode the
+ * canvas has a glyph for, and measured, estimated (dashed) and unknown (dotted) rates.
+ */
+export const plannerTransportsLarge = (() => {
+  const base = ProductionGraphResponseSchema.parse(plannerCapsLarge).data;
+  const FACTORIES = 48;
+  const CHAIN = 8;
+  const MODES = ["train", "truck", "drone", "depot"] as const;
+  const transports: NonNullable<typeof base.transports> = [];
+  const via = (from: number, to: number) => {
+    const j = transports.length;
+    const rate = j % 7 === 3 ? "unknown" : j % 3 === 1 ? "estimated" : "measured";
+    transports.push({ from: `group-${from}`, to: `group-${to}`, mode: MODES.at(j % MODES.length)!, itemClassName: "Desc_IronPlate_C", itemName: "Iron Plate", ratePerMinute: rate === "unknown" ? null : [30, 150, 600].at(j % 3)!, rate, carriers: 1 + (j % 3), routeName: `Route ${j + 1}`, flow: "supply", destination: "factory" });
+  };
+  for (let i = 0; i + CHAIN < FACTORIES; i++) via(i, i + CHAIN);
+  for (let i = 0; i + 2 * CHAIN < FACTORIES && transports.length < 48; i += 4) via(i, i + 2 * CHAIN);
+  return { ...plannerCapsLarge, data: { ...base, transports, topologyHash: "sha256-planner-transports-large" } };
+})();
+
 /** ADR-0062 F.5: the mixed factory's five machines twelve times over (60, each its own id), past the table's 50-row cap. */
 const factoryManyMachines = {
   ...factoryMixed,
@@ -923,6 +945,7 @@ export const SCENARIOS = {
   "planner-large": { productionGraph: ok(plannerLarge) },
   // ADR-0062 Decision 1: a 48-factory overview whose every card has destination caps, for their frame times.
   "planner-caps-large": { productionGraph: ok(plannerCapsLarge) },
+  "planner-transports-large": { productionGraph: ok(plannerTransportsLarge) },
   // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate.
   "planner-designations": plannerDesignated,
   // ADR-0055 #727: merge, split, pop-out, dissolve and undo offered (revisions present); the factories not connected; and

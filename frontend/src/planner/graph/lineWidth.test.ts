@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { LINE_W_BASE, LINE_W_FAST, LINE_W_MID, LINE_W_SLOW, lineStroke, TRANSPORT_MIXED_W, TRANSPORT_W } from "./lineWidth";
+import { LINE_W_BASE, LINE_W_FAST, LINE_W_MID, LINE_W_SLOW, lineStroke, TRANSPORT_GAP, TRANSPORT_RAIL_W, TRANSPORT_W } from "./lineWidth";
 import { FLUID_FAST_FROM, FLUID_MID_FROM, ITEMS_FAST_FROM, ITEMS_MID_FROM } from "./rateStep";
 
 const belt = (ratePerMinute: number | null, mixed = false) => ({ carrier: "belt", mixed, ratePerMinute, unit: "items/min" as const });
@@ -25,7 +25,7 @@ describe("lineStroke: width means rate (ADR-0062 amendment Decision 4)", () => {
 
   it("keeps the base width (today's 2) for a line with no step: unknown, 0, negative or not finite", () => {
     expect(LINE_W_BASE).toBe(2);
-    for (const rate of [null, 0, -5, Number.NaN, Number.POSITIVE_INFINITY]) expect(lineStroke(belt(rate)), String(rate)).toEqual({ width: LINE_W_BASE, inner: null });
+    for (const rate of [null, 0, -5, Number.NaN, Number.POSITIVE_INFINITY]) expect(lineStroke(belt(rate)), String(rate)).toEqual({ width: LINE_W_BASE, inner: null, double: false });
   });
 
   it("draws a mixed line's inner stroke at the same width as an unmixed line of its rate, thinner than the line", () => {
@@ -39,12 +39,30 @@ describe("lineStroke: width means rate (ADR-0062 amendment Decision 4)", () => {
     }
   });
 
-  it("leaves a transport as today: 2, or 3 when mixed, whatever its rate, and no inner stroke", () => {
+  it("draws every transport as one double line, mixed or not, whatever its rate (amendment Decision 6)", () => {
+    const double = { width: TRANSPORT_W, inner: TRANSPORT_GAP, double: true };
     for (const carrier of ["train", "truck", "drone", "depot", "hovercraft"]) {
-      expect(lineStroke({ carrier, mixed: false, ratePerMinute: ITEMS_FAST_FROM * 2, unit: "items/min" })).toEqual({ width: TRANSPORT_W, inner: null });
-      expect(lineStroke({ carrier, mixed: true, ratePerMinute: 30, unit: "items/min" })).toEqual({ width: TRANSPORT_MIXED_W, inner: null });
+      for (const ratePerMinute of [null, 0, 30, ITEMS_MID_FROM, ITEMS_FAST_FROM * 2]) {
+        expect(lineStroke({ carrier, mixed: false, ratePerMinute, unit: "items/min" }), `${carrier} ${ratePerMinute}`).toEqual(double);
+        expect(lineStroke({ carrier, mixed: true, ratePerMinute, unit: "items/min" }), `${carrier} mixed ${ratePerMinute}`).toEqual(double);
+      }
     }
-    expect([TRANSPORT_W, TRANSPORT_MIXED_W]).toEqual([2, 3]);
+    expect([TRANSPORT_RAIL_W, TRANSPORT_GAP, TRANSPORT_W]).toEqual([1.25, 3, 5.5]);
+    expect(lineStroke(belt(30)).double).toBe(false);
+    expect(lineStroke(belt(30, true)).double).toBe(false);
+  });
+
+  it("keeps a transport's double line unlike any mixed belt: a gap over twice a rail and wider than any belt's core", () => {
+    expect(TRANSPORT_W - TRANSPORT_GAP).toBeCloseTo(2 * TRANSPORT_RAIL_W);
+    expect(TRANSPORT_GAP).toBeGreaterThan(2 * TRANSPORT_RAIL_W);
+    for (const rate of [null, 60, ITEMS_MID_FROM, ITEMS_FAST_FROM]) {
+      const mixed = lineStroke(belt(rate, true));
+      // A mixed belt's core is never wider than its rails together; a transport's gap is: the proportions differ.
+      expect(mixed.inner!, String(rate)).toBeLessThanOrEqual(mixed.width - mixed.inner!);
+      expect(TRANSPORT_GAP, String(rate)).toBeGreaterThanOrEqual(2 * mixed.inner!);
+      // And its footprint is past every width step, so it never reads as a belt's rate.
+      expect(TRANSPORT_W, String(rate)).toBeGreaterThan(lineStroke(belt(rate)).width);
+    }
   });
 });
 
@@ -70,5 +88,9 @@ describe("the mixed line's contrast (WCAG 1.4.11, 3:1 for a graphic)", () => {
   it("keeps the warn rails at 3:1 against the canvas they sit on and the inner stroke between them (both surface)", () => {
     // The graph and the legend sit on `bg-surface`; the inner stroke is `stroke-surface`, so both sides of a rail are surface.
     for (const surface of ["surface", "canvas"]) expect(ratio(hex("warn"), hex(surface)), surface).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps a transport's rails (muted, or warn when mixed) at 3:1 against the canvas and the gap between them", () => {
+    for (const rail of ["muted", "warn"]) for (const surface of ["surface", "canvas"]) expect(ratio(hex(rail), hex(surface)), `${rail} on ${surface}`).toBeGreaterThanOrEqual(3);
   });
 });

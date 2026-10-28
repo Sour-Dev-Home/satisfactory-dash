@@ -378,6 +378,54 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
   the lines draw their still frame, which is today's. What changes on a canvas with no transport is the toolbar: the
   Motion control now shows there.
 
+### Values chosen in build PR 4 (2026-10-28)
+- **The double line** (`lineWidth.ts`, `lineStroke`'s `double`). A transport's line is a stroke `TRANSPORT_W` 5.5 wide in
+  its line colour with a `TRANSPORT_GAP` 3 stroke in `stroke-surface` (the canvas colour) over it: two rails of
+  `TRANSPORT_RAIL_W` 1.25 with a gap between them. Drawn as a "hollow" stroke rather than two offset paths: SVG has no offset
+  path, and the hollow stroke follows the rounded orthogonal corners exactly. The gap's dashes are the line's own at the same
+  offset (an estimated transport `8 5`, an unknown one `2 5`), so each dash is two short rails. Colour is `edgeClass` as
+  before: muted (warn when mixed, `stroke-line` when unknown). Today a transport part is never mixed (`transportPart` sets
+  `mixed: false`), so the warn double line is the rule for a future backend, kept by `lineStroke` (every transport, mixed or
+  not, gets the same geometry). Contrast: the rails are muted or warn with surface on both sides (the canvas outside, the gap
+  inside), and both clear 3:1 on surface and canvas (`lineWidth.test.ts`); an unknown transport's `stroke-line` is the
+  unknown belt's colour, unchanged.
+- **Unlike a mixed belt.** A mixed belt is a warn line 2 to 4 wide whose core (0.5 to 1.5) is never wider than its two rails
+  together. A transport's gap (3) is more than twice a rail and at least twice any mixed core, and its footprint (5.5) is past
+  every width step (4), so the two never share proportions; a non-mixed transport is also muted, not warn, and carries its
+  glyph. `lineWidth.test.ts` keeps these inequalities.
+- **Spacing does not follow the rate.** Decision 4's "width means rate" is for belts and pipes. A transport's rate is an
+  average over trips, its glyph already says "a vehicle carries this", and a gap that grew with the rate would make the double
+  line's footprint (or its rails) read as one of the belt widths. So one fixed geometry for every transport; the rate is in
+  the label, the `<title>` and (build PR 5) the step word. **Owner check:** stepping the gap by rate is the alternative.
+- **The arrowhead.** The double line stops `DOUBLE_UNDER_ARROW` 4.8 short of its route's end (a belt's 3.2), where the head
+  (8 long, 8 wide at its base, tip 0.8 past the end) is 5.6 wide, so the rails never stick out beside it. The gap stops 8
+  short as a mixed line's core does, so the rails close against the head's base; a stalled transport's line ends inside its
+  stop bar (12 tall), its gap 3 short.
+- **The moving glyph leaves the canvas.** Before, a moving glyph was an SVG `animateMotion` inside the canvas `<svg>`, which
+  repaints the whole canvas every frame, as a marching dash did before #808. It now rides its line in `MarchLayer`: a
+  `[data-march-glyphs]` group after the marching lines, under the lines' mask (every label pill and card a hole, so the glyph
+  passes under them as it passed under the cards before). Its path is unchanged: `motionPathAround`, the route minus its own
+  label box grown by the halo, so it still leaps the item bubbles. The canvas draws the glyph at rest in its pill only when it
+  does not move, so each glyph shows once and a still frame (Motion Off, reduced motion under System, a screenshot) is
+  today's. Not measured inside the canvas first: #808's measurement (one frame to seven with 4 animated paths) applies to any
+  SMIL or CSS animation there, so the move was made up front and the e2e test holds the bound.
+- **Which glyphs move** (`glyphMotion.ts`). `glyphCandidates` per layout and state style: every transport edge with a route
+  outside its own label box, but not a stalled one in marks mode (unchanged). `movingGlyphs` per settled view
+  (`MARCH_SETTLE_MS`, as the lines): in view, edge order, at most `GLYPH_MOVE_MAX` 40 (was `MAX_MOVING`, unchanged). They
+  never move with Motion Off, in a hidden tab, during a make-room glide (new: the layer does not follow gliding cards) or a
+  lasso (new: it is drawn over the lines). Unlike the lines, Motion "On" still moves them under reduced motion, as ADR-0055 PR
+  8b decided; System follows the setting. One trip lasts the line's length over 40 units a second, 4 to 16 s (unchanged).
+- **Frame times.** A new e2e test (`e2e/planner-graph.spec.ts`, "transport glyphs move in the march layer ...", scenario
+  `planner-transports-large`: the caps' 48-factory overview plus 48 transports of every mode and rate quality, more than the
+  cap) records fitted, all in view and Motion Off frame times as `transport-frame-times.json` with glyphs, lines and caps all
+  moving, and holds the lines' regression bound on desktop (fitted p95 at most twice Off's plus 17 ms). CI's numbers
+  **[NEEDS MEASUREMENT]**: to record from the PR's e2e run.
+- **Legend.** Unchanged: it shows each mode's glyph, no transport line sample (build PR 5 adds the double line's row).
+- **Screenshots.** Every canvas with a transport changes its line: `planner-factory-transports` (the four modes) and any
+  baseline that shows the opened Iron Plate factory with the fixture's train (`planner-factory-canvas` and the other
+  `planner-factory-*` and designation states drawn inside it). The overview draws no transport (the train stays inside one
+  factory). Screenshots run under reduced motion, so the glyphs stand at rest in their pills as before.
+
 ### Consequences
 - The graph reads rate at a glance by speed and width, with colour left free for carrier and state.
 - Animation cost is bounded by the view and the cap, not the factory's size, once the cap is measured.

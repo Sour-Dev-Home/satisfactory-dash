@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { CAP_MARCH_MAX, MARCH_MAX } from "../src/planner/graph/marching";
+import { CAP_MARCH_MAX, GLYPH_MOVE_MAX, MARCH_MAX } from "../src/planner/graph/marching";
 import { expect, expectNoAxeViolations, test } from "./fixtures";
 
 // ADR-0050 task 6, the graph's CSP gate: pan, zoom, the item filter and the group panel, all with zero CSP violations
@@ -158,19 +158,26 @@ test.describe("the factory canvas", () => {
   });
 
   // ADR-0055 PR 8b: the transport glyphs move by SVG animateMotion, with no inline style and no script, and stop on the Motion toggle.
+  // ADR-0062 amendment build PR 4: they move in the march layer over the canvas (never in it), along their double line.
   test("shows every transport mode as a glyph, moves them, and the Motion toggle stops them and is remembered", async ({ page, mockApi }, testInfo) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await mockApi("planner-factories-transports");
     await page.goto("/app/planner");
     const svg = await openPlate(page);
-    for (const mode of ["train", "truck", "drone", "depot"]) await expect(svg.locator(`[data-glyph="${mode}"]`)).toHaveCount(1);
+    // The canvas and the march layer stacked over it (the legend draws its own glyphs, outside this box).
+    const stack = svg.locator("xpath=..");
+    const layerMotion = page.locator("[data-march-layer] animateMotion");
+    for (const mode of ["train", "truck", "drone", "depot"]) await expect(stack.locator(`[data-glyph="${mode}"]`)).toHaveCount(1);
+    await expect(svg.locator("[data-double]")).toHaveCount(4);
     // Only the edges in view move (on a phone most of the four lie past the fitted canvas), so at least one does.
-    await expect.poll(() => svg.locator("animateMotion").count()).toBeGreaterThanOrEqual(1);
-    await expect(svg.locator("[style]")).toHaveCount(0);
+    await expect.poll(() => layerMotion.count()).toBeGreaterThanOrEqual(1);
+    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    await expect(stack.locator("[style]")).toHaveCount(0);
     await expectNoAxeViolations(page, testInfo);
 
     await page.getByLabel("Motion").selectOption("off");
-    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    await expect(page.locator("[data-march-layer]")).toHaveCount(0);
+    await expect(svg.locator('[data-moving="false"]')).toHaveCount(4);
     expect(await page.evaluate(() => window.localStorage.getItem("planner.motion"))).toBe("off");
     // The opened factory is in the address (?open=), so a reload comes back to it.
     await page.reload();
@@ -179,7 +186,7 @@ test.describe("the factory canvas", () => {
     const again = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
     await expect(again).toBeVisible();
     await expect(page.getByLabel("Motion")).toHaveValue("off");
-    await expect(again.locator("animateMotion")).toHaveCount(0);
+    await expect(page.locator("animateMotion")).toHaveCount(0);
   });
 
   test("System follows the operator's reduced-motion setting", async ({ page, mockApi }) => {
@@ -188,10 +195,11 @@ test.describe("the factory canvas", () => {
     await page.goto("/app/planner");
     const svg = await openPlate(page);
     await expect(page.getByLabel("Motion")).toHaveValue("system");
-    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    await expect(page.locator("animateMotion")).toHaveCount(0);
     await expect(svg.locator('[data-glyph="train"]')).toHaveCount(1);
     await page.emulateMedia({ reducedMotion: "no-preference" });
-    await expect.poll(() => svg.locator("animateMotion").count()).toBeGreaterThanOrEqual(1);
+    await expect.poll(() => page.locator("[data-march-layer] animateMotion").count()).toBeGreaterThanOrEqual(1);
+    await expect(svg.locator("animateMotion")).toHaveCount(0);
   });
 
   test("hides what only feeds a card behind a count, Escape restores it, and storage folds into chips", async ({ page, mockApi }, testInfo) => {
@@ -539,6 +547,64 @@ test("destination caps move in the march layer under their cap, stop with Motion
   for (const run of [fitted, allInView, off]) expect(run.frames).toBeGreaterThan(10);
   // The lines' regression bound (desktop): moving caps (and lines) at the fitted view cost at most twice Motion Off's p95
   // plus a frame, which a cap animated inside the canvas would fail.
+  if (testInfo.project.name === "desktop") expect(fitted.p95, JSON.stringify(result.frameMs)).toBeLessThanOrEqual(2 * off.p95 + 17);
+});
+
+// ADR-0062 amendment build PR 4: a transport is a still double line and its glyph rides it by SVG animateMotion in the march
+// layer, never in the canvas (an animateMotion there repaints the whole canvas every frame, as a dash did, #808), at most
+// GLYPH_MOVE_MAX in view, still with Motion Off; and the frame times with everything moving at once (the caps' 48-factory
+// overview, its lines and caps, and 48 transports), under the lines' regression bound.
+test("transport glyphs move in the march layer under their cap, stop with Motion Off, and record their frame times (48 transports)", async ({ page, mockApi }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await mockApi("planner-transports-large");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Factories: 48 factories/ });
+  await expect(svg).toBeVisible({ timeout: 15_000 });
+  const doubles = svg.locator('[data-edge-layer="lines"] [data-edge][data-double]');
+  await expect(doubles).toHaveCount(48);
+  // Every transport's line is a double line (its gap in the canvas colour), and none of them marches.
+  await expect(svg.locator("[data-double] > [data-double-gap]")).toHaveCount(48);
+  const layer = page.locator("[data-march-layer]");
+  const moving = layer.locator("[data-march-glyphs] g[data-moving]");
+  await expect.poll(() => moving.count()).toBeGreaterThan(0);
+  expect(await moving.count()).toBeLessThanOrEqual(GLYPH_MOVE_MAX);
+  await expect(svg.locator("animateMotion, [data-march], [class*='animate-flow']")).toHaveCount(0);
+  await expect(svg.locator("[style]")).toHaveCount(0);
+  await expect(layer.locator("[style]")).toHaveCount(0);
+  const doubleEdges = new Set(await doubles.evaluateAll((gs) => gs.map((g) => g.getAttribute("data-edge"))));
+  for (const index of await layer.locator("[data-march-edge]").evaluateAll((ms) => ms.map((m) => m.getAttribute("data-march-edge")))) {
+    expect(doubleEdges.has(index), `transport ${index} marches`).toBe(false);
+  }
+
+  const fitted = frameSummary(await frameTimes(page, 2_000));
+  const fittedMoving = await moving.count();
+  await page.getByRole("group", { name: /^Graph viewport/ }).focus();
+  for (let i = 0; i < 12; i++) await page.keyboard.press("Minus");
+  await expect.poll(() => moving.count()).toBeGreaterThan(0);
+  const allInView = frameSummary(await frameTimes(page, 2_000));
+  const allInViewMoving = await moving.count();
+  expect(allInViewMoving).toBeLessThanOrEqual(GLYPH_MOVE_MAX);
+
+  await page.getByLabel("Motion").selectOption("off");
+  await expect(layer).toHaveCount(0);
+  // Still, every glyph stands at rest in its pill.
+  await expect(svg.locator('[data-moving="false"]')).toHaveCount(48);
+  const off = frameSummary(await frameTimes(page, 2_000));
+
+  const result = {
+    project: testInfo.project.name,
+    transports: await doubles.count(),
+    cap: GLYPH_MOVE_MAX,
+    moving: { fitted: fittedMoving, allInView: allInViewMoving },
+    frameMs: { fitted, allInView, off },
+  };
+  await testInfo.attach("transport-frame-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
+  console.info(`[ADR-0062 PR 4 transport frame times] ${JSON.stringify(result)}`);
+  for (const run of [fitted, allInView, off]) expect(run.frames).toBeGreaterThan(10);
+  // The lines' regression bound (desktop): glyphs, lines and caps moving at the fitted view cost at most twice Motion Off's
+  // p95 plus a frame, which a glyph animated inside the canvas would fail.
   if (testInfo.project.name === "desktop") expect(fitted.p95, JSON.stringify(result.frameMs)).toBeLessThanOrEqual(2 * off.p95 + 17);
 });
 
