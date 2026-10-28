@@ -14,7 +14,7 @@ export function ShowAllRows<T>({ rowCap, noun }: { rowCap: RowCap<T>; noun: stri
         {expanded ? `Showing all ${total} ${noun}.` : `Showing ${visible.length} of ${total} ${noun}.`}
       </p>
       <button ref={toggleRef} type="button" onClick={expanded ? showFewer : showAll}>
-        {expanded ? `Show only the first ${cap}` : `Show all ${total} ${noun}`}
+        {expanded ? `Show only the first ${cap} ${noun}` : `Show all ${total} ${noun}`}
       </button>
     </div>
   );

@@ -61,7 +61,7 @@ describe("FactoryPanel row cap (ADR-0062 F.5)", () => {
   it("Show fewer caps the list again and keeps focus on the control", () => {
     render(<FactoryPanel snapshot={factoryOf(120)} />);
     fireEvent.click(screen.getByRole("button", { name: "Show all 120 machines" }));
-    const fewer = screen.getByRole("button", { name: "Show only the first 50" });
+    const fewer = screen.getByRole("button", { name: "Show only the first 50 machines" });
     fewer.focus();
     fireEvent.click(fewer);
     expect(names()).toHaveLength(50);
@@ -98,6 +98,36 @@ describe("FactoryPanel row cap (ADR-0062 F.5)", () => {
     expect(names()).toHaveLength(121);
     // Focus moved once, on the click; the poll moves nothing.
     expect(screen.getByRole("rowheader", { name: "Machine 051" })).toHaveFocus();
+  });
+
+  it("a list that shrinks under the cap while expanded drops the control, and moves no focus when it grows back", () => {
+    const { rerender } = render(<FactoryPanel snapshot={factoryOf(120)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show all 120 machines" }));
+    rerender(<FactoryPanel snapshot={factoryOf(40)} />);
+    expect(names()).toHaveLength(40);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    outside.focus();
+    rerender(<FactoryPanel snapshot={factoryOf(120)} />);
+    expect(outside).toHaveFocus();
+    outside.remove();
+  });
+
+  it("a poll that shrinks an expanded list but keeps it over the cap leaves the toggle and its count right", () => {
+    const { rerender } = render(<FactoryPanel snapshot={factoryOf(120)} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show all 120 machines" }));
+    rerender(<FactoryPanel snapshot={factoryOf(70)} />);
+    expect(names()).toHaveLength(70);
+    expect(screen.getByRole("status")).toHaveTextContent("Showing all 70 machines.");
+    expect(screen.getByRole("button", { name: "Show only the first 50 machines" })).toBeInTheDocument();
+  });
+
+  it("an empty filter result shows no cap control", () => {
+    render(<FactoryPanel snapshot={factoryOf(120)} />);
+    search("no such machine");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Show all/ })).not.toBeInTheDocument();
   });
 
   it("a search reaches a machine past row 50, and the cap control goes once the list fits", () => {
