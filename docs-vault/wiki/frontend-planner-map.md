@@ -65,7 +65,15 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
     `aria-current="page"` on the last) shows once anything nests. A level change focuses the new level's heading.
   - `overviewScene(graph, models, path, tree)` draws the parent's parts (top level for an empty path), each group owned
     by its shown card (`levelOwner`), so flows inside one card vanish and flows that leave the parent are not drawn;
-    `Scene.path` and the name "Factories in <parent>". Merge picks only plain factories at the top level until PR 5.
+    `Scene.path` and the name "Factories in <parent>".
+  - Editing (build PR 5, same flag; ADR-0061 Decision 6 and its note): the overview's picks (Select tool or Tables ticks)
+    are the level's cards, parents too, at any level, never an own-machines card. `MergeBar` adds "Group into a new
+    factory" (name form; picked automatic factories are designated in the same replace) and "Move to…" (`MoveForm`, the
+    destinations `moveTargets` accepts), each disabled with its reason; a parent has Ungroup (`ParentControls`, on its
+    Tables card and under its level's heading, stepping up out of a removed level). `designationOps.ts`'s `plan`
+    simulates each change: it removes parents left empty, up the tree, and refuses depth, cycle and overlap in the
+    server's words (`designationText.ts` maps the 409s to the same). Undo restores `parentId` explicitly. Dissolve moves
+    a parent's children up, and a split's new factory keeps its source's parent. The demo store carries `parentId`.
   - Blow up (build PR 4, same flag): `overviewScene(..., expanded)` replaces each expanded card by a frame of its parts (a
     parent's factories, or a factory's groups as group cards), depth first, at most `EXPAND_MAX_DEPTH` (2) frames deep and
     `EXPAND_MAX_CARDS` (60, measured: see the ADR's note) cards; flows re-aggregate at the finest card. `Card.blowUp`

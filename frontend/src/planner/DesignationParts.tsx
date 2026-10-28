@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { PlannerNode } from "@satisfactory-dash/shared";
 import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
 import { useDesignationChanges } from "./designationChanges";
 import { useDesignations } from "./DesignationContext";
 import { membersOf } from "./designationMatch";
-import { dissolveRequest } from "./designationOps";
+import { dissolveRequest, ungroupRequest } from "./designationOps";
 import { useRun } from "./useRun";
 import { ALL_MISSING_TEXT, PlanProblem, claimedText, designationErrorText, missingText, nameProblem } from "./designationText";
 import type { FactoryModel } from "./graph/hierarchy";
@@ -98,6 +98,53 @@ export function DesignatedMarker() {
 }
 
 /**
+ * A parent factory (ADR-0061 Decision 6, only with `planner.nesting`, the only way a parent exists): "Designated" and, for
+ * owners and admins, Ungroup: its factories move up a level, as one replace with an undo offer. A parent that owns no
+ * machines goes with it (`onGone`, so the page can step up out of it); one that owns some stays as their factory.
+ */
+export function ParentControls({ model, onGone }: { model: FactoryModel; onGone?: (() => void) | undefined }) {
+  const { canWrite, designations, writes } = useDesignations();
+  const changes = useDesignationChanges();
+  const { busy, error, run } = useRun();
+  const reasonId = useId();
+  const list = designations?.designations;
+  const parent = list?.find((d) => d.id === model.factory.designationId);
+  if (!canWrite || writes === null || changes === null || list === undefined || parent === undefined) return <DesignatedMarker />;
+  const built = ungroupRequest({ all: list, parent });
+  const above = parent.parentId == null ? undefined : list.find((d) => d.id === parent.parentId)?.name;
+  const message = `Ungrouped ${parent.name}: its factories are now ${above === undefined ? "at the top level" : `in ${above}`}.`;
+  return (
+    <div className="grid content-start gap-2">
+      <DesignatedMarker />
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          aria-disabled={!built.ok}
+          aria-describedby={built.ok ? undefined : reasonId}
+          aria-label={`Ungroup ${parent.name}`}
+          onClick={() => {
+            if (!built.ok) return;
+            void run(() => changes.apply(built, { message, undoLabel: "Undo" })).then((done) => {
+              if (done && built.request.expect.some((e) => e.id === parent.id) && !built.request.put.some((p) => p.id === parent.id)) onGone?.();
+            });
+          }}
+          className="min-h-touch"
+        >
+          Ungroup
+        </button>
+        {!built.ok && (
+          <span id={reasonId} className="text-sm text-muted">
+            {built.reason}
+          </span>
+        )}
+      </div>
+      <ErrorLine error={error} />
+    </div>
+  );
+}
+
+/**
  * A designated factory's status from the designation read (ADR-0055 Decision 5): what an older designation claimed, what
  * is no longer found (with Clean up) and an unmatched one (listed, never deleted). Owners and admins also get Rename and Remove.
  */
@@ -124,7 +171,8 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
   const changes = useDesignationChanges();
   if (designation === undefined || match === undefined) return <DesignatedMarker />;
   // ADR-0055 Decision 12: with revisions (a backend that has replace) Remove is Dissolve, with an undo offer after it.
-  const dissolving = designation.revision !== undefined && changes !== null ? dissolveRequest(designation) : null;
+  // ADR-0061: with the whole list, its factories (if any) move up and a parent it leaves empty goes too.
+  const dissolving = designation.revision !== undefined && changes !== null ? dissolveRequest(designation, designations?.designations) : null;
   const dissolve =
     dissolving === null || !dissolving.ok || changes === null
       ? null

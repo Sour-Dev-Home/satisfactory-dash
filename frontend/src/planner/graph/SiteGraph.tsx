@@ -485,6 +485,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const overviewPicks = factoryPicks !== undefined && scene.level === "overview";
   const selectMode = selecting && (selection !== undefined || overviewPicks);
   const pickingFactories = selectMode && overviewPicks;
+  // ADR-0061 Decision 6: with the tree (the `planner.nesting` flag) the picks also group and move. `blowUp` is that flag
+  // (PlannerPanel passes `nesting` to both), so the hint follows the same switch as the bar.
+  const pickFor = blowUpTree !== undefined ? "to merge, group or move" : "for a merge";
   const [lasso, setLasso] = useState<readonly Point[] | null>(null);
   const lassoRef = useRef<{ id: number; points: Point[]; add: boolean } | null>(null);
   // A filter item that left the scene (a poll changed the edges) falls back to "all items".
@@ -1292,8 +1295,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         {pickingFactories
           ? (
               <>
-                <span className="sm:hidden">Tap factories to pick them for a merge.</span>
-                <span className="hidden sm:inline">Click factories to pick them for a merge; Escape clears.</span>
+                <span className="sm:hidden">Tap factories to pick them {pickFor}.</span>
+                <span className="hidden sm:inline">Click factories to pick them {pickFor}; Escape clears.</span>
               </>
             )
           : selectMode
@@ -1310,8 +1313,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               scene.level === "overview" && (
                 // One line at any width: Select works everywhere; a keyboard or mouse also has Shift.
                 <>
-                  <span className="sm:hidden">Turn on Select to pick factories for a merge.</span>
-                  <span className="hidden sm:inline">Turn on Select (or Shift-click) to pick factories for a merge.</span>
+                  <span className="sm:hidden">Turn on Select to pick factories {pickFor}.</span>
+                  <span className="hidden sm:inline">Turn on Select (or Shift-click) to pick factories {pickFor}.</span>
                 </>
               )}
       </p>

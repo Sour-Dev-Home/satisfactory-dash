@@ -66,10 +66,13 @@ export function applyReplace(
   const stamp = new Date(now).toISOString();
   const written: StoredDesignation[] = body.put.map((p) => {
     const before = p.id === undefined ? undefined : byId.get(p.id);
+    // ADR-0061: an update in place without `parentId` keeps its parent; an insert without one is top level.
     if (before !== undefined && expected.has(before.id)) {
-      return { ...before, name: p.name, members: [...p.members], updatedAt: stamp, revision: before.revision + 1 };
+      const parentId = p.parentId === undefined ? before.parentId : p.parentId;
+      return { ...before, name: p.name, members: [...p.members], updatedAt: stamp, revision: before.revision + 1, ...(parentId === undefined ? {} : { parentId }) };
     }
-    return { id: p.id ?? newId(), name: p.name, mode: "core", members: [...p.members], createdAt: p.createdAt ?? stamp, updatedAt: stamp, revision: 1 };
+    const parentId = p.parentId ?? null;
+    return { id: p.id ?? newId(), name: p.name, mode: "core", members: [...p.members], createdAt: p.createdAt ?? stamp, updatedAt: stamp, revision: 1, ...(parentId === null ? {} : { parentId }) };
   });
   const kept = new Set(written.map((d) => d.id));
   return {
