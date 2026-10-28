@@ -25,9 +25,11 @@ function Pad({ count }: { count: number }) {
  */
 function Frame({ head, children, ...props }: { head: ReactNode; children: ReactNode } & ComponentProps<"section">) {
   return (
-    <section {...props} className="panel content-start">
-      <div className="flex min-h-touch items-center justify-between gap-3">{head}</div>
-      <div className="grid">{children}</div>
+    // min-w-0 and one 0-min column at every grid level: a line that never wraps would otherwise size its track to the
+    // whole text and push the page wider than a phone, instead of being cut by `truncate`.
+    <section {...props} className="panel min-w-0 grid-cols-1 content-start">
+      <div className="flex min-h-touch min-w-0 items-center justify-between gap-3">{head}</div>
+      <div className="grid min-w-0 grid-cols-1">{children}</div>
     </section>
   );
 }
@@ -66,11 +68,11 @@ export function BottleneckSummary({ data }: { data: Bottlenecks }) {
         <p className={cn(ROW, "m-0 text-muted")}>All machines are fed and flowing.</p>
       ) : (
         // Tailwind's reset drops the markers, and Safari then drops the list role: say it.
-        <ol role="list" aria-label="Worst bottlenecks" className="grid">
+        <ol role="list" aria-label="Worst bottlenecks" className="grid min-w-0 grid-cols-1">
           {top.map((f) => (
             // One line, the same height as ROW: only the machine's name is cut, so the state and the count always show.
             // The spaces between the parts are for the text (copy, screen readers); the gap does the spacing on screen.
-            <li key={f.buildingId} className="flex min-h-lh gap-1 whitespace-nowrap py-0.5 text-sm">
+            <li key={f.buildingId} className="flex min-h-lh min-w-0 gap-1 whitespace-nowrap py-0.5 text-sm">
               {/* Underfed in the info colour and backed up in amber, as in the full list (#586). */}
               <span className={cn("shrink-0", f.state === "underfed" ? "text-info" : "text-warn")}>{stateLabel(f.state)} ·</span>{" "}
               <span data-machine="" className="min-w-0 truncate text-fg">{machineLabel(f)}</span>
@@ -109,14 +111,14 @@ export function BottleneckSummarySkeleton() {
  */
 function SummaryError({ error }: { error: unknown }) {
   return (
-    <div className="grid">
-      <div aria-hidden="true" className="invisible col-start-1 row-start-1">
+    <div className="grid grid-cols-1">
+      <div aria-hidden="true" className="invisible col-start-1 row-start-1 min-w-0">
         <Frame head={null}>
           <Pad count={BOTTLENECK_SUMMARY_CAP} />
         </Frame>
       </div>
       {error != null && (
-        <div className="col-start-1 row-start-1 grid">
+        <div className="col-start-1 row-start-1 grid min-w-0 grid-cols-1">
           {/* Its own title, so the page doesn't carry two "Bottlenecks" headings while the full list says the same. */}
           <PanelError error={error} title="Bottleneck summary" />
         </div>

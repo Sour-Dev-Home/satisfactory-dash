@@ -60,7 +60,7 @@ export function FactoryView() {
   // time it shows, the table and "Since yesterday" are usually both here; a slow history read shows its
   // reserved box instead, and the table never waits on it past the page budget.
   return (
-    <Loadable pending={firstLoad} skeleton={<FactorySkeleton />} className="grid gap-4">
+    <Loadable pending={firstLoad} skeleton={<FactorySkeleton />} className="grid grid-cols-1 gap-4">
       {/* The most actionable part first (ADR-0062 F.1), in a fixed-height box so its late read moves nothing below it. */}
       <ErrorBoundary label="Bottleneck summary">
         <BottleneckSummaryView />
