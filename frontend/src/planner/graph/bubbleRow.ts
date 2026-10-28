@@ -3,15 +3,15 @@ import type { CanvasFlow } from "./canvasScene";
 import type { FlowQuality } from "./hierarchy";
 import { itemIconText } from "./itemIcons";
 
-/** A bubble's diameter and the gap between two (ADR-0060 Decision 1; 32, not 24, since the owner found the icons too
- *  small on the live site, 2026-10-27). */
-export const BUBBLE_D = 32;
+/** A bubble's diameter and the gap between two (ADR-0060 Decision 1; 40: the owner found 24 too small on the live site,
+ *  then 32 still too small, both 2026-10-27). */
+export const BUBBLE_D = 40;
 export const BUBBLE_GAP = 4;
 /** A line shows at most this many bubbles, then a "+k" chip (owner answer 5). */
 export const BUBBLE_MAX = 3;
 /** The "+k" chip's width and height, in step with the bubble. */
-export const CHIP_W = 30;
-export const CHIP_H = 24;
+export const CHIP_W = 38;
+export const CHIP_H = 30;
 /** The icon's size inside a bubble: the disc less a thin ring. */
 export const BUBBLE_ICON = BUBBLE_D - 4;
 /** Below this zoom a bubble is a plain disc: no image, no initials, no rate text (ADR-0060 Decision 7). */
