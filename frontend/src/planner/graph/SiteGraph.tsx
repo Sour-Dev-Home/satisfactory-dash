@@ -286,7 +286,7 @@ export type GraphTarget =
     }
   | { kind: "factory"; model: FactoryModel };
 
-/** The groups picked to designate (ADR-0055 Decision 5), shared with the Groups table's ticks. */
+/** The groups picked to designate (ADR-0055 Decision 5), shared with the outline rows' Select toggles. */
 export interface CanvasSelection {
   selected: ReadonlySet<string>;
   replace: (nodeKeys: ReadonlySet<string>) => void;
@@ -336,7 +336,7 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
  * and -), fit, an item filter that lights what carries the item upstream and downstream, and a side panel for a group's
  * machines. The picture is `role="img"`; the keyboard reaches each card through a list of real buttons beside it (an
  * image's children are presentational, so buttons inside it would be hidden from assistive tech), and the focused card is
- * ringed in the picture. The Tables view is the full text alternative. With a selection, Select mode (or Shift+drag)
+ * ringed in the picture. The outline is the full text alternative. With a selection, Select mode (or Shift+drag)
  * draws a lasso that picks the cards whose centre it encloses (ADR-0055 Decision 5); in Select mode a click (or a card's
  * button) picks or unpicks one card instead of opening it.
  */
@@ -1994,7 +1994,7 @@ function MovingGlyph({ glyph, dim }: { glyph: GlyphCandidate<LaidEdge>; dim: boo
  * A flow's label with a halo: a bubble per item it carries (its icon, up to three, then a "+k" chip) over the short rate
  * text (ADR-0060 Decision 1), and for a transport the mode's glyph at rest (the march layer draws it when it moves). Above
  * every line.
- * The words for each item stay in the `<title>` and the Tables view.
+ * The words for each item stay in the `<title>` and the outline.
  */
 function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }: EdgeProps) {
   const transport = isTransport(e.flow);
@@ -2252,7 +2252,7 @@ function CardView({
   }
   const stacked = card.kind === "bubble" || card.kind === "fold";
   // Marks mode (ADR-0062 Decision 2): the stalled note's row keeps its place (the card's size is the layout's), the glyph
-  // replaces the word; the word stays in the `<title>`, the keyboard button and the Tables view.
+  // replaces the word; the word stays in the `<title>`, the keyboard button and the outline.
   const markAt = marks && card.stalled !== undefined && card.mutedFrom !== undefined ? card.mutedFrom : null;
   return (
     <g
@@ -2528,7 +2528,7 @@ function MachinesFrame({
   );
 }
 
-/** The line styles, drawn as samples with the words of the tables (ADR-0050 Decision 2), and the glyphs a transport can wear. */
+/** The line styles, drawn as samples with the words of the outline (ADR-0050 Decision 2), and the glyphs a transport can wear. */
 const LEGEND: readonly { label: string; edge: EdgeStyle }[] = [
   { label: "measured", edge: { mixed: false, carrier: "belt", rate: "measured" } },
   { label: "about (estimated)", edge: { mixed: false, carrier: "belt", rate: "estimated" } },

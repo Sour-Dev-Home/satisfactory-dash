@@ -70,7 +70,7 @@ export function itemRateText(item: Pick<BubbleItem, "rate" | "quality">, unit: C
 
 /**
  * The distinct items across a line's links (its `parts`, or the link itself), ordered by summed rate, highest first, then
- * by name. Links of no known item share one "?" bubble. The full list stays in the edge's `<title>` and the Tables view.
+ * by name. Links of no known item share one "?" bubble. The full list stays in the edge's `<title>` and the outline.
  */
 export function bubbleItems(flow: CanvasFlow): BubbleItem[] {
   const byKey = new Map<string, { item: BubbleItem; parts: CanvasFlow[] }>();

@@ -14,7 +14,7 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await mockApi("planner-group-panel");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
-  // 390 px opens on the tables and 1440 px on the graph (Decision 4): one press either way.
+  // 390 px opens on the outline and 1440 px on the graph (Decision 4): one press either way.
   await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site: 5 groups, 5 connections/ });
   await expect(svg).toBeVisible();

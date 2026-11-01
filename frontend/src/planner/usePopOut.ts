@@ -10,7 +10,7 @@ import { useRun } from "./useRun";
  * ADR-0055 Decision 12: pops one group out of a designated factory into its own, named after it. No dialog; the undo offer
  * follows. Both forms are undefined when the factory cannot be split (a viewer, a suggestion, an older backend).
  *
- * A failure shows beside the control that was used: `popOut` (a Tables row) keeps its error here, for the page to show
+ * A failure shows beside the control that was used: `popOut` (an outline row) keeps its error here, for the page to show
  * as `error`; `write` returns the write's promise for a control that keeps its own error (the group panel).
  */
 export function usePopOut(source: SplitSource | null, onStale: () => void) {

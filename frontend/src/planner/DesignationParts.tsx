@@ -259,7 +259,7 @@ export function DesignatedControls({ model }: { model: FactoryModel }) {
   );
 }
 
-/** "Designate selected" over the groups ticked in the table (the keyboard and narrow-screen form of the canvas lasso). */
+/** "Designate selected" over the groups selected in the outline (the keyboard and narrow-screen form of the canvas lasso). */
 export function DesignateBar({ nodes, onDone }: { nodes: readonly PlannerNode[]; onDone: () => void }) {
   const { places, writes } = useDesignations();
   const [naming, setNaming] = useState(false);

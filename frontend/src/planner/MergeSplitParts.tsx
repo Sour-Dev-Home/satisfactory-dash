@@ -273,7 +273,7 @@ function MoveForm({ targets, onMove, onClose }: { targets: readonly MoveTarget[]
 }
 
 /**
- * Inside an opened designated factory: the picked groups (canvas picks or table ticks) become a new factory, "Split into
+ * Inside an opened designated factory: the picked groups (canvas picks or outline Selects) become a new factory, "Split into
  * a new factory", named in place; one group proposes its own name (a pop-out). Members the matcher no longer finds stay
  * with the source.
  */
