@@ -126,3 +126,7 @@ added or removed.
   (with AdSense and Venatus as contrasts) on acceptance, cookies, iframe and login rules, payout and CSP hosts, each cell
   cited to a `raw-sources/ad-network-*` capture; recommends EthicalAds, with acceptance (50k pageviews, developer sites)
   as the main risk.
+- [`../raw-sources/adsense-csp-and-cmp-2026-11-01.md`](../raw-sources/adsense-csp-and-cmp-2026-11-01.md) — ADR-0021
+  amendment 2 build step 1: Google's pages on AdSense and CSP (strict nonce CSP only, no domain list), the Privacy &
+  messaging CMP (certified, deployed by the AdSense tag, revocation call, US state message), limited ads, the crawler
+  login and placement limits, as verbatim excerpts E1-E18.
