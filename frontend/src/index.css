@@ -409,21 +409,22 @@
     color: var(--color-fg-strong);
   }
   /* The Planner outline (ADR-0062 Decision 3) nests headings to h6: they wear the display face too, one step smaller
-     each, and a disclosure button inside a heading reads as the heading (the button rule would set its own face). */
-  [data-planner-outline] :is(h5, h6) {
+     each, and a disclosure button inside a heading reads as the heading (the button rule would set its own face). The
+     Factory page's grouped machine table (F.2) shares the tree, so it shares these too. */
+  :is([data-planner-outline], [data-machine-groups]) :is(h5, h6) {
     font-family: var(--font-display);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     font-weight: 600;
     color: var(--color-fg-strong);
   }
-  [data-planner-outline] h5 {
+  :is([data-planner-outline], [data-machine-groups]) h5 {
     font-size: 14px;
   }
-  [data-planner-outline] h6 {
+  :is([data-planner-outline], [data-machine-groups]) h6 {
     font-size: 13px;
   }
-  [data-planner-outline] :is(h4, h5, h6, thead th) button {
+  :is([data-planner-outline], [data-machine-groups]) :is(h4, h5, h6, thead th) button {
     font: inherit;
     text-transform: inherit;
     letter-spacing: inherit;

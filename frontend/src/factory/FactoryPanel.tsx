@@ -1,10 +1,29 @@
-import { Fragment, useState, type ReactNode } from "react";
-import { isBackedUpState, type FactoryBuilding, type FactoryResponse, type ProductionRate } from "@satisfactory-dash/shared";
+import { Fragment, useCallback, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  isBackedUpState,
+  type FactoryBuilding,
+  type FactoryResponse,
+  type PlannerDesignation,
+  type ProductionGraph,
+  type ProductionRate,
+} from "@satisfactory-dash/shared";
 import { formatPercent, formatRate, formatTime } from "../format";
 import { DataAge } from "../components/DataAge";
 import { cn } from "../lib/cn";
 import { MACHINES_ANCHOR } from "../lib/deepLinks";
 import { useHashTarget } from "../lib/useHashTarget";
+import { DisclosureHeading } from "../ui/Disclosure";
+import { useDisclosures } from "../ui/useDisclosures";
+import {
+  backedUpIn,
+  groupMachines,
+  narrowGrouping,
+  OTHER_MACHINES_KEY,
+  startsOpen,
+  type MachineFactory,
+  type MachineGroup,
+  type MachineGrouping,
+} from "./machineGroups";
 import { machineState } from "./machineState";
 import { ShowAllRows } from "./ShowAllRows";
 import { useRowCap } from "./useRowCap";
@@ -30,6 +49,8 @@ const FILTERS: { id: Filter; label: string; match: (b: FactoryBuilding) => boole
  * `refetchFailed`: the last refresh failed, so this snapshot is what the cache kept.
  * `search`/`onSearch`: the view keeps the search in the URL (?q=, #351); without them it's local.
  * `nav`: the page's in-page nav (ADR-0062 F.4), shown in the filter bar so the two stick as one.
+ * `graph`, `designations`, `nesting`: the Planner's reads (ADR-0062 F.2), which group the table by factory and group;
+ * without the graph the table is flat. `groupsUnavailable`: the graph read failed, so the table says why it is flat.
  */
 export function FactoryPanel({
   snapshot,
@@ -37,12 +58,20 @@ export function FactoryPanel({
   search: searchProp,
   onSearch,
   nav,
+  graph,
+  designations,
+  nesting = false,
+  groupsUnavailable = false,
 }: {
   snapshot: FactoryResponse;
   refetchFailed?: boolean;
   search?: string;
   onSearch?: (search: string) => void;
   nav?: ReactNode;
+  graph?: ProductionGraph | undefined;
+  designations?: readonly PlannerDesignation[] | undefined;
+  nesting?: boolean;
+  groupsUnavailable?: boolean;
 }) {
   useHashTarget(isMachinesAnchor);
   const { buildings } = snapshot.data;
@@ -54,13 +83,17 @@ export function FactoryPanel({
 
   const active = FILTERS.find((f) => f.id === filter) ?? FILTERS[0];
   const needle = search.trim().toLowerCase();
-  const shown = buildings.filter(
-    (b) =>
-      active.match(b) &&
-      (!needle || b.name.toLowerCase().includes(needle) || (b.recipe ?? "").toLowerCase().includes(needle)),
-  );
-  // ADR-0062 F.5: after the filter and search, so a search reaches a machine past the cap. A new filter or search caps again.
-  const rowCap = useRowCap(shown, FACTORY_ROW_CAP, `${filter}\n${needle}`);
+  const filtering = filter !== "all" || needle !== "";
+  const match = (b: FactoryBuilding) =>
+    active.match(b) && (!needle || b.name.toLowerCase().includes(needle) || (b.recipe ?? "").toLowerCase().includes(needle));
+  const shown = buildings.filter(match);
+  // ADR-0062 F.2: grouped by the Planner's factories and groups; null (no graph yet, or one naming none of these machines)
+  // shows the table flat, as one group.
+  const grouping = useMemo(() => groupMachines(buildings, graph, designations, nesting), [buildings, graph, designations, nesting]);
+  const narrowed = grouping === null ? null : narrowGrouping(grouping, filtering ? match : null);
+  // ADR-0062 F.5: the cap applies per group, after the filter and search, so a search reaches a machine past it. A new filter
+  // or search caps every group again.
+  const resetKey = `${filter}\n${needle}`;
   const paused = buildings.filter((b) => b.isPaused).length;
   const noRecipe = buildings.filter((b) => b.recipe === null).length;
   // An older backend sends no ingredients at all: no Inputs column rather than an empty one.
@@ -108,33 +141,14 @@ export function FactoryPanel({
               }
             />
 
+            {groupsUnavailable && <p className="m-0 text-sm text-muted">{GROUPS_UNAVAILABLE}</p>}
             {shown.length === 0 ? (
               <p>No machines match.</p>
+            ) : narrowed === null || grouping === null ? (
+              <MachineTable rows={shown} showInputs={showInputs} resetKey={resetKey} />
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">Machine</th>
-                    <th scope="col">Recipe</th>
-                    {showInputs && <th scope="col">Inputs</th>}
-                    <th scope="col">Outputs</th>
-                    <th scope="col">State</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rowCap.visible.map((building, i) => (
-                    // id is unique within one response; never persisted (stability unverified).
-                    <BuildingRow
-                      key={building.id}
-                      building={building}
-                      showInputs={showInputs}
-                      focusRef={rowCap.expanded && i === FACTORY_ROW_CAP ? rowCap.firstRevealedRef : undefined}
-                    />
-                  ))}
-                </tbody>
-              </table>
+              <MachineSections grouping={narrowed} whole={grouping} filtering={filtering} showInputs={showInputs} resetKey={resetKey} />
             )}
-            <ShowAllRows rowCap={rowCap} noun="machines" />
           </div>
         </>
       )}
@@ -176,6 +190,195 @@ function FilterBar({ nav, search, filters }: { nav?: ReactNode; search?: ReactNo
       )}
       {filters}
     </div>
+  );
+}
+
+const GROUPS_UNAVAILABLE = "The Planner's factories could not be read, so the machines are listed in one table.";
+
+const machines = (n: number) => `${n} ${n === 1 ? "machine" : "machines"}`;
+
+/**
+ * One list of machines (a group, "Other machines", or the whole table while there is nothing to group by), capped at
+ * `FACTORY_ROW_CAP` rows (ADR-0062 F.5) by its own `useRowCap`, so every group has its own "Show all".
+ */
+function MachineTable({ rows, showInputs, resetKey }: { rows: readonly FactoryBuilding[]; showInputs: boolean; resetKey: string }) {
+  const rowCap = useRowCap(rows, FACTORY_ROW_CAP, resetKey);
+  return (
+    <>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Machine</th>
+            <th scope="col">Recipe</th>
+            {showInputs && <th scope="col">Inputs</th>}
+            <th scope="col">Outputs</th>
+            <th scope="col">State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rowCap.visible.map((building, i) => (
+            // id is unique within one response; never persisted (stability unverified).
+            <BuildingRow
+              key={building.id}
+              building={building}
+              showInputs={showInputs}
+              focusRef={rowCap.expanded && i === FACTORY_ROW_CAP ? rowCap.firstRevealedRef : undefined}
+            />
+          ))}
+        </tbody>
+      </table>
+      <ShowAllRows rowCap={rowCap} noun="machines" />
+    </>
+  );
+}
+
+interface SectionsState {
+  isOpen: (key: string) => boolean;
+  toggle: (key: string) => void;
+  filtering: boolean;
+  showInputs: boolean;
+  resetKey: string;
+}
+
+/** A group's disclosure key: apart from a factory's (a node key and a factory key are different kinds of server string). */
+const groupKeyOf = (key: string) => `group\u0001${key}`;
+
+/**
+ * ADR-0062 F.2: the machines by Planner factory (parents, then their parts), then by group, each a disclosure with its
+ * counts; the groups no factory claims and "Other machines" after them. `grouping` is what the filter and search left;
+ * `whole` is before them, for each factory's starting state (over 20 groups starts closed, like the outline). While
+ * filtering, every section starts open, so a search shows its hits; a section the viewer closed stays closed.
+ */
+function MachineSections({
+  grouping,
+  whole,
+  filtering,
+  showInputs,
+  resetKey,
+}: {
+  grouping: MachineGrouping;
+  whole: MachineGrouping;
+  filtering: boolean;
+  showInputs: boolean;
+  resetKey: string;
+}) {
+  const closedAtFirst = useMemo(() => {
+    const keys = new Set<string>();
+    const walk = (f: MachineFactory) => {
+      if (!startsOpen(f)) keys.add(f.key);
+      f.parts.forEach(walk);
+    };
+    whole.factories.forEach(walk);
+    return keys;
+  }, [whole]);
+  const defaultOf = useCallback((key: string) => filtering || !closedAtFirst.has(key), [filtering, closedAtFirst]);
+  const { isOpen, toggle } = useDisclosures(defaultOf);
+  const state: SectionsState = { isOpen, toggle, filtering, showInputs, resetKey };
+  return (
+    <ul data-machine-groups="" aria-label="Machines by factory" className="m-0 grid list-none gap-4 p-0">
+      {grouping.factories.map((f) => (
+        <FactorySection key={f.key} factory={f} level={4} state={state} />
+      ))}
+      {grouping.groups.map((g) => (
+        <GroupSection key={g.key} group={g} level={4} state={state} />
+      ))}
+      {grouping.other.length > 0 && (
+        <OtherSection rows={grouping.other} total={whole.otherTotal} level={4} state={state} />
+      )}
+    </ul>
+  );
+}
+
+/**
+ * " · 24 machines · 2 backed up", or " · 3 of 24 machines" while filtering: read with the heading, outside its button.
+ * `counted`: the title already counts them ("8× Constructor, ..."), so only a filter's "3 of 8" is added.
+ */
+function Counts({ shown, total, backedUp, filtering, counted = false }: { shown: number; total: number; backedUp: number; filtering: boolean; counted?: boolean }) {
+  const narrowed = filtering && shown < total;
+  const count = narrowed ? `${shown} of ${machines(total)}` : counted ? null : machines(total);
+  if (count === null && backedUp === 0) return null;
+  return (
+    <span className="text-sm font-normal normal-case tracking-normal text-muted">
+      {count !== null && ` · ${count}`}
+      {backedUp > 0 && ` · ${backedUp} backed up`}
+    </span>
+  );
+}
+
+function FactorySection({ factory, level, state }: { factory: MachineFactory; level: number; state: SectionsState }) {
+  const ids = useId();
+  const open = state.isOpen(factory.key);
+  return (
+    <li className="grid gap-3" data-machine-factory="">
+      <DisclosureHeading
+        level={level}
+        open={open}
+        onToggle={() => state.toggle(factory.key)}
+        controls={`${ids}-body`}
+        after={<Counts shown={factory.machineCount} total={factory.total} backedUp={backedUpIn(factory)} filtering={state.filtering} />}
+      >
+        {factory.name}
+      </DisclosureHeading>
+      <div id={`${ids}-body`} hidden={!open}>
+        {open && (
+          <ul aria-label={`${factory.parts.length > 0 ? "Parts" : "Groups"} of ${factory.name}`} className="m-0 grid list-none gap-4 p-0 ps-4">
+            {factory.parts.map((p) => (
+              <FactorySection key={p.key} factory={p} level={level + 1} state={state} />
+            ))}
+            {factory.groups.map((g) => (
+              <GroupSection key={g.key} group={g} level={level + 1} state={state} />
+            ))}
+          </ul>
+        )}
+      </div>
+      {!open && <p className="m-0 text-sm text-muted">{factory.groupCount} {factory.groupCount === 1 ? "group" : "groups"}, folded</p>}
+    </li>
+  );
+}
+
+function GroupSection({ group, level, state }: { group: MachineGroup; level: number; state: SectionsState }) {
+  return <ListSection sectionKey={groupKeyOf(group.key)} title={group.label} counted rows={group.buildings} total={group.total} level={level} state={state} />;
+}
+
+/** Machines no group names: the graph is older than the factory read, or its caps left them out. */
+function OtherSection({ rows, total, level, state }: { rows: readonly FactoryBuilding[]; total: number; level: number; state: SectionsState }) {
+  return <ListSection sectionKey={OTHER_MACHINES_KEY} title="Other machines" rows={rows} total={total} level={level} state={state} />;
+}
+
+function ListSection({
+  sectionKey,
+  title,
+  counted = false,
+  rows,
+  total,
+  level,
+  state,
+}: {
+  sectionKey: string;
+  title: string;
+  counted?: boolean;
+  rows: readonly FactoryBuilding[];
+  total: number;
+  level: number;
+  state: SectionsState;
+}) {
+  const ids = useId();
+  const open = state.isOpen(sectionKey);
+  return (
+    <li className="grid gap-3" data-machine-group="">
+      <DisclosureHeading
+        level={level}
+        open={open}
+        onToggle={() => state.toggle(sectionKey)}
+        controls={`${ids}-body`}
+        after={<Counts shown={rows.length} total={total} backedUp={rows.filter(isBackedUpState).length} filtering={state.filtering} counted={counted} />}
+      >
+        {title}
+      </DisclosureHeading>
+      <div id={`${ids}-body`} hidden={!open} className="grid gap-3">
+        {open && <MachineTable rows={rows} showInputs={state.showInputs} resetKey={state.resetKey} />}
+      </div>
+    </li>
   );
 }
 

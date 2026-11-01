@@ -141,6 +141,7 @@ import {
 } from "./selfServeMocks";
 import { compatPolicy, compatQuiet, reporting } from "./updateMocks";
 import { treeGraphResponse, treeWorld } from "./plannerTree";
+import { factoryForGraph, graphResponse, groupedFactoriesWorld, manyPlateConstructorsWorld } from "./factoryGroups";
 import { approved, errorPairingForbidden, errorPairingNotFound, errorPairingRateLimited, lookedUp } from "./pairingMocks";
 
 // Named UI states, built only from the shared fixtures. One source for both consumers:
@@ -646,15 +647,22 @@ export const plannerTransportsLarge = (() => {
   return { ...plannerCapsLarge, data: { ...base, transports, topologyHash: "sha256-planner-transports-large" } };
 })();
 
-/** ADR-0062 F.5: the mixed factory's five machines twelve times over (60, each its own id), past the table's 50-row cap. */
-const factoryManyMachines = {
-  ...factoryMixed,
-  data: {
-    ...factoryMixed.data,
-    buildings: Array.from({ length: 12 }, (_, n) => factoryMixed.data.buildings.map((b) => ({ ...b, id: `${b.id}-${n + 1}` }))).flat(),
-    backedUpCount: factoryMixed.data.backedUpCount * 12,
-  },
-};
+/** ADR-0062 F.5 with F.2: the factories world with 55 Iron Plate constructors, one group past the 50-row cap. */
+const factoryManyMachines = manyPlateConstructorsWorld(55);
+
+/** ADR-0062 F.2: the factories world, its graph and factory read naming the same machines, plus one no group names. */
+const factoryGrouped = groupedFactoriesWorld();
+
+/** ADR-0062 F.2 with ADR-0061: `plannerTree.ts`' three-level world, with a factory read of its machines, for nesting on. */
+const factoryGroupedNested = (() => {
+  const { graph: tree, designations } = treeWorld();
+  const { graph, factory } = factoryForGraph(tree);
+  return {
+    factory: ok(factory),
+    productionGraph: ok(graphResponse(graph)),
+    plannerDesignations: ok({ designations, matches: designations.map((d) => ({ designationId: d.id, matched: d.members.length, missing: 0 })) }),
+  } satisfies Partial<Record<RouteKey, MockResponse>>;
+})();
 
 /** The factory read with the planner fixture's constructor manifold in it (Build_ConstructorMk1_C_1..8), for the graph's group panel. */
 const factoryWithPlannerManifold = {
@@ -909,8 +917,15 @@ export const SCENARIOS = {
   "map-live-error": { mapLive: fail(502, errorUpstreamUnreachable) },
   // Ingredients and every machine state (ADR-0027), plus an unknown state, none, and an older backend.
   "factory-states": { factory: ok(factoryStatesAndIngredients) },
-  // ADR-0062 F.5: more machines than the table's first render shows, so it ends in "Showing 50 of 60" and "Show all".
-  "factory-many-machines": { factory: ok(factoryManyMachines) },
+  // ADR-0062 F.5 with F.2: one group of more machines than its first render shows ("Showing 50 of 55" and "Show all"),
+  // the factory's other groups under the cap.
+  "factory-many-machines": { factory: ok(factoryManyMachines.factory), productionGraph: ok(graphResponse(factoryManyMachines.graph)) },
+  // ADR-0062 F.2: the machine table grouped by the Planner's factories and groups, and one machine no group names.
+  "factory-grouped": { factory: ok(factoryGrouped.factory), productionGraph: ok(graphResponse(factoryGrouped.graph)) },
+  // F.2 with nesting on (ADR-0061): parents, then their parts.
+  "factory-grouped-nested": factoryGroupedNested,
+  // F.2, the fallback: the graph read fails (its 503 without a database), so the table is flat and says why.
+  "factory-groups-error": { factory: ok(factoryGrouped.factory), productionGraph: fail(503, errorServiceUnavailable) },
   // ADR-0048 (#349), the Bottlenecks section: an older FRM (item level, update note), connection data over the cap,
   // nothing to report, and a newer backend's unknown step kind and note.
   "bottlenecks-old-frm": { bottlenecks: ok(bottlenecksItemLevelOldFrm) },
