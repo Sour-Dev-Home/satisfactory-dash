@@ -674,12 +674,13 @@ test("the keyboard reaches a destination cap from the cards, moves between caps,
   await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Factories/ });
   await expect(svg).toBeVisible();
-  // One tab stop for every cap, right after the cards' buttons.
+  // One tab stop for every cap, after the cards' buttons and their Expand controls (ADR-0061 Decision 5).
   const caps = page.getByRole("list", { name: "Where the cards' flows end" }).getByRole("button");
   await expect(caps).toHaveCount(2);
   await expect(caps.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
-  const cards = page.getByRole("list", { name: "Factories in the graph" }).getByRole("button");
-  await cards.last().focus();
+  const opens = page.getByRole("list", { name: "Open and close parts of the graph" }).getByRole("button");
+  await expect(opens.first()).toBeAttached();
+  await opens.last().focus();
   await page.keyboard.press("Tab");
   await expect(caps.first()).toBeFocused();
   await expect(caps.first()).toHaveAccessibleName("Iron Plate factory sends 48 items/min to storage, slow");
