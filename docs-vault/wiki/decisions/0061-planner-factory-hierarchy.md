@@ -182,6 +182,12 @@ are relative to `frontend/src/planner/` unless they say otherwise. Nothing here 
 - One nullable column `parent_id` on the designations table, a self-referencing foreign key with `ON DELETE RESTRICT`, by an
   additive migration. New persistent state and a new fact the graph builder reads, hence an ADR.
 - Feature flag `planner.nesting` in `plannerPrefs.ts`, off by default until the owner reviews it on the demo, as ADR-0060 did.
+- **Note (2026-10-28, build PR 6: the demo).** The demo world designates its iron works as a three-level tree ("Main base",
+  with its own machines, over "Smelting" and "Components"; "Components", with none, over "Reinforced plates" and "Rods and
+  screws"), beside the top-level plastic line, and the demo build reads `planner.nesting` as on unless it is `off` (`IS_DEMO`
+  is build-time, so production still needs "on"). e2e states `planner-nested-level` and `planner-nested-blown-up` show a
+  parent's level under the breadcrumb and a nested blow-up. **The flag stays until the owner has reviewed nesting on the
+  demo**; removing it is a later PR.
 
 ## Contracts
 

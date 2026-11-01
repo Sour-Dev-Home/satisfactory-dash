@@ -107,7 +107,12 @@ interface StateCase {
   ready?: string;
   /** A viewport width for a layout between the two projects' (#593); runs in the desktop project only. */
   width?: number;
+  /** localStorage set before the page loads, e.g. a feature flag that has no control yet. */
+  storage?: Readonly<Record<string, string>>;
 }
+
+/** ADR-0061: the nesting flag, off by default outside the demo build until the owner's review. */
+const NESTING_ON = { "planner.nesting": "on" } as const;
 
 /** Stands in for the browser's push state before the page loads. */
 async function stubPushBrowser(page: Page, state: "off" | "subscribed" | "denied") {
@@ -497,6 +502,37 @@ const CASES: StateCase[] = [
       await page.getByRole("checkbox", { name: "Select Constructor" }).check();
     },
   },
+  // ADR-0061 build PR 6, with `planner.nesting` on: a parent's level (its own machines beside its two factories, under the
+  // breadcrumb "All factories / Main base / Smelters"), and the overview with Main base and Smelters blown up in place.
+  {
+    scenario: "planner-nested",
+    name: "planner-nested-level",
+    path: "/app/planner",
+    shows: "All factories",
+    clock: FACTORIES_NOW,
+    storage: NESTING_ON,
+    act: async (page) => {
+      await pressButton(page, "Open factory: Main base");
+      await pressButton(page, "Open factory: Smelters");
+      await expect(page.getByRole("navigation", { name: "Factory path" }).locator('[aria-current="page"]')).toHaveText("Smelters");
+    },
+  },
+  {
+    scenario: "planner-nested",
+    name: "planner-nested-blown-up",
+    path: "/app/planner",
+    shows: "Fit to view",
+    clock: FACTORIES_NOW,
+    storage: NESTING_ON,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Graph" }).click();
+      const overview = page.getByRole("img", { name: /^Graph of Factories/ });
+      await canvasMeasured(overview);
+      await pressButton(page, /^Expand Main base in place into its/);
+      await pressButton(page, /^Expand Smelters in place into its/);
+      await expect(overview.locator("[data-blow-up-frame]")).toHaveCount(2);
+    },
+  },
   { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },
   { scenario: "planner-empty", path: "/app/planner", shows: /No sites yet/, clock: PLANNER_NOW },
   { scenario: "planner-old-frm", path: "/app/planner", shows: /Update FRM to 1.5.4/, clock: PLANNER_NOW },
@@ -789,10 +825,15 @@ async function addServer(page: Page, host: string) {
   await page.getByRole("button", { name: "Add server" }).click();
 }
 
-for (const { scenario, shows, path = "/app", name = scenario, act, clock, browser, ready, width } of CASES) {
+for (const { scenario, shows, path = "/app", name = scenario, act, clock, browser, ready, width, storage } of CASES) {
   test(`state: ${name}`, async ({ page, mockApi }, testInfo) => {
     test.skip(width !== undefined && testInfo.project.name !== "desktop", "one narrow-desktop width is enough");
     if (width !== undefined) await page.setViewportSize({ width, height: page.viewportSize()?.height ?? 900 });
+    if (storage) {
+      await page.addInitScript((entries) => {
+        for (const [key, value] of entries) window.localStorage.setItem(key, value);
+      }, Object.entries(storage));
+    }
     await mockApi(scenario);
     if (browser) await stubPushBrowser(page, browser);
     // Date.now() is fixed for every state; timers still run, so polling and React behave as usual.
