@@ -191,6 +191,10 @@ per group.
 - **Pure parts.** `factory/stateFilters.ts` (`STATE_FILTERS`, a Map keyed by filter id; `matchesStates`; `toggleState`).
 - **E2E.** `factory-state-filter`: `factory-states` opened at `?state=backedUp,paused`; a keyboard user turns "No recipe" on
   (Enter) and off (Space), and the URL follows; axe on the result.
+- **Review.** `ui-reviewer` (from the diff, no live check): tokens, names and the pressed mark's colour hold; left for the live
+  look: the toned marks' contrast on an unpressed toggle (the same tones the rows already use as text) and whether idle rows'
+  dashes read as noise in a long table. `test-hunter`: no bugs; added a test for the states and the search together (states
+  OR, search AND, and the empty result).
 
 ## Build plan (each PR from `main`, no stacking)
 

@@ -36,7 +36,6 @@ const isMachinesAnchor = (id: string) => id === MACHINES_ANCHOR;
 /** ADR-0062 F.5: the table's first render shows this many machines, then "Show all", so the page height is bounded. */
 export const FACTORY_ROW_CAP = 50;
 
-
 /**
  * Presentational: one factory snapshot, with in-memory filter and search. Backed-up is
  * information, not an alarm: on a real save a large share of machines is backed up in
@@ -231,7 +230,7 @@ function FilterToggle({
   );
 }
 
-const GROUPS_UNAVAILABLE ="The Planner's factories could not be read, so the machines are listed in one table.";
+const GROUPS_UNAVAILABLE = "The Planner's factories could not be read, so the machines are listed in one table.";
 
 const machines = (n: number) => `${n} ${n === 1 ? "machine" : "machines"}`;
 

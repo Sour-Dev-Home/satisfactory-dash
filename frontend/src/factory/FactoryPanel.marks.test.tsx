@@ -89,6 +89,20 @@ describe("FactoryPanel state filter toggles (ADR-0062 F.3)", () => {
     expect(filterButton("Backed up").querySelector("[data-state-mark]")).not.toHaveClass("text-warn");
   });
 
+  it("narrows by the search as well as the states: the states OR together, the search ANDs with them", () => {
+    render(<FactoryPanel snapshot={factoryStatesAndIngredients} />);
+    fireEvent.click(filterButton("Backed up"));
+    fireEvent.click(filterButton("Paused"));
+    const both = rowNames();
+    const needle = both[0] as string;
+    fireEvent.change(screen.getByLabelText("Search machines"), { target: { value: needle } });
+    const narrowed = rowNames();
+    expect(narrowed).toContain(needle);
+    expect(narrowed.every((n) => both.includes(n))).toBe(true);
+    fireEvent.change(screen.getByLabelText("Search machines"), { target: { value: "zzz no such machine" } });
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
   it("is controlled when given states: shows them and asks for the next set, in the filters' order", () => {
     const onStates = vi.fn();
     render(<FactoryPanel snapshot={factoryStatesAndIngredients} states={["noRecipe"]} onStates={onStates} />);
