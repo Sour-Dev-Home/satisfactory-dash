@@ -6,9 +6,18 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 ## Planner (ADR-0050, `src/planner/`)
 
 - A tab after Factory (`PLANNER_IN_NAV` in `src/shell/tabs.ts`, on since the graph view landed). It shows the
-  factories when the response has `factories` (ADR-0055; sites otherwise), as a canvas or as cards and a flows table,
-  and one opened factory as a Graph or Tables view. The graph is the default from 640 px, the tables below
-  (`useWideScreen`).
+  factories when the response has `factories` (ADR-0055; sites otherwise) and one opened factory, each as a Graph or
+  Outline view. The graph is the default from 640 px, the outline below (`useWideScreen`).
+- The outline (ADR-0062 Decision 3, build PR 4; values in the ADR's "Values chosen in build PR 4 (outline)") is the text
+  form: `PlannerOutline.tsx` over the pure `outlineModel.ts`. A nested list, not an ARIA tree: a summary sentence, "Needs
+  attention" (stalled outputs, bottlenecks, unknown ends, each with "Show in graph"), the tree (the level's factories, a
+  parent's parts under it, then each factory's groups; a factory over `OUTLINE_OPEN_MAX` 20 groups starts closed) where
+  each group is a sentence whose neighbours are buttons to their rows, and "All connections" (one 5-column sortable table
+  behind a disclosure; Capacity and Flow in each row's Details). Row actions are buttons (Show in graph, Select with
+  `aria-pressed`, Pop out, Open factory, the designation controls). One selection with the canvas: `SiteGraph`'s
+  `current` prop reports the card that takes the keyboard or opens its panel, and gives a card the keyboard when the
+  graph opens from "Show in graph"; the outline marks that row `aria-current` and focuses it. `PlannerTables.tsx` and
+  `FactoryFlows` are no longer rendered (build PR 5 deletes them after the owner's review).
 - The hierarchy is pure in `src/planner/graph/hierarchy.ts` (bubbles from `treeKey`, the fold cap, flows summed between
   cards, factory models); its words are in `plannerText.ts`.
 - What the canvas draws is data first: `canvasScene.ts` turns a graph and the viewer's choices into cards (a factory, a
@@ -39,16 +48,16 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 - Designations (ADR-0055 Decision 5) on the canvas: for owners and admins an opened factory's canvas has Select mode
   (toolbar button, or Shift+drag). A freehand lasso picks the group and bubble cards whose centre it encloses
   (`graph/lasso.ts`, pure), and in Select mode a click or a card's hidden button picks one card. The picks are the
-  same set as the Groups table's ticks, under one `DesignateBar`, and Escape clears them. A picked card is tinted,
+  same set as the outline rows' Select buttons, under one `DesignateBar`, and Escape clears them. A picked card is tinted,
   with a check mark. The overview draws automatic factories like designated ones (no dashed outline); the "Reason
   factories for me" suggestion mode and its Keep pill were removed (the owner, 2026-10-27).
 - Merge and split (ADR-0055 Decisions 11 and 12, #727), owners and admins on a backend with `revision`: on the overview,
-  Shift- or Ctrl-click a factory card (or tick a card's Select in Tables) to pick it; `MergeBar` offers "Merge into one",
+  Shift- or Ctrl-click a factory card (or press a factory row's Select in the outline) to pick it; `MergeBar` offers "Merge into one",
   disabled with its reason unless the picks are one connected piece by themselves (`connectivity.ts`: edges, transports,
   shared nodes, undirected) and within the caps (`selectionPlans.ts`). `MergeBar` stands idle ("No factories selected")
   before the first pick, so a pick never pushes the canvas down, and its count is one live region that stays mounted
   while the name form opens below it (as in `SplitBar`). In an opened designated factory the picks feed
-  `SplitBar` instead of `DesignateBar`; a Groups row and the group panel have "Pop out" (a panel's failure shows in the
+  `SplitBar` instead of `DesignateBar`; a group's outline row and the group panel have "Pop out" (a panel's failure shows in the
   panel, a row's on the page: `usePopOut`'s `write` and `popOut`); Remove is Dissolve. Every change
   is one replace built by `designationOps.ts` (pure, round-trip tested) and run by `designationChanges.ts`, whose undo
   (the read pre-image, never the matcher's ids) `UndoToast.tsx` offers for `UNDO_MS`, holding while focused or hovered.
@@ -71,11 +80,11 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   - `overviewScene(graph, models, path, tree)` draws the parent's parts (top level for an empty path), each group owned
     by its shown card (`levelOwner`), so flows inside one card vanish and flows that leave the parent are not drawn;
     `Scene.path` and the name "Factories in <parent>".
-  - Editing (build PR 5, same flag; ADR-0061 Decision 6 and its note): the overview's picks (Select tool or Tables ticks)
+  - Editing (build PR 5, same flag; ADR-0061 Decision 6 and its note): the overview's picks (Select tool or the outline's Select)
     are the level's cards, parents too, at any level, never an own-machines card. `MergeBar` adds "Group into a new
     factory" (name form; picked automatic factories are designated in the same replace) and "Move to…" (`MoveForm`, the
     destinations `moveTargets` accepts), each disabled with its reason; a parent has Ungroup (`ParentControls`, on its
-    Tables card and under its level's heading, stepping up out of a removed level). `designationOps.ts`'s `plan`
+    outline row and under its level's heading, stepping up out of a removed level). `designationOps.ts`'s `plan`
     simulates each change: it removes parents left empty, up the tree, and refuses depth, cycle and overlap in the
     server's words (`designationText.ts` maps the 409s to the same). Undo restores `parentId` explicitly. Dissolve moves
     a parent's children up, and a split's new factory keeps its source's parent. The demo store carries `parentId`.
@@ -91,7 +100,7 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
     card inside a frame pushes its chain (`pathBelow`). Cards glide by the make-room tween; reduced motion jumps.
 - A node with `stale: true` (#728 cause 11: built only from conveyor ends that name machines the latest factory read
   lacks) wears the clock glyph and prints only the muted `STALE_NODE_NOTE` (`graphModel.ts`), wrapped to the card's line
-  limits; the tooltip, the side panel and the Tables view say the whole sentence.
+  limits; the tooltip, the side panel and the outline say the whole sentence.
 - The viewer's choices are `plannerPrefs.ts` (localStorage in try/catch, validated; the page works without it).
 - The graph (`src/planner/graph/`) is a lazy chunk (`SiteGraph.tsx` behind `GraphLoader.tsx`, the Map's pattern) and
   the only place `@dagrejs/dagre` is imported.
@@ -107,7 +116,7 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
 - One line per pair of cards (ADR-0059 amendment, 2026-10-27): `layoutScene` draws the links between the same two cards,
   in one direction, on one carrier and of one kind as one edge (`bundleFlows` in `canvasScene.ts`). `SiteLayout.flows`
   stays one entry per link and `LaidEdge.parts` indexes them: the item filter lights an edge when any part matches, the
-  tooltip (`flowTitle`) lists every link with its own rate, and the Tables view is untouched. `SiteGraph` draws all
+  tooltip (`flowTitle`) lists every link with its own rate, and the outline keeps a row per link. `SiteGraph` draws all
   lines, then all labels.
 - Width means rate (ADR-0062 amendment Decision 4): `lineStroke` (`lineWidth.ts`) gives a belt or pipe line 2, 3 or 4
   from `rateStep` on its (a bundle's summed) rate, 2 with no step; a mixed line keeps its width and gets a thin
@@ -138,7 +147,7 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   is `bubbleRowSize` (plus `GLYPH_INSET` for a transport), so the router keeps it clear as it did the words. A bubble
   draws its item's 32 px icon (64 px once that would stretch: `bubbleDetail`), the name's initials when there is none or
   it fails to load, never blank; below zoom `BUBBLE_DETAIL_ZOOM` (0.4) only plain discs. `LaidEdge.labelLines` keeps
-  the words for text views and tests; the item names are in the edge's `<title>` and the Tables view.
+  the words for text views and tests; the item names are in the edge's `<title>` and the outline.
 - Stalled marks (ADR-0062 build PR 2): a card whose product reads 0 with all its machines backed up, underfed, paused or
   idle has `Card.stalled` (`stalledOf`), and the lines leaving it `CanvasFlow.stalled` (`withStalledFlows`; not a line
   measured above 0; a bundle only when every part is). In marks mode (`planner.stateStyle`, the default; the toolbar's

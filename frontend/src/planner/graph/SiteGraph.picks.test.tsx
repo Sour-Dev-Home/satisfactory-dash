@@ -53,7 +53,7 @@ describe("picking factories on the overview canvas", () => {
     fireEvent.keyDown(screen.getByRole("group", { name: /^Graph viewport/ }), { key: "Escape" });
     expect(within(bar).getByRole("status")).toHaveTextContent("No factories selected");
     fireEvent.click(first!);
-    expect(await screen.findByRole("heading", { name: "Groups", hidden: true })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "All factories" })).toBeInTheDocument();
   });
 
   it("a viewer's Shift-click opens the factory as before", async () => {
@@ -61,7 +61,7 @@ describe("picking factories on the overview canvas", () => {
     const svg = await overview();
     fireEvent.click(factoryCards(svg)[0]!, { shiftKey: true });
     expect(screen.queryByRole("group", { name: "Selected factories" })).not.toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Groups", hidden: true })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "All factories" })).toBeInTheDocument();
     // No Select tool either: a viewer cannot merge.
     expect(screen.queryByRole("button", { name: "Select" })).not.toBeInTheDocument();
   });
@@ -86,11 +86,11 @@ describe("the overview's Select tool (the owner, 2026-10-27)", () => {
     // A plain click on a picked factory unpicks it; nothing opens while Select is on.
     fireEvent.click(second!);
     expect(within(bar).getByRole("status")).toHaveTextContent("1 factory selected");
-    expect(screen.queryByRole("heading", { name: "Groups", hidden: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "All factories" })).not.toBeInTheDocument();
     // Off again: a click opens.
     fireEvent.click(select);
     fireEvent.click(second!);
-    expect(await screen.findByRole("heading", { name: "Groups", hidden: true })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "All factories" })).toBeInTheDocument();
   });
 
   it("makes each factory's keyboard button a pick toggle while Select is on", async () => {
@@ -137,14 +137,14 @@ describe("the overview's Select tool: edges", () => {
     expect(screen.getByRole("button", { name: "Select" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("Shift-click still picks with Select on, and the Tables view's idle bar points at the ticks, not at a Select that is not there", async () => {
+  it("Shift-click still picks with Select on, and the Outline view's idle bar points at the rows' Select, not at a tool that is not there", async () => {
     renderView();
     const svg = await overview();
     selectOn();
     fireEvent.click(factoryCards(svg)[0]!, { shiftKey: true });
     expect(factoryCards(svg)[0]).toHaveAttribute("data-picked", "true");
     fireEvent.click(factoryCards(svg)[0]!, { shiftKey: true });
-    fireEvent.click(within(screen.getByRole("group", { name: "View" })).getByRole("button", { name: "Tables" }));
-    expect(status()).toHaveTextContent("No factories selected: tick some below");
+    fireEvent.click(within(screen.getByRole("group", { name: "View" })).getByRole("button", { name: "Outline" }));
+    expect(status()).toHaveTextContent("No factories selected: select some below");
   });
 });

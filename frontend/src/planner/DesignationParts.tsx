@@ -289,7 +289,7 @@ export function DesignateBar({ nodes, onDone }: { nodes: readonly PlannerNode[];
       </button>
       <span role="status" className="text-sm text-muted">
         {nodes.length === 0
-          ? "Tick groups to designate them as one factory."
+          ? "Select groups to designate them as one factory."
           : `${nodes.length} ${nodes.length === 1 ? "group" : "groups"}, ${machines} ${machines === 1 ? "machine" : "machines"} selected`}
       </span>
     </div>

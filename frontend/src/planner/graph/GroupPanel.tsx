@@ -126,7 +126,7 @@ export function GroupPanel({
               <ErrorLine error={pop.error} />
             </>
           )}
-          {factory.isError && !factory.data && <p className="m-0 text-sm">The machines could not be read. The Tables view still lists the group.</p>}
+          {factory.isError && !factory.data && <p className="m-0 text-sm">The machines could not be read. The Outline view still lists the group.</p>}
           {!factory.data && !factory.isError && <p className="m-0 text-sm text-muted">Reading machines…</p>}
           {joined && (
             <>

@@ -324,5 +324,5 @@ export function graphSummary(nodes: readonly PlannerNode[], edges: readonly Plan
   const loops = nodes.filter((n) => n.loop).length;
   const g = `${nodes.length} ${nodes.length === 1 ? "group" : "groups"}`;
   const c = `${edges.length} ${edges.length === 1 ? "connection" : "connections"}`;
-  return `Graph of ${siteName}: ${g}, ${c}${loops > 0 ? `, ${loops} in a loop` : ""}. The Tables view lists the same.`;
+  return `Graph of ${siteName}: ${g}, ${c}${loops > 0 ? `, ${loops} in a loop` : ""}. The Outline view lists the same.`;
 }

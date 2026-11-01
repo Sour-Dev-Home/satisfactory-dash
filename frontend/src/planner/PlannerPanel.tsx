@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Bottleneck, PlannerSite, ProductionGraphResponse } from "@satisfactory-dash/shared";
+import type { Bottleneck, PlannerNode, PlannerSite, ProductionGraphResponse } from "@satisfactory-dash/shared";
 import { DataAge } from "../components/DataAge";
 import { formatTime } from "../format";
-import { cn } from "../lib/cn";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { BottleneckBadge, BottleneckLine } from "./BottleneckBadge";
-import { FactoryFacts, FactoryFlows } from "./FactoryParts";
+import { FactoryFacts } from "./FactoryParts";
 import { useDesignationChanges } from "./designationChanges";
 import { DesignateBar, DesignatedControls, DesignatedMarker, ErrorLine, ParentControls } from "./DesignationParts";
 import { useDesignations } from "./DesignationContext";
 import { STALE_TEXT } from "./designationText";
-import { buildFactoryTree, levelOf, levelOwner, pathBelow, resolvePath, type FactoryTree, type TreeNodeKind } from "./factoryTree";
+import { buildFactoryTree, levelOf, levelOwner, pathBelow, resolvePath, type FactoryTree, type TreeNode, type TreeNodeKind } from "./factoryTree";
+import { factoryConnections, groupConnections } from "./outlineModel";
+import { PlannerOutline } from "./PlannerOutline";
 import type { PathChange } from "./PlannerView";
 import { readNesting } from "./graph/plannerPrefs";
 import { MergeBar, SplitBar } from "./MergeSplitParts";
@@ -20,21 +21,24 @@ import { usePopOut } from "./usePopOut";
 import { LazySiteGraph } from "./graph/GraphLoader";
 import { minedRates } from "./graph/graphModel";
 import {
+  aggregateFlows,
   connectionRows,
   factoryOfNode,
+  flowParts,
   hasFactories,
   remoteInfo,
+  shareSplit,
   unassignedCount,
   type FactoryModel,
 } from "./graph/hierarchy";
 import { useWideScreen } from "./graph/useWideScreen";
-import { ConnectionsTable, GroupsTable, type FactoryColumns, type GroupSelection } from "./PlannerTables";
 import {
   factoryTitle,
   groupLabel,
-  hasUnknown,
   outputLine,
   plannerNotes,
+  remoteText,
+  shareText,
   siteFindings,
   siteNodes,
   stateCountsText,
@@ -93,47 +97,21 @@ function FactoryStanding({ model, kind = "leaf", onGone }: { model: FactoryModel
   return kind === "leaf" ? <DesignatedControls model={model} /> : kind === "parent" ? <ParentControls model={model} onGone={onGone} /> : <DesignatedMarker />;
 }
 
-function FactoryCard({
-  model,
-  kind,
-  findings,
-  onOpen,
-  pick,
-}: {
-  model: FactoryModel;
-  kind: TreeNodeKind;
-  findings: readonly Bottleneck[] | undefined;
-  onOpen: () => void;
-  /** Owners and admins: the card's tick for a merge (the keyboard and narrow-screen form of Shift-click). */
-  pick?: { checked: boolean; toggle: () => void } | undefined;
-}) {
-  const { factory } = model;
+/**
+ * A row's Select (ADR-0062 Decision 3: row actions are buttons in the row): a toggle, `aria-pressed`, picking the factory or
+ * group for the bar above, the same picks as the canvas's. The name starts with the visible word (WCAG 2.5.3).
+ */
+function SelectToggle({ name, pressed, onToggle }: { name: string; pressed: boolean; onToggle: () => void }) {
   return (
-    <li
-      data-picked={pick?.checked === true || undefined}
-      className={cn("grid content-start gap-2 rounded-card border border-line p-4", pick?.checked === true && "border-info bg-info-soft")}
-    >
-      <h4 className="m-0 break-words">{factoryTitle(factory)}</h4>
-      <FactoryFacts model={model} findings={findings} />
-      <FactoryStanding model={model} kind={kind} />
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={onOpen} aria-label={`Open factory: ${factory.name}`} className="min-h-touch justify-self-start">
-          Open factory
-        </button>
-        {pick !== undefined && (
-          <label className="inline-flex min-h-touch items-center gap-2 text-sm">
-            <input type="checkbox" className="size-5" aria-label={`Select ${factory.name}`} checked={pick.checked} onChange={pick.toggle} />
-            Select
-          </label>
-        )}
-      </div>
-    </li>
+    <button type="button" aria-pressed={pressed} aria-label={`Select ${name}`} onClick={onToggle} className="min-h-touch text-sm">
+      Select
+    </button>
   );
 }
 
 /**
  * The first level when the backend sent factories (ADR-0055 Decision 6): the factories and the flows between them, as the
- * canvas on a wide screen or as cards and a table on a phone. Choosing a factory (card or canvas) opens it.
+ * canvas on a wide screen or as the outline (ADR-0062 Decision 3) on a phone. Choosing a factory (card or canvas) opens it.
  */
 function FactoryOverview({
   graph,
@@ -163,7 +141,7 @@ function FactoryOverview({
   const { parent, entries } = useMemo(() => levelOf(tree, path), [tree, path]);
   const models = useMemo(() => entries.map((e) => e.card), [entries]);
   const owner = useMemo(() => levelOwner(graph, tree, parent?.key ?? null), [graph, tree, parent]);
-  // ADR-0055 Decision 12: factories picked to merge (canvas Shift- or Ctrl-click, or the cards' ticks). A pick a poll took
+  // ADR-0055 Decision 12: factories picked to merge (canvas Shift- or Ctrl-click, or the outline rows' Select). A pick a poll took
   // away is dropped from what the bar sees. Without the nesting flag only plain factories at the top level are picked; with
   // it (ADR-0061 Decision 6) the cards of any level, parents too, to merge (siblings only), group or move. A parent's
   // own-machines card is never picked: those machines move with the parent.
@@ -190,6 +168,44 @@ function FactoryOverview({
     () => (canMerge ? { selected: new Set(picked.map((m) => m.factory.key)), replace: pickNow } : undefined),
     [canMerge, picked, pickNow],
   );
+  // ADR-0062 Decision 3: one selection for the canvas and the outline (a factory's key, or a group's).
+  const [current, setCurrent] = useState<string | null>(null);
+  const levelNodes = useMemo(() => entries.flatMap((e) => e.card.nodes), [entries]);
+  const rates = useMemo(() => minedRates(graph.edges), [graph]);
+  const connections = useMemo(() => {
+    const names = new Map(models.map((m) => [m.factory.key, m.factory.name]));
+    return factoryConnections(
+      aggregateFlows(flowParts(graph), (key) => owner.get(key)),
+      names,
+    );
+  }, [graph, models, owner]);
+  const byKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
+  const labelOfGroup = useCallback((key: string) => {
+    const node = byKey.get(key);
+    return node === undefined ? "Group not listed" : groupLabel(node);
+  }, [byKey]);
+  const factoryActions = (entry: TreeNode) => {
+    const key = entry.key;
+    const buttons = (
+      <>
+        <button type="button" onClick={() => onOpen(pathBelow(tree, parent?.key ?? null, key))} aria-label={`Open factory: ${entry.card.factory.name}`} className="min-h-touch text-sm">
+          Open factory
+        </button>
+        {factoryPicks !== undefined && mergeable.has(key) && (
+          <SelectToggle
+            name={entry.card.factory.name}
+            pressed={factoryPicks.selected.has(key)}
+            onToggle={() => {
+              const next = new Set(factoryPicks.selected);
+              if (!next.delete(key)) next.add(key);
+              pickNow(next);
+            }}
+          />
+        )}
+      </>
+    );
+    return { buttons, more: <FactoryStanding model={entry.card} kind={entry.kind} /> };
+  };
   return (
     <>
       <p className="summary">
@@ -221,57 +237,49 @@ function FactoryOverview({
           findings={findings}
           onOpenFactory={(key) => onOpen(pathBelow(tree, parent?.key ?? null, key))}
           factoryPicks={factoryPicks}
+          current={{ key: current, onChange: setCurrent }}
         />
       ) : (
-        <>
-          <ul
-            aria-label={parent === undefined ? "Factories" : `Factories in ${parent.name}`}
-            className="m-0 grid list-none gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3"
-          >
-            {entries.map(({ card: m, kind }) => (
-              <FactoryCard
-                key={m.factory.key}
-                model={m}
-                kind={kind}
-                findings={findings}
-                onOpen={() => onOpen([m.factory.key])}
-                pick={
-                  factoryPicks === undefined || !mergeable.has(m.factory.key)
-                    ? undefined
-                    : {
-                        checked: factoryPicks.selected.has(m.factory.key),
-                        toggle: () => {
-                          const next = new Set(factoryPicks.selected);
-                          if (!next.delete(m.factory.key)) next.add(m.factory.key);
-                          pickNow(next);
-                        },
-                      }
-                }
-              />
-            ))}
-          </ul>
-          <FactoryFlows graph={graph} models={models} owner={owner} />
-        </>
+        <PlannerOutline
+          graph={graph}
+          nodes={levelNodes}
+          findings={findings}
+          rates={rates}
+          factories={{ entries, tree, actions: factoryActions, label: parent === undefined ? "Factories" : `Factories in ${parent.name}` }}
+          level={parent === undefined ? 4 : 5}
+          labelOf={labelOfGroup}
+          connections={connections}
+          noConnections="No flows between these factories are known."
+          noGroups="No machine groups."
+          current={current}
+          onShowInGraph={(key) => {
+            setCurrent(key);
+            setMode("graph");
+          }}
+        />
       )}
     </>
   );
 }
 
-type ViewMode = "graph" | "tables";
+type ViewMode = "graph" | "outline";
 
-/** Graph or Tables (Decision 4): wide screens open on the graph, a phone on the tables; the pick lasts until it is closed. */
+/**
+ * Graph or Outline (Decision 4; ADR-0062 Decision 3 made the Tables view the outline): wide screens open on the graph, a
+ * phone on the outline; the pick lasts until it is closed. Only state, never the address, so there is no old value to read.
+ */
 function useViewMode(): [ViewMode, (mode: ViewMode) => void] {
   const wide = useWideScreen();
   const [mode, setMode] = useState<ViewMode | null>(null);
-  return [mode ?? (wide ? "graph" : "tables"), setMode];
+  return [mode ?? (wide ? "graph" : "outline"), setMode];
 }
 
 function ViewToggle({ view, onPick }: { view: ViewMode; onPick: (mode: ViewMode) => void }) {
   return (
     <div role="group" aria-label="View" className="flex gap-2">
-      {(["graph", "tables"] as const).map((m) => (
+      {(["graph", "outline"] as const).map((m) => (
         <button key={m} type="button" aria-pressed={view === m} onClick={() => onPick(m)} className="min-h-touch">
-          {m === "graph" ? "Graph" : "Tables"}
+          {m === "graph" ? "Graph" : "Outline"}
         </button>
       ))}
     </div>
@@ -323,8 +331,9 @@ function Breadcrumb({ tree, path, onGo }: { tree: FactoryTree; path: readonly st
 }
 
 /**
- * One opened site or factory: its groups (bubbles with their groups indented) and the connections touching them, as
- * tables, or the graph on a wide screen. A factory adds where it stands, what it makes and how its shared groups split.
+ * One opened site or factory: its groups (a tree's groups under it) and the connections touching them, as the outline
+ * (ADR-0062 Decision 3), or the graph on a wide screen. A factory adds where it stands, what it makes and how its shared
+ * groups split.
  */
 function Detail({
   subject,
@@ -354,22 +363,32 @@ function Detail({
   const factoryNames = useMemo(() => new Map((graph.factories ?? []).map((f) => [f.key, f.name])), [graph]);
   const rates = useMemo(() => minedRates(graph.edges), [graph]);
   const owner = useMemo(() => factoryOfNode(graph), [graph]);
-  const columns: FactoryColumns | undefined = useMemo(
-    () => (factory === undefined ? undefined : { remote: remoteInfo(graph, factory), nameOf: factoryNames }),
-    [graph, factory, factoryNames],
+  const remote = useMemo(() => (factory === undefined ? undefined : remoteInfo(graph, factory)), [graph, factory]);
+  const labelOf = useCallback(
+    (key: string) => {
+      const node = byKey.get(key);
+      if (!node) return "Group not listed";
+      const home = owner.get(key);
+      // An end in another factory says so; in the same factory (or when sites are the unit) it is just the group.
+      if (factory !== undefined && home !== undefined && home !== factory.factory.key) return `${groupLabel(node)} (${factoryNames.get(home) ?? "another factory"})`;
+      return groupLabel(node);
+    },
+    [byKey, owner, factory, factoryNames],
   );
-  const labelOf = (key: string) => {
-    const node = byKey.get(key);
-    if (!node) return "Group not listed";
-    const home = owner.get(key);
-    // An end in another factory says so; in the same factory (or when sites are the unit) it is just the group.
-    if (factory !== undefined && home !== undefined && home !== factory.factory.key) return `${groupLabel(node)} (${factoryNames.get(home) ?? "another factory"})`;
-    return groupLabel(node);
+  const connections = useMemo(() => groupConnections(rows, labelOf), [rows, labelOf]);
+  // Where a factory's group stands and how a shared one splits: the old table's "Place and split", now the row's facts.
+  const groupFacts = (node: PlannerNode): string[] => {
+    if (factory === undefined) return [];
+    const far = remote?.get(node.key);
+    const split = shareSplit(node);
+    return [...(far === undefined ? [] : [remoteText(far)]), ...(split === null ? [] : [`Shared: ${shareText(split, factoryNames)}`])];
   };
+  // ADR-0062 Decision 3: one selection for the canvas and the outline (a group's key).
+  const [current, setCurrent] = useState<string | null>(null);
   const count = siteFindings(nodes, findings).length;
   const [view, setMode] = useViewMode();
   const noun = factory === undefined ? "site" : "factory";
-  // The text form of the lasso (ADR-0055 Decision 5): tick groups, then "Designate selected". Owners and admins only.
+  // The text form of the lasso (ADR-0055 Decision 5): select groups, then "Designate selected". Owners and admins only.
   const { canWrite, writes, designations } = useDesignations();
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   // ADR-0055 Decision 12: a designated factory on a backend with revisions splits (and pops out) instead of designating.
@@ -381,11 +400,10 @@ function Detail({
     setNotice(STALE_TEXT);
   };
   const pop = usePopOut(source, onStale);
-  const selection: GroupSelection | undefined =
+  const selection =
     canWrite && writes !== null
       ? {
-          selected: picked,
-          toggle: (key) => {
+          toggle: (key: string) => {
             setNotice(null);
             setPicked((prev) => {
               const next = new Set(prev);
@@ -393,10 +411,22 @@ function Detail({
               return next;
             });
           },
-          popOut: pop.popOut,
-          popOutBusy: pop.busy,
         }
       : undefined;
+  // A row's Select and Pop out (ADR-0055 Decisions 5 and 12), buttons in the outline's row, unchanged in behaviour.
+  const groupActions =
+    selection === undefined
+      ? undefined
+      : (node: PlannerNode) => (
+          <>
+            <SelectToggle name={node.name} pressed={picked.has(node.key)} onToggle={() => selection.toggle(node.key)} />
+            {pop.popOut !== undefined && (
+              <button type="button" disabled={pop.busy} aria-label={`Pop out ${groupLabel(node)}`} onClick={() => pop.popOut?.(node)} className="min-h-touch text-sm">
+                Pop out
+              </button>
+            )}
+          </>
+        );
   const pickedNodes = nodes.filter((n) => picked.has(n.key));
   return (
     <div className="grid gap-3">
@@ -422,14 +452,14 @@ function Detail({
         </div>
       )}
 
-      {/* Wide screens open on the graph, a phone on the tables (Decision 4); the pick is this one's, until it is closed. */}
+      {/* Wide screens open on the graph, a phone on the outline (Decision 4); the pick is this one's, until it is closed. */}
       <ViewToggle view={view} onPick={setMode} />
 
-      {/* One bar for both views: the canvas's picks and the table's ticks are the same selection. Above the graph it shows
+      {/* One bar for both views: the canvas's picks and the outline's Select are the same selection. Above the graph it shows
           only once something is picked, so it does not push the canvas down for nothing. */}
       {selection !== undefined &&
         nodes.length > 0 &&
-        (view === "tables" || picked.size > 0) &&
+        (view === "outline" || picked.size > 0) &&
         (source !== null && factory !== undefined ? (
           <SplitBar graph={graph} model={factory} source={source} nodes={pickedNodes} onDone={() => setPicked(new Set())} onStale={onStale} />
         ) : (
@@ -467,42 +497,38 @@ function Detail({
                   if (node !== undefined) await pop.write?.(node);
                 }
           }
+          current={{ key: current, onChange: setCurrent }}
         />
       )}
 
-      <section aria-labelledby="planner-groups-heading" hidden={view !== "tables"} className="grid gap-2">
-        <h5 id="planner-groups-heading" className="m-0">
-          Groups
-        </h5>
-        {nodes.length === 0 ? (
-          <p className="m-0">This {noun} lists no machine groups.</p>
-        ) : (
-          <GroupsTable nodes={nodes} findings={findings} factory={columns} selection={selection} rates={rates} />
-        )}
-      </section>
-
-      <section aria-labelledby="planner-edges-heading" hidden={view !== "tables"} className="grid gap-2">
-        <h5 id="planner-edges-heading" className="m-0">
-          Connections
-        </h5>
-        {rows.length === 0 ? (
-          <p className="m-0">No connections between this {noun}&apos;s groups are known.</p>
-        ) : (
-          <ConnectionsTable rows={rows} labelOf={labelOf} />
-        )}
-        <p className="m-0 text-sm text-muted">
-          A rate with no word is measured. &quot;About&quot; is estimated from how machines share a belt. &quot;Unknown&quot; means the
-          data cannot say.
-        </p>
-        {rows.some(hasUnknown) && <p className="m-0 text-sm text-muted">{UNKNOWN_FLOW_NOTE}</p>}
-      </section>
+      {view === "outline" && (
+        <PlannerOutline
+          graph={graph}
+          nodes={nodes}
+          findings={findings}
+          rates={rates}
+          level={5}
+          labelOf={labelOf}
+          connections={connections}
+          noConnections={`No connections between this ${noun}'s groups are known.`}
+          noGroups={`This ${noun} lists no machine groups.`}
+          current={current}
+          onShowInGraph={(key) => {
+            setCurrent(key);
+            setMode("graph");
+          }}
+          groupActions={groupActions}
+          groupFacts={groupFacts}
+        />
+      )}
     </div>
   );
 }
 
 /**
- * ADR-0050 Decision 4, the text form, with ADR-0055's factory level above it: a card per factory (or per site, when the
- * backend sent no factories) and, for one opened, a table of its groups and a table of its connections. Names come from
+ * ADR-0050 Decision 4, the text form, with ADR-0055's factory level above it: the outline of the factories (ADR-0062
+ * Decision 3; a card per site, when the backend sent no factories) and, for one opened, the outline of its groups and its
+ * connections. Names come from
  * the game server and are only ever text. Bottleneck counts come from the Factory page's own read (`findings`, joined by
  * building id); `undefined` means that read has not answered.
  */

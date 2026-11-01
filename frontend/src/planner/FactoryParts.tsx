@@ -75,7 +75,8 @@ export function FactoryFacts({
 /**
  * The flows from one factory to another (ADR-0055 Decision 6, "Edges between factories"): the belts, pipes and
  * transports between their groups summed by item and carrier, quality kept as the weakest part. Nothing is drawn when
- * the factories stand alone.
+ * the factories stand alone. Not rendered since ADR-0062 build PR 4 (the outline's "All connections" holds these flows);
+ * build PR 5 deletes it with `PlannerTables.tsx`.
  */
 export function FactoryFlows({
   graph,

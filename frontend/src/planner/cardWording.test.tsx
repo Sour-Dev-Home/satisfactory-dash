@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
@@ -11,11 +11,11 @@ import { server } from "../test/server";
 import { groupCard } from "./graph/canvasScene";
 import { extractorOutput, groupsExtractorOutput, minedRates, nodeFacts, nodeSummary } from "./graph/graphModel";
 import { GroupPanel } from "./graph/GroupPanel";
-import { GroupsTable } from "./PlannerTables";
+import { outlineRowOf, renderOutline } from "../test/outline";
 
 // Issue #728 Phase 1, steps 1 and 3: an extractor says what it mines (inferred from the node) and the rate its links carry,
 // or "rate not read" (getFactory lists no extractor), and a machine with no recipe says "Not configured". The card, the
-// tooltip, the side panel and the Tables view say the same.
+// tooltip, the side panel and the Outline view say the same.
 
 const IRON = { className: "Desc_OreIron_C", name: "Iron Ore" };
 const node = (over: Partial<PlannerNode> = {}): PlannerNode => ({
@@ -77,32 +77,32 @@ describe("card words", () => {
   });
 });
 
-describe("Tables view (the text path)", () => {
-  const rowOf = (name: string) => screen.getAllByRole("row").find((r) => within(r).queryByRole("rowheader", { name: new RegExp(`^${name}`) }) !== null)!;
+describe("Outline view (the text path, ADR-0062 Decision 3)", () => {
+  const rowOf = (subject: string) => outlineRowOf(subject)!;
 
   it("says the same as the card: resource, the inference note, and Not configured", () => {
-    render(<GroupsTable nodes={[miner, node({ key: "u", className: "Build_OilPump_C", name: "Oil Extractor", resource: null }), unassigned, storage]} findings={undefined} />);
+    renderOutline([miner, node({ key: "u", className: "Build_OilPump_C", name: "Oil Extractor", resource: null }), unassigned, storage]);
     const minerRow = rowOf("Miner Mk.2");
-    expect(within(minerRow).getByText("Iron Ore: rate not read")).toBeInTheDocument();
+    expect(minerRow).toHaveTextContent(/^2× Miner Mk\.2 mine Iron Ore: rate not read \(inferred from the node\)\./);
     expect(within(minerRow).getByText("(inferred from the node)")).toHaveClass("text-muted");
-    expect(within(minerRow).getByText("Not applicable")).toBeInTheDocument();
-    expect(within(rowOf("Oil Extractor")).getByText("Resource not identified")).toBeInTheDocument();
-    expect(within(rowOf("Constructor")).getByText("Not configured")).toBeInTheDocument();
-    expect(screen.queryByText("No recipe")).toBeNull();
+    expect(minerRow).toHaveTextContent("Recipe: not applicable");
+    expect(rowOf("Oil Extractor")).toHaveTextContent("Resource not identified");
+    expect(rowOf("Constructor")).toHaveTextContent("Recipe: Not configured");
+    expect(screen.queryByText(/No recipe/)).toBeNull();
   });
 
-  it("a bubble of extractors names their resource on its own row", () => {
+  it("a tree of extractors names their resource on its own line", () => {
     const twin = node({ key: "k2", resource: IRON, treeKey: "t" });
-    render(<GroupsTable nodes={[{ ...miner, treeKey: "t" }, twin]} findings={undefined} />);
-    const bubbleRow = screen.getAllByRole("row").find((r) => r.querySelector("th[scope=rowgroup]") !== null)!;
-    expect(within(bubbleRow).getByText("Iron Ore: rate not read")).toBeInTheDocument();
-    expect(within(bubbleRow).getByText("(inferred from the node)")).toHaveClass("text-muted");
-    expect(screen.queryByText("No output data")).toBeNull();
+    renderOutline([{ ...miner, treeKey: "t" }, twin]);
+    const tree = screen.getByRole("list", { name: /^Groups of / }).closest("li")!.firstElementChild as HTMLElement;
+    expect(tree).toHaveTextContent("Iron Ore: rate not read (inferred from the node)");
+    expect(within(tree).getByText("(inferred from the node)")).toHaveClass("text-muted");
+    expect(screen.queryByText(/No output data/)).toBeNull();
   });
 
-  it("a building of unknown kind with no recipe says Not known, not Not applicable", () => {
-    render(<GroupsTable nodes={[node({ key: "o", kind: "other", className: "X", name: "Mystery", resource: null })]} findings={undefined} />);
-    expect(within(rowOf("Mystery")).getByText("Not known")).toBeInTheDocument();
+  it("a building of unknown kind with no recipe says not known, not not applicable", () => {
+    renderOutline([node({ key: "o", kind: "other", className: "X", name: "Mystery", resource: null })]);
+    expect(rowOf("Mystery")).toHaveTextContent("Recipe: not known");
   });
 });
 

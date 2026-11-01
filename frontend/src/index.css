@@ -408,6 +408,26 @@
     font-weight: 600;
     color: var(--color-fg-strong);
   }
+  /* The Planner outline (ADR-0062 Decision 3) nests headings to h6: they wear the display face too, one step smaller
+     each, and a disclosure button inside a heading reads as the heading (the button rule would set its own face). */
+  [data-planner-outline] :is(h5, h6) {
+    font-family: var(--font-display);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    color: var(--color-fg-strong);
+  }
+  [data-planner-outline] h5 {
+    font-size: 14px;
+  }
+  [data-planner-outline] h6 {
+    font-size: 13px;
+  }
+  [data-planner-outline] :is(h4, h5, h6, thead th) button {
+    font: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+  }
   dd {
     color: var(--color-fg-strong);
     font-variant-numeric: tabular-nums;
@@ -706,7 +726,7 @@
   /* Stacked rows at phone width, for the Factory table. Not the power chart's legend (also a
      table) or its readings table, which scrolls in its own box instead. */
   @media (width < theme(--breakpoint-table-rows)) {
-    .panel table:not(.readings, .u-legend) thead {
+    .panel table:not(.readings, .u-legend, .sortable) thead {
       display: none;
     }
     .panel table:not(.readings, .u-legend),
@@ -722,9 +742,28 @@
       border: 0;
     }
     /* A stacked cell names its column (the header row is hidden): the map's tables set data-label. */
-    .panel table td[data-label]::before {
+    .panel table :is(td, th)[data-label]::before {
       content: attr(data-label) ": ";
       color: var(--color-muted);
+    }
+    /* A sortable table (the Planner's "All connections") keeps its header's sort buttons, as one wrapping row. After the
+       stacked-row rules on purpose: same specificity, so the later rule wins. */
+    .panel table.sortable thead tr {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 0 0 6px;
+      border-bottom: 0;
+    }
+    .panel table.sortable thead th {
+      display: block;
+      padding: 0;
+      border: 0;
+    }
+    /* A row whose Details are open: the detail row carries the separator. */
+    .panel table.sortable tr:has(+ tr[data-detail]) {
+      padding-bottom: 0;
+      border-bottom: 0;
     }
   }
 

@@ -30,17 +30,17 @@ async function openAllDetails(page: Page) {
 
 const openIronSite =(page: Page) => page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
 
-/** The Iron Plate factory (ADR-0055) on its tables, whichever view the screen opens on. */
-async function openPlateFactoryTables(page: Page) {
+/** The Iron Plate factory (ADR-0055) on its outline (ADR-0062 Decision 3), whichever view the screen opens on. */
+async function openPlateFactoryOutline(page: Page) {
   await pressButton(page, "Open factory: Iron Plate factory");
-  await page.getByRole("button", { name: "Tables" }).click();
+  await page.getByRole("button", { name: "Outline" }).click();
 }
 
-/** ADR-0055 #727: the factory cards (Tables), both ticked for a merge. */
+/** ADR-0055 #727: the factories in the outline, both selected for a merge (each row's Select button). */
 async function pickBothFactories(page: Page) {
-  await page.getByRole("button", { name: "Tables" }).click();
-  await page.getByRole("checkbox", { name: "Select Rod works" }).check();
-  await page.getByRole("checkbox", { name: "Select Iron Plate factory" }).check();
+  await page.getByRole("button", { name: "Outline" }).click();
+  await page.getByRole("button", { name: "Select Rod works", exact: true }).click();
+  await page.getByRole("button", { name: "Select Iron Plate factory", exact: true }).click();
 }
 
 /** Both ticked, then merged under the proposed name. */
@@ -59,7 +59,7 @@ async function pressButton(page: Page, name: string | RegExp) {
 /** The Iron Plate factory (ADR-0055 PR 8) on its canvas, whichever view the screen opens on. */
 async function openPlateFactoryGraph(page: Page) {
   await pressButton(page, "Open factory: Iron Plate factory");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   await expect(page.getByRole("img", { name: /^Graph of Iron Plate factory/ })).toBeVisible();
 }
 
@@ -76,7 +76,7 @@ async function canvasMeasured(svg: Locator) {
 
 async function openIronGraph(page: Page) {
   await openIronSite(page);
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   await canvasMeasured(page.getByRole("img", { name: /^Graph of Iron Plate site/ }));
 }
 
@@ -279,19 +279,33 @@ const CASES: StateCase[] = [
     scenario: "default",
     name: "planner-site-detail",
     path: "/app/planner",
-    shows: /Connections/,
+    shows: "All connections",
     clock: PLANNER_NOW,
     act: async (page) => {
       await openIronSite(page);
-      await page.getByRole("button", { name: "Tables" }).click();
+      await page.getByRole("button", { name: "Outline" }).click();
     },
   },
-  // ADR-0050 task 6, the graph. A site opens on the graph at 1440 px and on the tables at 390 px (Decision 4).
+  // ADR-0062 Decision 3: the outline's "Needs attention" with a stalled output (its mark, then its word), and the phone's
+  // view of it (the outline is the whole planner below 640 px).
+  {
+    scenario: "planner-stalled",
+    name: "planner-outline-attention",
+    path: "/app/planner",
+    shows: "Needs attention",
+    clock: PLANNER_NOW,
+    act: async (page) => {
+      await openIronSite(page);
+      await page.getByRole("button", { name: "Outline" }).click();
+      await expect(page.getByRole("list", { name: "Needs attention" })).toBeVisible();
+    },
+  },
+  // ADR-0050 task 6, the graph. A site opens on the graph at 1440 px and on the outline at 390 px (Decision 4).
   {
     scenario: "default",
     name: "planner-site-default-view",
     path: "/app/planner",
-    shows: /^(Zoom in|Connections)$/,
+    shows: /^(Zoom in|All connections)$/,
     clock: PLANNER_NOW,
     act: openIronSite,
   },
@@ -347,13 +361,13 @@ const CASES: StateCase[] = [
     clock: FACTORIES_NOW,
     act: async (page) => {
       await pressButton(page, "Open factory: Iron Rod factory");
-      await page.getByRole("button", { name: "Graph" }).click();
+      await page.getByRole("button", { name: "Graph", exact: true }).click();
       await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory/ })).toBeVisible();
     },
   },
-  // ADR-0055 PR 7: factories as the first level, an opened factory's tables, and the trees of a recipe in one bubble.
-  // The overview is the canvas from 640 px and the cards with the flows table below (ADR-0055 PR 8).
-  { scenario: "planner-factories", path: "/app/planner", shows: /^(Flows between factories|Zoom in)$/, clock: FACTORIES_NOW },
+  // ADR-0055 PR 7: factories as the first level, an opened factory's outline, and the trees of a recipe in one bubble.
+  // The overview is the canvas from 640 px and the outline below (ADR-0055 PR 8, ADR-0062 Decision 3).
+  { scenario: "planner-factories", path: "/app/planner", shows: /^(All connections|Zoom in)$/, clock: FACTORIES_NOW },
   // PR 8a: an opened factory on the canvas, and a tree opened in place and folded again.
   {
     scenario: "planner-factories",
@@ -417,9 +431,9 @@ const CASES: StateCase[] = [
     scenario: "planner-factories",
     name: "planner-factory-detail",
     path: "/app/planner",
-    shows: /Connections/,
+    shows: "All connections",
     clock: FACTORIES_NOW,
-    act: openPlateFactoryTables,
+    act: openPlateFactoryOutline,
   },
   {
     scenario: "planner-factories-trees",
@@ -427,16 +441,16 @@ const CASES: StateCase[] = [
     path: "/app/planner",
     shows: /tree 1 of 2/,
     clock: FACTORIES_NOW,
-    act: openPlateFactoryTables,
+    act: openPlateFactoryOutline,
   },
-  // ADR-0055 PR 10a: designated factories in the text form. The overview opens on the canvas from 640 px, so each asks for the cards.
+  // ADR-0055 PR 10a: designated factories in the text form. The overview opens on the canvas from 640 px, so each asks for the outline.
   {
     scenario: "planner-designations",
     name: "planner-designated",
     path: "/app/planner",
     shows: /1 machine no longer found/,
     clock: FACTORIES_NOW,
-    act: (page) => page.getByRole("button", { name: "Tables" }).click(),
+    act: (page) => page.getByRole("button", { name: "Outline" }).click(),
   },
   {
     scenario: "planner-designations",
@@ -445,8 +459,8 @@ const CASES: StateCase[] = [
     shows: "Designate",
     clock: FACTORIES_NOW,
     act: async (page) => {
-      await openPlateFactoryTables(page);
-      await page.getByRole("checkbox", { name: "Select Smelter" }).check();
+      await openPlateFactoryOutline(page);
+      await page.getByRole("button", { name: "Select Smelter", exact: true }).click();
       await page.getByRole("button", { name: "Designate selected" }).click();
     },
   },
@@ -498,8 +512,8 @@ const CASES: StateCase[] = [
     clock: FACTORIES_NOW,
     act: async (page) => {
       await pressButton(page, "Open factory: Rod works");
-      await page.getByRole("button", { name: "Tables" }).click();
-      await page.getByRole("checkbox", { name: "Select Constructor" }).check();
+      await page.getByRole("button", { name: "Outline" }).click();
+      await page.getByRole("button", { name: "Select Constructor", exact: true }).click();
     },
   },
   // ADR-0061 build PR 6, with `planner.nesting` on: a parent's level (its own machines beside its two factories, under the
@@ -512,8 +526,10 @@ const CASES: StateCase[] = [
     clock: FACTORIES_NOW,
     storage: NESTING_ON,
     act: async (page) => {
-      await pressButton(page, "Open factory: Main base");
-      await pressButton(page, "Open factory: Smelters");
+      // Anchored and without the parent's own-machines card: a string name matches as a substring, so "Smelters" would
+      // also match "Smelters (own machines)" (and the canvas card's name goes on past the factory's).
+      await pressButton(page, /^Open factory: Main base(?! \(own)/);
+      await pressButton(page, /^Open factory: Smelters(?! \(own)/);
       await expect(page.getByRole("navigation", { name: "Factory path" }).locator('[aria-current="page"]')).toHaveText("Smelters");
     },
   },
@@ -525,7 +541,7 @@ const CASES: StateCase[] = [
     clock: FACTORIES_NOW,
     storage: NESTING_ON,
     act: async (page) => {
-      await page.getByRole("button", { name: "Graph" }).click();
+      await page.getByRole("button", { name: "Graph", exact: true }).click();
       const overview = page.getByRole("img", { name: /^Graph of Factories/ });
       await canvasMeasured(overview);
       await pressButton(page, /^Expand Main base in place into its/);

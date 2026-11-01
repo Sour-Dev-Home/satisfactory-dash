@@ -45,7 +45,8 @@ function renderView(entry = "/app/planner?scenario=x#top") {
 
 const address = () => screen.getByRole("status", { name: "Address" }).textContent;
 const overview = () => screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
-const groupsHeading = () => screen.findByRole("heading", { name: "Groups", hidden: true });
+/** An opened factory: its back button shows (the outline, with its "Groups" heading, is not drawn while the graph shows). */
+const groupsHeading = () => screen.findByRole("button", { name: "All factories" });
 
 async function openFirstFactory() {
   const svg = await overview();
@@ -65,7 +66,7 @@ describe("going one level up", () => {
     await openFirstFactory();
     fireEvent.click(screen.getByRole("button", { name: "Browser back" }));
     await overview();
-    expect(screen.queryByRole("heading", { name: "Groups", hidden: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "All factories" })).not.toBeInTheDocument();
     expect(address()).toBe("/app/planner?scenario=x#top");
     expect(screen.getByRole("heading", { name: "Production planner" })).toHaveFocus();
   });
@@ -98,7 +99,7 @@ describe("edge cases in the address", () => {
   it("a stale key shows the overview, and opening a factory then replaces the key rather than adding a second", async () => {
     renderView("/app/planner?open=gone");
     const svg = await overview();
-    expect(screen.queryByRole("heading", { name: "Groups", hidden: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "All factories" })).not.toBeInTheDocument();
     fireEvent.click(svg.querySelector<SVGGElement>('[data-card="factory"]')!);
     await groupsHeading();
     expect(address()).not.toContain("gone");

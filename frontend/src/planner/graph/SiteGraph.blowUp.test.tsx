@@ -83,7 +83,7 @@ describe("blowing up a card on the overview canvas", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: /^Open factory: Smelters\./ }), { key: "Escape" });
     await waitFor(() => expect(frames(svg)).toEqual([]));
     await waitFor(() => expect(screen.getByRole("button", { name: /^Open factory: Main base/ })).toHaveFocus());
-    expect(svg).toHaveAccessibleName(/The Tables view lists the same\.$/);
+    expect(svg).toHaveAccessibleName(/The Outline view lists the same\.$/);
   });
 
   it("blows up by mouse (the card's Expand pill) into its groups, and the frame's Collapse pill folds it", async () => {

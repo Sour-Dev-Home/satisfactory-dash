@@ -15,7 +15,7 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
   // 390 px opens on the tables and 1440 px on the graph (Decision 4): one press either way.
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site: 5 groups, 5 connections/ });
   await expect(svg).toBeVisible();
   // dagre has laid out the cards, and the edge labels are drawn: the item as its icon bubble over the rate (ADR-0060;
@@ -73,9 +73,9 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.getByRole("complementary")).toHaveCount(0);
 
-  // The tables are one press away and hold the same site.
-  await page.getByRole("button", { name: "Tables" }).click();
-  await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
+  // The outline is one press away and holds the same site.
+  await page.getByRole("button", { name: "Outline" }).click();
+  await expect(page.getByRole("heading", { name: "All connections" })).toBeVisible();
   await expect(svg).toHaveCount(0);
 });
 
@@ -83,7 +83,7 @@ test("a two-finger pinch zooms the graph and a two-finger drag pans it", async (
   await mockApi("planner-group-panel");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
   await expect(svg).toBeVisible();
   const box = (await svg.boundingBox())!;
@@ -121,7 +121,7 @@ test("an item filter dims the groups it does not reach", async ({ page, mockApi 
   await mockApi("planner-filter-dimmed");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
   await expect(svg.locator("g.opacity-graph-dim")).toHaveCount(0);
   await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ingot" });
@@ -136,7 +136,7 @@ test.describe("the factory canvas", () => {
   const openPlate = async (page: Page) => {
     await page.getByRole("button", { name: "Open factory: Iron Plate factory" }).focus();
     await page.keyboard.press("Enter");
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     const svg = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
     await expect(svg).toBeVisible();
     return svg;
@@ -145,13 +145,13 @@ test.describe("the factory canvas", () => {
   test("the overview draws a card per factory with the flow between them, and a card opens its factory", async ({ page, mockApi }) => {
     await mockApi("planner-factories");
     await page.goto("/app/planner");
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     const overview = page.getByRole("img", { name: /^Graph of Factories: 2 factories, 1 connection/ });
     await expect(overview).toBeVisible();
     await expect(overview.getByText("Iron Rod factory (+ Iron Rod)", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Open factory: Iron Rod factory" }).focus();
     await page.keyboard.press("Enter");
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory: 2 groups, 1 connection/ })).toBeVisible();
     await page.getByRole("button", { name: "All factories" }).click();
     await expect(overview).toBeVisible();
@@ -182,7 +182,7 @@ test.describe("the factory canvas", () => {
     // The opened factory is in the address (?open=), so a reload comes back to it.
     await page.reload();
     await expect(page).toHaveURL(/[?&]open=/);
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     const again = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
     await expect(again).toBeVisible();
     await expect(page.getByLabel("Motion")).toHaveValue("off");
@@ -240,7 +240,7 @@ test.describe("the factory canvas", () => {
     await page.addInitScript(() => window.localStorage.setItem("planner.nesting", "on"));
     await mockApi("planner-factories");
     await page.goto("/app/planner");
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     // Named loosely: blowing up changes the counts in the name.
     const overview = page.getByRole("img", { name: /^Graph of Factories/ });
     await expect(overview).toHaveAccessibleName(/^Graph of Factories: 2 factories/);
@@ -258,26 +258,30 @@ test.describe("the factory canvas", () => {
   });
 });
 
-// ADR-0055 PR 10a: the text form of the lasso, by keyboard alone: tick a group, "Designate selected", name it, Enter.
+// ADR-0055 PR 10a: the text form of the lasso, by keyboard alone: select a group in the outline (its row's Select button,
+// ADR-0062 Decision 3), "Designate selected", name it, Enter.
 test("an owner designates a factory's groups from the keyboard", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-designations");
   await page.goto("/app/planner");
-  const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
+  const press = async (name: string | RegExp, key = "Enter") => {
     // Visible first: the page reveals at once (PageReveal), and focus() on a still-invisible control lands nowhere, so the
     // key went to the body (seen on slow desktop and mobile runs).
-    const control = page.getByRole(role, { name });
+    const control = page.getByRole("button", { name, exact: typeof name === "string" });
     await expect(control).toBeVisible();
     await control.focus();
     await expect(control).toBeFocused();
     await page.keyboard.press(key);
   };
-  await press("Open factory: Iron Plate factory");
-  // The overview has its own Tables button: wait until the factory is open, or "Tables" can land on the overview's
-  // (it did on a slow desktop run, and the Smelter tick never appeared).
+  // A prefix: the canvas card's name goes on with the card's facts after the factory's name; the outline row's stops there.
+  await press(/^Open factory: Iron Plate factory/);
+  // The overview has its own Outline button: wait until the factory is open, or "Outline" can land on the overview's
+  // (it did on a slow desktop run, and the Smelter's Select never appeared).
   // The back button exists only inside an opened factory, at every width (a phone may not open on the graph).
   await expect(page.getByRole("button", { name: /All factories/ })).toBeVisible();
-  await press("Tables");
-  await press("Select Smelter", "checkbox", "Space");
+  await press("Outline");
+  // A toggle button: Space presses it as Enter does.
+  await press("Select Smelter", "Space");
+  await expect(page.getByRole("button", { name: "Select Smelter", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("1 group, 4 machines selected")).toBeVisible();
   await press("Designate selected");
   // The name field takes focus, so typing and Enter are the whole of it.
@@ -293,22 +297,22 @@ test("an owner designates a factory's groups from the keyboard", async ({ page, 
   await expect(page.getByRole("form", { name: "Name the designated factory" })).toHaveCount(0);
 });
 
-// ADR-0055 #727: merge two factories and split them back, by keyboard alone, under the production CSP: tick both cards,
-// Merge into one, Enter on the proposed name; the undo offer takes the focus, Enter on Split back sends the inverse.
+// ADR-0055 #727: merge two factories and split them back, by keyboard alone, under the production CSP: select both in the
+// outline, Merge into one, Enter on the proposed name; the undo offer takes the focus, Enter on Split back sends the inverse.
 test("an owner merges two factories and splits them back from the keyboard", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-merge-split");
   await page.goto("/app/planner");
-  const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
+  const press = async (name: string | RegExp, key = "Enter") => {
     // Visible first, as in the designate case above: focus() on a control the page has not revealed yet lands nowhere.
-    const control = page.getByRole(role, { name, exact: typeof name === "string" });
+    const control = page.getByRole("button", { name, exact: typeof name === "string" });
     await expect(control).toBeVisible();
     await control.focus();
     await expect(control).toBeFocused();
     await page.keyboard.press(key);
   };
-  await press("Tables");
-  await press("Select Rod works", "checkbox", "Space");
-  await press("Select Iron Plate factory", "checkbox", "Space");
+  await press("Outline");
+  await press("Select Rod works", "Space");
+  await press("Select Iron Plate factory");
   await expect(page.getByText("2 factories selected")).toBeVisible();
   await expectNoAxeViolations(page, testInfo);
   await press("Merge into one");
@@ -344,17 +348,17 @@ test("with the nesting flag on, an owner groups two factories and undoes it from
   await page.addInitScript(() => window.localStorage.setItem("planner.nesting", "on"));
   await mockApi("planner-merge-split");
   await page.goto("/app/planner");
-  const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
+  const press = async (name: string | RegExp, key = "Enter") => {
     // Visible first, as in the designate case above: focus() on a control the page has not revealed yet lands nowhere.
-    const control = page.getByRole(role, { name, exact: typeof name === "string" });
+    const control = page.getByRole("button", { name, exact: typeof name === "string" });
     await expect(control).toBeVisible();
     await control.focus();
     await expect(control).toBeFocused();
     await page.keyboard.press(key);
   };
-  await press("Tables");
-  await press("Select Rod works", "checkbox", "Space");
-  await press("Select Iron Plate factory", "checkbox", "Space");
+  await press("Outline");
+  await press("Select Rod works", "Space");
+  await press("Select Iron Plate factory");
   await expect(page.getByText("2 factories selected")).toBeVisible();
   await press("Group into a new factory");
   await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
@@ -387,14 +391,14 @@ test("with the nesting flag on, an owner groups two factories and undoes it from
 test("an owner lassos a factory's cards on the canvas and designates them", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-designations");
   await page.goto("/app/planner");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const overview = page.getByRole("img", { name: /^Graph of Factories/ });
   await expect(overview).toBeVisible();
 
   // On the canvas, a factory's button is the keyboard's (visually hidden): focus it and press Enter.
   await page.getByRole("button", { name: /^Open factory: Iron Plate factory/ }).focus();
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
   await expect(svg).toBeVisible();
   await page.getByRole("button", { name: "Select" }).click();
@@ -432,7 +436,7 @@ test("with the item-focus flag on, the keyboard focuses a link's item and Escape
   await mockApi("planner-group-panel");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
   await expect(svg).toBeVisible();
   // One tab stop for every bubble; the arrow keys move between them, not the view.
@@ -501,7 +505,7 @@ test("marching dashes stay in view under the cap, stop with Motion Off, and reco
   await mockApi("planner-large");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Large site" }).click();
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Large site/ });
   await expect(svg).toBeVisible({ timeout: 15_000 });
   const lines = svg.locator('[data-edge-layer="lines"] [data-edge]');
@@ -562,7 +566,7 @@ test("destination caps move in the march layer under their cap, stop with Motion
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await mockApi("planner-caps-large");
   await page.goto("/app/planner");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Factories: 48 factories/ });
   await expect(svg).toBeVisible({ timeout: 15_000 });
   const caps = svg.locator("[data-cap], [data-cap-more]");
@@ -617,7 +621,7 @@ test("transport glyphs move in the march layer under their cap, stop with Motion
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await mockApi("planner-transports-large");
   await page.goto("/app/planner");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Factories: 48 factories/ });
   await expect(svg).toBeVisible({ timeout: 15_000 });
   const doubles = svg.locator('[data-edge-layer="lines"] [data-edge][data-double]');
@@ -669,7 +673,7 @@ test("transport glyphs move in the march layer under their cap, stop with Motion
 test("the keyboard reaches a destination cap from the cards, moves between caps, and opens the factory (ADR-0062 Decision 1)", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-factories");
   await page.goto("/app/planner");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Factories/ });
   await expect(svg).toBeVisible();
   // One tab stop for every cap, right after the cards' buttons.
@@ -689,7 +693,80 @@ test("the keyboard reaches a destination cap from the cards, moves between caps,
   await expect(svg.locator('[data-cap="sink"] circle.stroke-accent')).toHaveCount(1);
   await expectNoAxeViolations(page, testInfo);
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory/ })).toBeVisible();
   await expect(page.getByRole("list", { name: "Where Iron Rod factory sends its output" })).toContainText("1 flow to the Sink");
+});
+
+// ADR-0062 Decision 3 (build PR 4): the outline by keyboard alone, under the production CSP and axe. A neighbour's button
+// moves to its row; "Show in graph" selects the card (its button takes the keyboard); back in the outline that row is the
+// current one; All connections opens and sorts by a header (`aria-sort`).
+test("the outline by keyboard: a neighbour moves to its row, Show in graph and back keep one selection, All connections sorts", async ({ page, mockApi }, testInfo) => {
+  await mockApi("default");
+  await page.goto("/app/planner");
+  const press = async (control: Locator, key = "Enter") => {
+    // Visible and focused first, as in the designate case above.
+    await expect(control).toBeVisible();
+    await control.focus();
+    await expect(control).toBeFocused();
+    await page.keyboard.press(key);
+  };
+  const button = (name: string | RegExp) => page.getByRole("button", { name, exact: typeof name === "string" });
+  await press(button("Open site: Iron Plate site"));
+  await expect(button("All sites")).toBeVisible();
+  await press(button("Outline"));
+  await expect(page.getByRole("heading", { name: "Needs attention" })).toBeVisible();
+  const row = (subject: RegExp) => page.locator('[data-outline-row="group"]').filter({ has: page.locator("p:first-child > .font-semibold", { hasText: subject }) });
+  const smelter = row(/^4× Smelter$/);
+  const miner = row(/^Miner Mk\.2$/);
+  await press(smelter.getByRole("button", { name: "Miner Mk.2", exact: true }));
+  await expect(miner).toBeFocused();
+  await expectNoAxeViolations(page, testInfo);
+
+  await press(miner.getByRole("button", { name: "Show in graph: Miner Mk.2" }));
+  await expect(page.getByRole("img", { name: /^Graph of Iron Plate site/ })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Groups in the graph" }).getByRole("button", { name: /^Miner Mk\.2\./ })).toBeFocused();
+  await press(button("Outline"));
+  await expect(miner).toHaveAttribute("aria-current", "true");
+  await expect(miner).toBeFocused();
+
+  await press(button("All connections"));
+  const table = page.getByRole("table");
+  await expect(table).toBeVisible();
+  const rateHeader = table.getByRole("columnheader", { name: /^Rate/ });
+  await press(rateHeader.getByRole("button"));
+  await expect(rateHeader).toHaveAttribute("aria-sort", "ascending");
+  await press(rateHeader.getByRole("button"));
+  await expect(rateHeader).toHaveAttribute("aria-sort", "descending");
+  await expectNoAxeViolations(page, testInfo);
+});
+
+// ADR-0062 Decision 3, cost: the outline is DOM only, virtualised only if a measured render passes 50 ms. This records the
+// render of `planner-large`'s 160 groups (Graph to Outline) in the browser: to the first frame after React's commit, and to
+// the frame after that (painted). Attached and logged for the ADR; the bound is only that it renders every row.
+test("the outline of 160 groups records its render time (planner-large)", async ({ page, mockApi }, testInfo) => {
+  await mockApi("planner-large");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Open site: Large site" }).click();
+  await expect(page.getByRole("button", { name: "All sites" })).toBeVisible();
+  const runs: { rendered: number; painted: number; rows: number }[] = [];
+  for (let i = 0; i < 3; i++) {
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await expect(page.getByRole("img", { name: /^Graph of Large site/ })).toBeVisible();
+    runs.push(
+      await page.evaluate(async () => {
+        const outline = [...document.querySelectorAll("button")].find((b) => b.textContent === "Outline")!;
+        const frame = () => new Promise<number>((resolve) => requestAnimationFrame(() => resolve(performance.now())));
+        const start = performance.now();
+        outline.click();
+        const rendered = (await frame()) - start;
+        const painted = (await frame()) - start;
+        return { rendered, painted, rows: document.querySelectorAll('[data-outline-row="group"]').length };
+      }),
+    );
+  }
+  const result = { project: testInfo.project.name, runs };
+  console.log(`[outline] planner-large render ms ${JSON.stringify(result)}`);
+  await testInfo.attach("outline-render-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
+  for (const run of runs) expect(run.rows).toBe(160);
 });
