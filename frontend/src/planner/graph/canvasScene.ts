@@ -117,7 +117,7 @@ export interface Card {
   bubbleKey: string | undefined;
   /** A group of several machines whose ids the graph lists: it can open into a frame of one small card per machine. */
   machines?: CardMachines | undefined;
-  /** ADR-0061 Decision 5, the overview with the `planner.nesting` flag: the card can blow up in place into its parts. */
+  /** ADR-0061 Decision 5, the overview with the factory tree: the card can blow up in place into its parts. */
   blowUp?: CardBlowUp | undefined;
   /**
    * ADR-0062 Decision 1: where the card's flows end that no line is drawn to (a factory's ends, a group's folded storage),
@@ -636,7 +636,7 @@ export function overviewScene(
   models: readonly FactoryModel[],
   path: readonly string[] = [],
   tree?: FactoryTree,
-  /** ADR-0061 Decision 5 (the `planner.nesting` flag): the cards blown up in place. Absent = no card can blow up. */
+  /** ADR-0061 Decision 5: the cards blown up in place (needs `tree`). Absent = no card can blow up. */
   expanded?: ReadonlySet<string>,
 ): Scene {
   const level = tree === undefined ? undefined : levelOf(tree, path);

@@ -1,14 +1,13 @@
 import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, useLocation, useNavigate } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import { serversRoleOwner } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
-import { AUTO_KEY, C1, P, T, designated, treeGraphResponse, treeWorld } from "../test/plannerTree";
+import { AUTO_KEY, C1, P, T, designated, treeGraphResponse, treeWorld, withoutParents } from "../test/plannerTree";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
-import { NESTING_KEY } from "./graph/plannerPrefs";
 import { PlannerView } from "./PlannerView";
 
 // ADR-0061 build PR 3: the tree's levels in the address (`?open=a&open=b`), Back pops one, the breadcrumb, a bad tail.
@@ -16,10 +15,7 @@ import { PlannerView } from "./PlannerView";
 // Each level waits on two reads (the graph and the designations); a loaded machine can take past the 1 s default.
 configure({ asyncUtilTimeout: 3_000 });
 
-beforeEach(() => window.localStorage.setItem(NESTING_KEY, "on"));
-
 afterEach(() => {
-  window.localStorage.removeItem(NESTING_KEY);
   vi.unstubAllGlobals();
   return act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 });
@@ -39,10 +35,10 @@ function Browser() {
 
 const q = (...keys: string[]) => (keys.length === 0 ? "" : `?${keys.map((k) => `open=${encodeURIComponent(k)}`).join("&")}`);
 
-function renderView(entry = "/app/planner") {
+function renderView(entry = "/app/planner", world = treeWorld()) {
   // Narrow: the Outline view, so the cards are plain buttons.
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
-  const { graph, designations } = treeWorld();
+  const { graph, designations } = world;
   server.use(
     http.get(endpoints.productionGraph.route, () => HttpResponse.json(treeGraphResponse(graph))),
     http.get(endpoints.plannerDesignations.list.route, () => HttpResponse.json({ designations, matches: [] })),
@@ -157,9 +153,8 @@ describe("the factory tree in the Planner", () => {
     expect(screen.queryByText(GONE)).not.toBeInTheDocument();
   });
 
-  it("with the flag off, the factories stay flat and a nested path is trimmed", async () => {
-    window.localStorage.removeItem(NESTING_KEY);
-    renderView(`/app/planner${q(top)}`);
+  it("from a backend that sends no parentId, the factories stay flat and a nested path is trimmed", async () => {
+    renderView(`/app/planner${q(top)}`, withoutParents(treeWorld()));
     expect(await screen.findByText(GONE, undefined, { timeout: 3_000 })).toBeInTheDocument();
     const list = screen.getByRole("list", { name: "Factories" });
     expect(within(list).getAllByRole("heading").map((h) => h.textContent)).toEqual(["Smelters", "Plates", "Screws", "Rods"]);

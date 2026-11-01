@@ -13,7 +13,6 @@ import { buildFactoryTree, levelOf, levelOwner, pathBelow, resolvePath, type Fac
 import { factoryConnections, groupConnections, stalledGroups } from "./outlineModel";
 import { PlannerOutline } from "./PlannerOutline";
 import type { PathChange } from "./PlannerView";
-import { readNesting } from "./graph/plannerPrefs";
 import { MergeBar, SplitBar } from "./MergeSplitParts";
 import { splitSourceOf } from "./selectionPlans";
 import { UndoToast } from "./UndoToast";
@@ -120,8 +119,6 @@ function FactoryOverview({
   path,
   findings,
   onOpen,
-  blowUp = false,
-  nesting = false,
   viewMode: [view, setMode],
 }: {
   graph: Graph;
@@ -131,10 +128,6 @@ function FactoryOverview({
   findings: readonly Bottleneck[] | undefined;
   /** A factory chosen: the path elements from this level down to it (one, unless it was drawn inside a blow-up). */
   onOpen: (keys: readonly string[]) => void;
-  /** ADR-0061 Decision 5 (the `planner.nesting` flag): the canvas's cards can blow up in place. */
-  blowUp?: boolean;
-  /** ADR-0061 Decision 6 (the same flag): picks at any level, parents too, and the bar groups and moves them. */
-  nesting?: boolean;
   /** Held by the page, so coming back from a factory shows the same view. */
   viewMode: [ViewMode, (mode: ViewMode) => void];
 }) {
@@ -143,21 +136,17 @@ function FactoryOverview({
   const models = useMemo(() => entries.map((e) => e.card), [entries]);
   const owner = useMemo(() => levelOwner(graph, tree, parent?.key ?? null), [graph, tree, parent]);
   // ADR-0055 Decision 12: factories picked to merge (canvas Shift- or Ctrl-click, or the outline rows' Select). A pick a poll took
-  // away is dropped from what the bar sees. Without the nesting flag only plain factories at the top level are picked; with
-  // it (ADR-0061 Decision 6) the cards of any level, parents too, to merge (siblings only), group or move. A parent's
-  // own-machines card is never picked: those machines move with the parent.
+  // away is dropped from what the bar sees. The cards of any level (ADR-0061 Decision 6), parents too, are picked to merge
+  // (siblings only), group or move. A parent's own-machines card is never picked: those machines move with the parent.
   const changes = useDesignationChanges();
-  const canMerge = canWrite && writes !== null && changes !== null && (parent === undefined || nesting);
-  const mergeable = useMemo(
-    () => new Set(entries.filter((e) => e.kind === "leaf" || (nesting && e.kind === "parent")).map((e) => e.key)),
-    [entries, nesting],
-  );
+  const canMerge = canWrite && writes !== null && changes !== null;
+  const mergeable = useMemo(() => new Set(entries.filter((e) => e.kind === "leaf" || e.kind === "parent").map((e) => e.key)), [entries]);
   const [picks, setPicks] = useState<ReadonlySet<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const picked = useMemo(() => models.filter((m) => picks.has(m.factory.key) && mergeable.has(m.factory.key)), [models, picks, mergeable]);
   const hierarchy = useMemo(
-    () => (nesting ? { picked: entries.filter((e) => picks.has(e.key) && mergeable.has(e.key)), levelId: parent?.designationId ?? null } : undefined),
-    [nesting, entries, picks, mergeable, parent],
+    () => ({ picked: entries.filter((e) => picks.has(e.key) && mergeable.has(e.key)), levelId: parent?.designationId ?? null }),
+    [entries, picks, mergeable, parent],
   );
   const machines = parent === undefined ? totalMachines(graph.sites) : parent.card.factory.machineCount;
   const groups = parent === undefined ? graph.nodes.length : parent.card.nodes.length;
@@ -240,7 +229,7 @@ function FactoryOverview({
       {view === "graph" ? (
         <LazySiteGraph
           graph={graph}
-          target={{ kind: "overview", models, tree, path: parent === undefined ? [] : path, blowUp }}
+          target={{ kind: "overview", models, tree, path: parent === undefined ? [] : path }}
           findings={findings}
           onOpenFactory={(key) => onOpen(pathBelow(tree, parent?.key ?? null, key))}
           factoryPicks={factoryPicks}
@@ -564,9 +553,8 @@ export function PlannerPanel({
   const graph = snapshot.data;
   const byFactory = hasFactories(graph);
   const { designations } = useDesignations();
-  const [nesting] = useState(readNesting);
   const list = designations?.designations;
-  const tree = useMemo(() => (byFactory ? buildFactoryTree(graph, list, nesting) : undefined), [graph, byFactory, list, nesting]);
+  const tree = useMemo(() => (byFactory ? buildFactoryTree(graph, list) : undefined), [graph, byFactory, list]);
   // The longest prefix still in the tree (a site's key alone without factories); the rest is trimmed below, with a note.
   // Keyed by the joined path, so a render that reads the same address keeps the same arrays (the address gives new ones).
   const pathKey = path.join(PATH_SEP);
@@ -670,8 +658,6 @@ export function PlannerPanel({
             path={valid}
             findings={findings}
             viewMode={overviewMode}
-            blowUp={nesting}
-            nesting={nesting}
             onOpen={(keys) => go([...valid, ...keys])}
           />
         </>

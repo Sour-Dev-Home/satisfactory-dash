@@ -188,6 +188,12 @@ are relative to `frontend/src/planner/` unless they say otherwise. Nothing here 
   is build-time, so production still needs "on"). e2e states `planner-nested-level` and `planner-nested-blown-up` show a
   parent's level under the breadcrumb and a nested blow-up. **The flag stays until the owner has reviewed nesting on the
   demo**; removing it is a later PR.
+- **Note (2026-11-01, the owner's review: the flag is removed).** The owner reviewed nesting on the demo on 2026-11-01:
+  "Looks fine on the demo". That approves removing `planner.nesting`, so production gets nested factories. The flag, its
+  demo-build default and every flag-off branch are gone: the tree, its levels and breadcrumb, blow-up (a parent into its
+  factories, and a plain factory into its groups) and Group, Move and Ungroup are always on. A stored `planner.nesting`
+  value is ignored. A backend that sends no `parentId` (nor `parentDesignationId`) still gives a flat tree, every factory
+  top level; a flat world's overview now shows each card's Expand pill and the bar's Group and Move, as the demo has.
 
 ## Contracts
 

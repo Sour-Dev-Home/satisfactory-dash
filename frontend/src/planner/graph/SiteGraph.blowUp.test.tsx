@@ -11,11 +11,9 @@ import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
 import { TOO_LARGE_TO_EXPAND } from "./canvasScene";
 import { clearFoldMemory } from "./foldMemory";
-import { NESTING_KEY } from "./plannerPrefs";
 
 // ADR-0061 build PR 4, blow up: on the overview's canvas a card expands in place into a frame of its parts, by mouse
-// (its Expand pill, the frame's Collapse pill), by keyboard (the hidden buttons, Escape) and from the toolbar; behind the
-// `planner.nesting` flag.
+// (its Expand pill, the frame's Collapse pill), by keyboard (the hidden buttons, Escape) and from the toolbar.
 
 configure({ asyncUtilTimeout: 3_000 });
 
@@ -32,8 +30,7 @@ function Address() {
   return <output aria-label="Address">{`${location.pathname}${location.search}`}</output>;
 }
 
-function renderView(world: { graph: ProductionGraph; designations: PlannerDesignation[] } = treeWorld(), nesting = true) {
-  if (nesting) window.localStorage.setItem(NESTING_KEY, "on");
+function renderView(world: { graph: ProductionGraph; designations: PlannerDesignation[] } = treeWorld()) {
   // Wide: the overview opens on the canvas.
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("min-width"), addEventListener: () => {}, removeEventListener: () => {} }));
   server.use(
@@ -215,13 +212,5 @@ describe("blowing up a card on the overview canvas", () => {
     fireEvent.click(await waitFor(() => svg.querySelector(`[data-node="${MAIN}"] [data-blow-up]`)!));
     await waitFor(() => expect(frames(svg)).toEqual([MAIN]));
     expect(item).toHaveFocus();
-  });
-
-  it("with the flag off, nothing blows up", async () => {
-    renderView(treeWorld(), false);
-    const svg = await canvas();
-    expect(svg.querySelector("[data-blow-up]")).toBeNull();
-    expect(screen.queryByRole("button", { name: /in place/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Expand all" })).not.toBeInTheDocument();
   });
 });

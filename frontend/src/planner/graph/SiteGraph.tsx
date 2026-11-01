@@ -281,8 +281,6 @@ export type GraphTarget =
       models: readonly FactoryModel[];
       tree?: FactoryTree | undefined;
       path?: readonly string[] | undefined;
-      /** ADR-0061 Decision 5, behind `planner.nesting`: a card can blow up in place into its parts (needs `tree`). */
-      blowUp?: boolean | undefined;
     }
   | { kind: "factory"; model: FactoryModel };
 
@@ -344,7 +342,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // View state of this session, per factory (it outlives this canvas: foldMemory): which bubbles differ from their
   // default, which folds are open; and the viewer's saved choices: whose upstream is hidden, storage shown, motion.
   // Blow-up (ADR-0061 Decision 5) works on a level of the factory tree; its choices are remembered per path, like folds.
-  const blowUpTree = target.kind === "overview" && target.blowUp === true ? target.tree : undefined;
+  const blowUpTree = target.kind === "overview" ? target.tree : undefined;
   const levelPath = target.kind === "overview" ? (target.path ?? []) : [];
   const [folds, setFolds] = useFolds(
     target.kind === "factory" ? target.model.factory.key : target.kind === "site" ? target.site.key : blowUpTree !== undefined ? overviewFoldsKey(levelPath) : null,
@@ -372,9 +370,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       target.kind === "site"
         ? siteScene(target.site, graph)
         : target.kind === "overview"
-          ? overviewScene(graph, target.models, target.path, target.tree, blowUpTree === undefined ? undefined : expanded)
+          ? overviewScene(graph, target.models, target.path, target.tree, expanded)
           : factoryScene(graph, target.model, view),
-    [target, graph, view, blowUpTree, expanded],
+    [target, graph, view, expanded],
   );
   const overview = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
   const rates = useMemo(() => minedRates(graph.edges), [graph.edges]);
@@ -491,14 +489,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const dragged = useRef(false);
   // Select mode (only with a selection) and the lasso being drawn, in layout units; the ref is what the window listeners see.
   const [selecting, setSelecting] = useState(false);
-  // Select mode: in a factory it picks groups (a click, or a lasso); on the overview it picks factories for a merge (a
+  // Select mode: in a factory it picks groups (a click, or a lasso); on the overview it picks factories to merge, group or move (a
   // click or a tap, the owner 2026-10-27: Shift-click alone left a phone, and anyone not told, no way to pick).
   const overviewPicks = factoryPicks !== undefined && scene.level === "overview";
   const selectMode = selecting && (selection !== undefined || overviewPicks);
   const pickingFactories = selectMode && overviewPicks;
-  // ADR-0061 Decision 6: with the tree (the `planner.nesting` flag) the picks also group and move. `blowUp` is that flag
-  // (PlannerPanel passes `nesting` to both), so the hint follows the same switch as the bar.
-  const pickFor = blowUpTree !== undefined ? "to merge, group or move" : "for a merge";
   const [lasso, setLasso] = useState<readonly Point[] | null>(null);
   const lassoRef = useRef<{ id: number; points: Point[]; add: boolean } | null>(null);
   // A filter item that left the scene (a poll changed the edges) falls back to "all items".
@@ -1326,8 +1321,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         {pickingFactories
           ? (
               <>
-                <span className="sm:hidden">Tap factories to pick them {pickFor}.</span>
-                <span className="hidden sm:inline">Click factories to pick them {pickFor}; Escape clears.</span>
+                {/* ADR-0061 Decision 6: the picks merge, group or move, as the bar offers. */}
+                <span className="sm:hidden">Tap factories to pick them to merge, group or move.</span>
+                <span className="hidden sm:inline">Click factories to pick them to merge, group or move; Escape clears.</span>
               </>
             )
           : selectMode
@@ -1344,8 +1340,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               scene.level === "overview" && (
                 // One line at any width: Select works everywhere; a keyboard or mouse also has Shift.
                 <>
-                  <span className="sm:hidden">Turn on Select to pick factories {pickFor}.</span>
-                  <span className="hidden sm:inline">Turn on Select (or Shift-click) to pick factories {pickFor}.</span>
+                  <span className="sm:hidden">Turn on Select to pick factories to merge, group or move.</span>
+                  <span className="hidden sm:inline">Turn on Select (or Shift-click) to pick factories to merge, group or move.</span>
                 </>
               )}
       </p>

@@ -235,9 +235,8 @@ test.describe("the factory canvas", () => {
     await expectNoAxeViolations(page, testInfo);
   });
 
-  // ADR-0061 build PR 4: a factory card blows up in place into its groups, by keyboard alone, behind `planner.nesting`.
-  test("with the nesting flag on, the keyboard blows a factory up in place and Escape collapses it", async ({ page, mockApi }, testInfo) => {
-    await page.addInitScript(() => window.localStorage.setItem("planner.nesting", "on"));
+  // ADR-0061 build PR 4: a factory card blows up in place into its groups, by keyboard alone.
+  test("the keyboard blows a factory up in place and Escape collapses it", async ({ page, mockApi }, testInfo) => {
     await mockApi("planner-factories");
     await page.goto("/app/planner");
     await page.getByRole("button", { name: "Graph", exact: true }).click();
@@ -342,10 +341,9 @@ test("an owner merges two factories and splits them back from the keyboard", asy
   await expect(page.getByRole("heading", { name: "Production planner" })).toBeFocused();
 });
 
-// ADR-0061 build PR 5, behind `planner.nesting`: group a designated and an automatic factory into a new one and undo it, by
-// keyboard alone. One replace designates the automatic factory on the way; the undo offer takes the focus.
-test("with the nesting flag on, an owner groups two factories and undoes it from the keyboard", async ({ page, mockApi }, testInfo) => {
-  await page.addInitScript(() => window.localStorage.setItem("planner.nesting", "on"));
+// ADR-0061 build PR 5: group a designated and an automatic factory into a new one and undo it, by keyboard alone. One
+// replace designates the automatic factory on the way; the undo offer takes the focus.
+test("an owner groups two factories and undoes it from the keyboard", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-merge-split");
   await page.goto("/app/planner");
   const press = async (name: string | RegExp, key = "Enter") => {

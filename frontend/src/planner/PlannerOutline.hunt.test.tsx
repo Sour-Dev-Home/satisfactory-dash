@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import type { PlannerNode, PlannerRate, ProductionGraph } from "@satisfactory-dash/shared";
 import { renderOutline, outlineRowOf, outlineRows } from "../test/outline";
-import { treeNode, treeWorld } from "../test/plannerTree";
+import { treeNode, treeWorld, withoutParents } from "../test/plannerTree";
 import { buildFactoryTree, levelOf } from "./factoryTree";
 import { OUTLINE_OPEN_MAX, type OutlineConnection } from "./outlineModel";
 import { PlannerOutline } from "./PlannerOutline";
@@ -53,7 +53,9 @@ function treeOutline(extra: number, current: string | null = null) {
     nodes: [...world.graph.nodes, ...many],
     factories: world.graph.factories!.map((f) => (f === screws ? { ...f, nodeKeys: [...f.nodeKeys, ...many.map((n) => n.key)] } : f)),
   };
-  const tree = buildFactoryTree(graph, world.designations, false);
+  // Flat, as a backend that sends no parentId gives it.
+  const flat = withoutParents({ graph, designations: world.designations });
+  const tree = buildFactoryTree(flat.graph, flat.designations);
   const { entries } = levelOf(tree, []);
   return (
     <MemoryRouter>

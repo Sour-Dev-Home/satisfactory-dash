@@ -52,10 +52,10 @@ export function MergeBar({
   /** The graph view is showing, where Select picks; in the Outline view the rows' Select buttons do. */
   onCanvas?: boolean;
   /**
-   * ADR-0061 Decision 6, behind `planner.nesting`: the picked cards as tree nodes (parents too) and the level's parent
-   * designation (null at the top level). Given, the bar also offers Group into a new factory and Move to.
+   * ADR-0061 Decision 6: the picked cards as tree nodes (parents too) and the level's parent designation (null at the top
+   * level), so the bar also offers Group into a new factory and Move to.
    */
-  hierarchy?: { picked: readonly TreeNode[]; levelId: string | null } | undefined;
+  hierarchy: { picked: readonly TreeNode[]; levelId: string | null };
 }) {
   const { designations, places } = useDesignations();
   const changes = useDesignationChanges();
@@ -63,35 +63,31 @@ export function MergeBar({
   const openers = useRef(new Map<string, HTMLButtonElement>());
   const reasonId = useId();
   const list = designations?.designations;
-  const parentPicked = hierarchy !== undefined && hierarchy.picked.some((n) => n.kind !== "leaf");
+  const parentPicked = hierarchy.picked.some((n) => n.kind !== "leaf");
   const sources = useMemo(
     (): MergeSources => (parentPicked ? { ok: false, reason: PARENTS_DO_NOT_MERGE } : mergeSources(graph, picked, list, places)),
     [graph, picked, list, places, parentPicked],
   );
-  const tree = useMemo(() => (hierarchy === undefined ? undefined : hierarchyPicks(hierarchy.picked, list, places)), [hierarchy, list, places]);
-  const grouping = useMemo((): { ok: true } | { ok: false; reason: string } | undefined => {
-    if (hierarchy === undefined || tree === undefined) return undefined;
+  const tree = useMemo(() => hierarchyPicks(hierarchy.picked, list, places), [hierarchy, list, places]);
+  const grouping = useMemo((): { ok: true } | { ok: false; reason: string } => {
     if (!tree.ok) return tree;
     // Checked with a stand-in name and id, as the merge's caps are; the real ones go in on save.
     const trial = groupRequest({ all: list ?? [], picks: tree.picks, name: "Group", parentId: hierarchy.levelId, newId: STAND_IN_ID });
     return trial.ok ? { ok: true } : trial;
   }, [hierarchy, tree, list]);
   const targets = useMemo(
-    () => (hierarchy === undefined || tree === undefined || !tree.ok ? [] : moveTargets(list ?? [], tree.picks, hierarchy.levelId)),
+    () => (!tree.ok ? [] : moveTargets(list ?? [], tree.picks, hierarchy.levelId)),
     [hierarchy, tree, list],
   );
   if (changes === null) return null;
-  const moving: { ok: true } | { ok: false; reason: string } | undefined =
-    hierarchy === undefined || tree === undefined
-      ? undefined
-      : !tree.ok
-        ? tree
-        : picked.length === 0
-          ? { ok: false, reason: NOTHING_TO_MOVE }
-          : targets.length === 0
-            ? { ok: false, reason: NO_MOVE_TARGET }
-            : { ok: true };
-  const open = mode === "merge" ? sources.ok : mode === "group" ? grouping?.ok === true : mode === "move" ? moving?.ok === true : false;
+  const moving: { ok: true } | { ok: false; reason: string } = !tree.ok
+    ? tree
+    : picked.length === 0
+      ? { ok: false, reason: NOTHING_TO_MOVE }
+      : targets.length === 0
+        ? { ok: false, reason: NO_MOVE_TARGET }
+        : { ok: true };
+  const open = mode === "merge" ? sources.ok : mode === "group" ? grouping.ok : mode === "move" ? moving.ok : false;
   const close = (saved: boolean, from: string) => {
     setMode(null);
     if (saved) onClear();
@@ -101,12 +97,12 @@ export function MergeBar({
     if (el) openers.current.set(key, el);
     else openers.current.delete(key);
   };
-  // Each disabled action says why in its own words; with the tree off only Merge's reason shows, as before ADR-0061.
+  // Each disabled action says why in its own words.
   const reasons: { key: string; label: string; text: string }[] = [];
-  if (!sources.ok && (hierarchy === undefined || picked.length > 0)) reasons.push({ key: "merge", label: "Merge", text: sources.reason });
-  if (picked.length > 0 && grouping !== undefined && !grouping.ok) reasons.push({ key: "group", label: "Group", text: grouping.reason });
-  if (picked.length > 0 && moving !== undefined && !moving.ok) reasons.push({ key: "move", label: "Move", text: moving.reason });
-  const idle = hierarchy !== undefined && picked.length === 0;
+  if (!sources.ok && picked.length > 0) reasons.push({ key: "merge", label: "Merge", text: sources.reason });
+  if (picked.length > 0 && !grouping.ok) reasons.push({ key: "group", label: "Group", text: grouping.reason });
+  if (picked.length > 0 && !moving.ok) reasons.push({ key: "move", label: "Move", text: moving.reason });
+  const idle = picked.length === 0;
   // Idle, every action is disabled for one reason: nothing is picked yet.
   const reasonOf = (key: string) => (idle ? `${reasonId}-idle` : reasons.some((r) => r.key === key) ? `${reasonId}-${key}` : undefined);
   // The bar stands from the first render, idle with nothing picked, so a pick fills it in place instead of pushing the
@@ -130,47 +126,39 @@ export function MergeBar({
             >
               Merge into one
             </button>
-            {grouping !== undefined && (
-              <button
-                ref={opener("group")}
-                type="button"
-                aria-disabled={!grouping.ok}
-                aria-describedby={reasonOf("group")}
-                onClick={() => grouping.ok && setMode("group")}
-                className="min-h-touch"
-              >
-                Group into a new factory
-              </button>
-            )}
-            {moving !== undefined && (
-              <button
-                ref={opener("move")}
-                type="button"
-                aria-disabled={!moving.ok}
-                aria-describedby={reasonOf("move")}
-                onClick={() => moving.ok && setMode("move")}
-                className="min-h-touch"
-              >
-                Move to…
-              </button>
-            )}
+            <button
+              ref={opener("group")}
+              type="button"
+              aria-disabled={!grouping.ok}
+              aria-describedby={reasonOf("group")}
+              onClick={() => grouping.ok && setMode("group")}
+              className="min-h-touch"
+            >
+              Group into a new factory
+            </button>
+            <button
+              ref={opener("move")}
+              type="button"
+              aria-disabled={!moving.ok}
+              aria-describedby={reasonOf("move")}
+              onClick={() => moving.ok && setMode("move")}
+              className="min-h-touch"
+            >
+              Move to…
+            </button>
             <button type="button" disabled={picked.length === 0} onClick={onClear} className="min-h-touch">
               Clear selection
             </button>
             {/* Kept a line tall when there is no reason, so the reason coming and going does not move what is below. */}
-            <span id={hierarchy === undefined ? `${reasonId}-merge` : undefined} className="min-h-5 w-full text-sm text-muted sm:w-auto">
-              {hierarchy === undefined
-                ? sources.ok
-                  ? null
-                  : sources.reason
-                : idle
-                  ? <span id={`${reasonId}-idle`}>Pick factories to merge, group or move them.</span>
-                  : // One wrapping sentence per action, inline, so the line grows only as far as the words need.
-                    reasons.map((r, i) => (
-                      <span key={r.key} id={`${reasonId}-${r.key}`}>
-                        {`${i > 0 ? " " : ""}${r.label}: ${r.text}`}
-                      </span>
-                    ))}
+            <span className="min-h-5 w-full text-sm text-muted sm:w-auto">
+              {idle
+                ? <span id={`${reasonId}-idle`}>Pick factories to merge, group or move them.</span>
+                : // One wrapping sentence per action, inline, so the line grows only as far as the words need.
+                  reasons.map((r, i) => (
+                    <span key={r.key} id={`${reasonId}-${r.key}`}>
+                      {`${i > 0 ? " " : ""}${r.label}: ${r.text}`}
+                    </span>
+                  ))}
             </span>
           </>
         )}
@@ -190,7 +178,7 @@ export function MergeBar({
           onClose={(saved) => close(saved, "merge")}
         />
       )}
-      {open && mode === "group" && hierarchy !== undefined && tree?.ok === true && (
+      {open && mode === "group" && tree.ok && (
         <NameForm
           label="Name the new factory"
           initial=""
@@ -206,7 +194,7 @@ export function MergeBar({
           onClose={(saved) => close(saved, "group")}
         />
       )}
-      {open && mode === "move" && tree?.ok === true && (
+      {open && mode === "move" && tree.ok && (
         <MoveForm
           targets={targets}
           onMove={(target) =>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ProductionGraphSchema, type PlannerFactory, type ProductionGraph } from "@satisfactory-dash/shared";
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
-import { AUTO_KEY, C1, C2, P, T, treeDesignation, treeEdge, treeFactory, treeId, treeNode, treeWorld as world } from "../test/plannerTree";
+import { AUTO_KEY, C1, C2, P, T, treeDesignation, treeEdge, treeFactory, treeId, treeNode, treeWorld as world, withoutParents } from "../test/plannerTree";
 import { buildFactoryTree, designatedKeyOf, levelOf, levelOwner, ownKeyOf, pathBelow, resolvePath } from "./factoryTree";
 import { overviewScene } from "./graph/canvasScene";
 import { factoryModels } from "./graph/hierarchy";
@@ -112,11 +112,13 @@ describe("buildFactoryTree", () => {
     expect(tree.nodes.get(designatedKeyOf(C2))?.kind).toBe("leaf");
   });
 
-  it("with nesting off every factory is top level, in the graph's order", () => {
-    const { graph, designations } = world();
-    const tree = buildFactoryTree(graph, designations, false);
-    expect(tree.nested).toBe(false);
-    expect(tree.rootKeys).toEqual(graph.factories!.map((f) => f.key));
+  it("from a backend that sends no parentId every factory is top level, in the graph's order", () => {
+    const { graph: old, designations: list } = withoutParents(world());
+    for (const tree of [buildFactoryTree(old, list), buildFactoryTree(old, undefined)]) {
+      expect(tree.nested).toBe(false);
+      expect(tree.rootKeys).toEqual(old.factories!.map((f) => f.key));
+      expect([...tree.nodes.values()].every((n) => n.kind === "leaf" && n.depth === 1)).toBe(true);
+    }
   });
 });
 

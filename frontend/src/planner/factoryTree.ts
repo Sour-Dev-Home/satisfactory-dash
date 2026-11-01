@@ -61,7 +61,7 @@ interface Entity {
 
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-function entitiesOf(models: readonly FactoryModel[], designations: readonly PlannerDesignation[] | undefined, nesting: boolean): Map<string, Entity> {
+function entitiesOf(models: readonly FactoryModel[], designations: readonly PlannerDesignation[] | undefined): Map<string, Entity> {
   const listed = new Map((designations ?? []).map((d) => [d.id, d]));
   const entities = new Map<string, Entity>();
   models.forEach((model, order) => {
@@ -70,14 +70,14 @@ function entitiesOf(models: readonly FactoryModel[], designations: readonly Plan
     // An automatic factory is never a parent, so its id only has to be unique: a designation id is a uuid, never this.
     const id = did !== null && !entities.has(did) ? did : `\u0000${f.key}`;
     const listing = did === null ? undefined : listed.get(did);
-    const parent = !nesting || did === null ? null : listing !== undefined ? (listing.parentId ?? null) : (f.parentDesignationId ?? null);
+    const parent = did === null ? null : listing !== undefined ? (listing.parentId ?? null) : (f.parentDesignationId ?? null);
     entities.set(id, { id, key: f.key, name: listing?.name ?? f.name, designationId: did, parent, own: model, order, children: [] });
   });
-  // A parent with no machines of its own has no graph factory (ADR-0061 Decision 2): its name comes from the list.
-  if (nesting)
-    for (const d of designations ?? [])
-      if (!entities.has(d.id))
-        entities.set(d.id, { id: d.id, key: designatedKeyOf(d.id), name: d.name, designationId: d.id, parent: d.parentId ?? null, own: undefined, order: Infinity, children: [] });
+  // A parent with no machines of its own has no graph factory (ADR-0061 Decision 2): its name comes from the list. One that
+  // ends up with no factories under it either (a backend with no `parentId` sends no parents) is pruned below.
+  for (const d of designations ?? [])
+    if (!entities.has(d.id))
+      entities.set(d.id, { id: d.id, key: designatedKeyOf(d.id), name: d.name, designationId: d.id, parent: d.parentId ?? null, own: undefined, order: Infinity, children: [] });
   return entities;
 }
 
@@ -210,11 +210,11 @@ function rollup(graph: ProductionGraph, tree: FactoryTree, node: TreeNode, parts
 
 /**
  * The tree over the graph's factories. `designations` is the list when it has answered (undefined otherwise: the tree is
- * then built from the graph's `parentDesignationId`, and a parent with no machines of its own is not known). With
- * `nesting` off (the `planner.nesting` flag) every factory is top level, as before ADR-0061.
+ * then built from the graph's `parentDesignationId`, and a parent with no machines of its own is not known). A backend
+ * that sends no `parentId` (before ADR-0061) gives a flat tree: every factory is top level, as before.
  */
-export function buildFactoryTree(graph: ProductionGraph, designations: readonly PlannerDesignation[] | undefined, nesting = true): FactoryTree {
-  const entities = entitiesOf(factoryModels(graph), designations, nesting);
+export function buildFactoryTree(graph: ProductionGraph, designations: readonly PlannerDesignation[] | undefined): FactoryTree {
+  const entities = entitiesOf(factoryModels(graph), designations);
   repairParents(entities);
   const roots = linkAndPrune(entities);
   const nodes = new Map<string, TreeNode>();

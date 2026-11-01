@@ -6,11 +6,10 @@ import { endpoints, ProductionGraphResponseSchema, type Bottleneck, type Planner
 import { productionGraphTwoSites, serversRoleOwner, serversSingle } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
 import { outlineRowOf, outlineRows, renderOutline } from "../test/outline";
-import { treeGraphResponse, treeNode, treeWorld } from "../test/plannerTree";
+import { treeGraphResponse, treeNode, treeWorld, withoutParents } from "../test/plannerTree";
 import { renderWithClient } from "../test/render";
 import { plannerLarge } from "../test/scenarios";
 import { server } from "../test/server";
-import { NESTING_KEY } from "./graph/plannerPrefs";
 import { OUTLINE_OPEN_MAX, type OutlineConnection } from "./outlineModel";
 import { PlannerPanel } from "./PlannerPanel";
 import { PlannerView } from "./PlannerView";
@@ -172,9 +171,7 @@ describe("All connections", () => {
 });
 
 describe("the overview's tree (ADR-0061 nesting)", () => {
-  beforeEach(() => window.localStorage.setItem(NESTING_KEY, "on"));
   afterEach(() => {
-    window.localStorage.removeItem(NESTING_KEY);
     vi.unstubAllGlobals();
   });
 
@@ -228,9 +225,8 @@ describe("the overview's tree (ADR-0061 nesting)", () => {
     expect(toggle.closest("li")!.contains(document.activeElement)).toBe(true);
   });
 
-  it("with the nesting flag off, lists the factories flat", async () => {
-    window.localStorage.removeItem(NESTING_KEY);
-    renderTree();
+  it("from a backend that sends no parentId, lists the factories flat", async () => {
+    renderTree(withoutParents(treeWorld()));
     await screen.findByRole("button", { name: "Screws" });
     expect(screen.queryByRole("list", { name: /^Parts of / })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Smelters" })).toBeInTheDocument();

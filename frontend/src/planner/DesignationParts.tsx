@@ -98,7 +98,7 @@ export function DesignatedMarker() {
 }
 
 /**
- * A parent factory (ADR-0061 Decision 6, only with `planner.nesting`, the only way a parent exists): "Designated" and, for
+ * A parent factory (ADR-0061 Decision 6): "Designated" and, for
  * owners and admins, Ungroup: its factories move up a level, as one replace with an undo offer. A parent that owns no
  * machines goes with it (`onGone`, so the page can step up out of it); one that owns some stays as their factory.
  */
