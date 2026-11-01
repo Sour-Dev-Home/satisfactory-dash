@@ -7,11 +7,13 @@ import {
   MAX_COLLAPSED,
   MAX_KEY_CHARS,
   MOTION_KEY,
+  NESTING_KEY,
   STATE_STYLE_KEY,
   STORAGE_DETAIL_KEY,
   motionOn,
   readCollapsed,
   readMotion,
+  readNesting,
   readStateStyle,
   readStorageDetail,
   useCollapsedUpstream,
@@ -162,5 +164,16 @@ describe("storage that is missing or throws", () => {
     const style = renderHook(() => useStateStyle()).result;
     act(() => style.current[1]("words"));
     expect(style.current[0]).toBe("words");
+  });
+});
+
+// ADR-0061 Decision 7: outside the demo build (plannerPrefs.demo.test.ts covers that one) nesting is off unless "on".
+describe("the nesting flag", () => {
+  it("is off by default, on only with on", () => {
+    expect(readNesting()).toBe(false);
+    window.localStorage.setItem(NESTING_KEY, "yes");
+    expect(readNesting()).toBe(false);
+    window.localStorage.setItem(NESTING_KEY, "on");
+    expect(readNesting()).toBe(true);
   });
 });
