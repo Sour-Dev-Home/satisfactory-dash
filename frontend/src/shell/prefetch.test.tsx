@@ -105,6 +105,9 @@ describe("pageQueries", () => {
     expect(keys("/app/map")).toEqual(["servers/s1/factory", "servers/s1/map/world/rails", "servers/s1/map/world/resourceNodes", "servers/s1/map/world/droneRoutes", "servers/s1/map/world/mapMarkers", "servers/s1/map/live"]);
     expect(keys("/app/factory")).toContain("servers/s1/factory");
     expect(keys("/app/factory")).toContain("servers/s1/history/items/7d");
+    // ADR-0062 F.2: the grouped machine table waits for the Planner's graph; the designations only with nesting on (off here).
+    expect(keys("/app/factory")).toContain("servers/s1/production-graph");
+    expect(keys("/app/factory")).not.toContain("servers/s1/planner-designations");
     expect(keys("/app/settings")).toContain("servers/s1/settings");
     expect(keys("/app/settings")).toContain("servers/s1/alerts/rules");
     expect(keys("/app/servers")).toEqual(["serverManagement"]);

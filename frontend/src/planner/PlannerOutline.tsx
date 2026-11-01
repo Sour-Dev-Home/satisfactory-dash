@@ -1,6 +1,7 @@
 import { createContext, Fragment, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Bottleneck, PlannerNode, PlannerRate, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../lib/cn";
+import { Chevron, DisclosureHeading, TreeHeading as Heading } from "../ui/Disclosure";
 import { BottleneckBadge } from "./BottleneckBadge";
 import { FactoryFacts } from "./FactoryParts";
 import type { FactoryTree, TreeNode } from "./factoryTree";
@@ -58,15 +59,6 @@ import {
  */
 
 type Level = 4 | 5 | 6;
-
-function Heading({ level, id, className, children }: { level: number; id?: string; className?: string; children: ReactNode }) {
-  const Tag = `h${Math.min(Math.max(level, 2), 6)}` as "h4" | "h5" | "h6";
-  return (
-    <Tag id={id} className={cn("m-0 break-words", className)}>
-      {children}
-    </Tag>
-  );
-}
 
 interface OutlineState {
   current: string | null;
@@ -353,25 +345,6 @@ function rowClass(current: boolean) {
   return cn("grid content-start gap-1 rounded-card border border-line p-3 focus:border-accent", current && "border-accent bg-info-soft");
 }
 
-/** A disclosure's open or closed cue beside its words (the state itself is `aria-expanded`): points right, then down. */
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden
-      focusable="false"
-      className={cn("inline-block size-4 shrink-0 text-muted", open && "rotate-90")}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
-
 function FactoryItem({ entry, level }: { entry: TreeNode; level: number }) {
   const outline = useOutline();
   const ids = useId();
@@ -384,18 +357,9 @@ function FactoryItem({ entry, level }: { entry: TreeNode; level: number }) {
   const actions = outline.factoryActions?.(entry);
   return (
     <li ref={outline.register(entry.key)} tabIndex={-1} aria-current={current ? "true" : undefined} data-outline-row={entry.kind} className={rowClass(current)}>
-      <Heading level={level}>
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={`${ids}-parts`}
-          onClick={() => outline.toggle(entry.key)}
-          className="inline-flex min-h-touch items-center gap-1 break-words text-left"
-        >
-          <Chevron open={open} />
-          {factoryTitle(model.factory)}
-        </button>
-      </Heading>
+      <DisclosureHeading level={level} open={open} onToggle={() => outline.toggle(entry.key)} controls={`${ids}-parts`}>
+        {factoryTitle(model.factory)}
+      </DisclosureHeading>
       <FactoryFacts model={model} findings={outline.findings} />
       <div className="flex flex-wrap items-center gap-2">
         <ShowInGraph label={model.factory.name} onShow={() => outline.onShowInGraph(entry.key)} />

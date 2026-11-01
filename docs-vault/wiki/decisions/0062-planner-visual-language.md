@@ -124,6 +124,50 @@ machines" under it (`factory/useRowCap.ts`, `factory/ShowAllRows.tsx`). The cap 
 list again, while the 30 s poll keeps it open. The phone's cards are the same table, so the same cap. Item 2 calls `useRowCap` once
 per group.
 
+**Item 2 shipped (2026-11-01): the grouped machine table.**
+
+- **Where the grouping comes from (owner decision, relayed 2026-11-01).** The Factory page read only the factory, the
+  bottlenecks and the history, and only the production graph says which factory and group each machine is in
+  (`PlannerNode.machineIds`, `factoryKey`, `PlannerFactory.nodeKeys`). Three options were weighed: (1) read the Planner's graph
+  on the Factory page too, (2) group by building and recipe from the factory read alone (not the Planner's factories, so the
+  two pages would still disagree), (3) a contract field on the factory read naming each machine's factory and group. Chosen:
+  **1**. The cost is one more server-computed read per 30 s poll while the Factory page is open (the graph route has no cache,
+  Decision 5; it reads the same inputs as the bottlenecks read the page already makes), and the gain is one cache shared with the
+  Planner (`queries.productionGraph`, `queries.plannerDesignations`), so moving between the two pages costs nothing.
+  **Follow-up: option 3** if backend load shows the extra read matters.
+- **Shape.** `factory/machineGroups.ts` (pure) over `buildFactoryTree` and `factoryOfNode`: factories in the tree's order
+  (with `planner.nesting` on, ADR-0061's parents then their parts, a parent's own machines first as "X (own machines)", as the
+  outline shows them), each factory's groups ("8× Constructor, Iron Plate", `groupLabel`), then groups no factory claims (every
+  group, from a backend without factories), then "Other machines" (what no group names: a machine built since the graph was
+  read, or one past the graph's caps). Each machine is listed once; a group two factories list goes under its owner. The
+  designations are read only with nesting on (they only name a parent).
+- **Disclosures.** Every factory and group is a heading (h4 at the top, one deeper per level, capped at h6) whose words are its
+  disclosure button (`aria-expanded`, `aria-controls`), with its counts after the button ("· 24 machines · 2 backed up"; a group's
+  title already counts, so it adds only "· 2 backed up"). While filtering a count reads "3 of 24 machines". A factory of more than
+  `OUTLINE_OPEN_MAX` (20) groups starts closed ("N groups, folded"), as in the outline; while a filter or search is on, every
+  section starts open, so a search shows its hits; the viewer's own choices are explicit values and are kept.
+- **The shared tree component.** `ui/Disclosure.tsx` (`TreeHeading`, `Chevron`, `DisclosureHeading`) and `ui/useDisclosures.ts`,
+  taken out of `PlannerOutline.tsx` (its local `Heading` and `Chevron` moved; its factory row uses `DisclosureHeading`; no change
+  in its behaviour or markup). The outline's heading CSS (`[data-planner-outline]` h5 and h6) also covers `[data-machine-groups]`.
+- **The cap's interim note, resolved.** Each group (and "Other machines") is its own table with its own `useRowCap`, so the 50-row
+  cap, "Showing 50 of N machines." and "Show all" are per group. The state filter and search still apply first, across all
+  groups; a group or factory with no match hides while filtering, and "No machines match." shows when none is left.
+- **Layout shift.** `pageQueries("/app/factory")` adds the graph (and, with nesting, the designations), so the reveal waits for
+  them and the table first paints grouped. **Known limit:** if the graph is late past the reveal budget, the table paints flat (one
+  group, as before F.2) and regroups once it arrives: one shift. If the graph read fails the table stays flat and says "The
+  Planner's factories could not be read, so the machines are listed in one table." A graph that names none of the machines (read
+  from another snapshot) also shows the flat table. The default mock scenario's graph names no factory-read machine, so the
+  Factory page's reveal and CLS e2e (`page-reveal.spec.ts`, `tab-switch.spec.ts`) are unchanged.
+- **Scenarios.** `factory-grouped` (the factories fixture with one id per machine and a building for each, plus a refinery under
+  "Other machines"), `factory-grouped-nested` (ADR-0061's three-level world, nesting on), `factory-groups-error` (the graph's 503),
+  and `factory-many-machines` now one group of 55 constructors past the cap. The demo world groups by its own graph.
+- **Review.** `ui-reviewer` (from the diff, no live check): each group's table is named by its heading (`aria-labelledby`); the
+  counts are `text-xs`, so they read below an h6 title; a factory carries a rule above it (`border-t border-line`), since its
+  heading is nearly a group's size; nested lists indent from `sm` only, keeping the phone's width. Not taken: the literal " · "
+  separators (a screen reader may say "middle dot"; the Planner's text uses them too). `test-hunter`: no bugs; a repeated
+  building id (never expected) now lists its copy under "Other machines", as the flat table would, and tests for choices kept
+  across a poll and a closed section staying closed while filtering.
+
 ## Build plan (each PR from `main`, no stacking)
 
 | # | PR | Files | Proof |

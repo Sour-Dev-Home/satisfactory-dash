@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router";
+import { readNesting } from "../planner/graph/plannerPrefs";
 import { FACTORY_ITEM_PARAM, FACTORY_SEARCH_PARAM, readItem, readSearch } from "../lib/deepLinks";
 import { queries } from "../api/queries";
 import { useSettledQuery } from "../api/settled";
@@ -23,6 +25,11 @@ import { itemLabels } from "./itemLabels";
 export function FactoryView() {
   const server = useSelectedServer();
   const { query: factory, firstLoad, error } = useSettledQuery(queries.factory(server.id));
+  // ADR-0062 F.2: the Planner's own reads (the same cache entries), which group the machine table by factory and group. The
+  // designations only name a parent, so they are read only with nesting on. While the graph has not answered, the table is flat.
+  const [nesting] = useState(readNesting);
+  const graph = useQuery(queries.productionGraph(server.id));
+  const designations = useQuery({ ...queries.plannerDesignations(server.id), enabled: nesting });
   // Deep links (#351): the machine search (?q=) and the history's item (?item=) live in the URL, so
   // a link or the command bar can open the page with them set. Replaced, not pushed: typing a
   // search mustn't fill the back button. Other parameters (e.g. dev:mock's scenario) are kept.
@@ -75,6 +82,10 @@ export function FactoryView() {
           snapshot={factory.data}
           refetchFailed={factory.isRefetchError}
           nav={<FactorySectionsNav />}
+          graph={graph.data?.data}
+          designations={nesting ? designations.data?.designations : undefined}
+          nesting={nesting}
+          groupsUnavailable={graph.data === undefined && graph.isError}
           search={search}
           onSearch={(value) => {
             setSearch(value);

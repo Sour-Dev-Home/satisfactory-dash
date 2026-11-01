@@ -266,8 +266,12 @@ const CASES: StateCase[] = [
   // The modded item has no unit, so it alone falls back to "per min" (ADR-0015).
   { scenario: "unknown-units", path: "/app/factory", shows: /Modded Widget: .* per min/ },
   { scenario: "factory-states", path: "/app/factory", shows: "Unpowered" },
-  // ADR-0062 F.5: 60 machines, the table capped at its first 50 with "Show all" under it.
-  { scenario: "factory-many-machines", path: "/app/factory", shows: "Showing 50 of 60 machines." },
+  // ADR-0062 F.5 per group (F.2): a group of 55 constructors capped at its first 50 with "Show all" under it.
+  { scenario: "factory-many-machines", path: "/app/factory", shows: "Showing 50 of 55 machines." },
+  // ADR-0062 F.2: the table grouped by the Planner's factories and groups, then "Other machines"; the flat fallback.
+  { scenario: "factory-grouped", path: "/app/factory", shows: /^Other machines · 1 machine$/ },
+  { scenario: "factory-grouped-nested", path: "/app/factory", shows: /^Main base · 5 machines · 1 backed up$/, storage: NESTING_ON },
+  { scenario: "factory-groups-error", path: "/app/factory", shows: "The Planner's factories could not be read, so the machines are listed in one table." },
   // ADR-0048 (#349), the Factory page's Bottlenecks section (the default scenario shows findings with a belt cap).
   { scenario: "default", name: "bottlenecks-belt-cap", path: "/app/factory", shows: /Capped by: Conveyor Belt Mk.1/ },
   { scenario: "bottlenecks-old-frm", path: "/app/factory", shows: /Update FRM to 1.5.4/ },
