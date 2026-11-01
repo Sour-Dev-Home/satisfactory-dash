@@ -162,10 +162,14 @@ export interface OutlineConnection {
   flow: string;
 }
 
-/** An opened site's or factory's connections (`connectionRows`), each end named by `labelOf`. */
+/**
+ * An opened site's or factory's connections (`connectionRows`), each end named by `labelOf`. Keyed by the row's own key
+ * and its count among equal keys, not its index, so a poll that adds or drops a row keeps an open Details on its row.
+ */
 export function groupConnections(rows: readonly ConnectionRow[], labelOf: (key: string) => string): OutlineConnection[] {
-  return rows.map((row, i) => ({
-    key: `${i}|${row.key}`,
+  const seen = new Map<string, number>();
+  return rows.map((row) => ({
+    key: `${row.key}|${nthOf(seen, row.key)}`,
     fromKey: row.from,
     toKey: row.to,
     from: labelOf(row.from),
@@ -182,8 +186,23 @@ export function groupConnections(rows: readonly ConnectionRow[], labelOf: (key: 
 
 /** The overview's connections: the flows between the level's cards (`aggregateFlows`), each end a factory's name. */
 export function factoryConnections(flows: readonly AggregateFlow[], nameOf: ReadonlyMap<string, string>): OutlineConnection[] {
-  return flows.map((f, i) => ({
-    key: `${i}|${f.from}|${f.to}|${f.itemClassName ?? ""}|${f.carrier}|${f.flow}`,
+  const seen = new Map<string, number>();
+  return flows.map((f) => {
+    const key = [f.from, f.to, f.itemClassName ?? "", f.carrier, f.flow, f.unit].join("\u0001");
+    return connectionOf(f, `${key}|${nthOf(seen, key)}`, nameOf);
+  });
+}
+
+/** How many times `key` was seen before (0 the first time), counted in `seen`. */
+function nthOf(seen: Map<string, number>, key: string): number {
+  const n = seen.get(key) ?? 0;
+  seen.set(key, n + 1);
+  return n;
+}
+
+function connectionOf(f: AggregateFlow, key: string, nameOf: ReadonlyMap<string, string>): OutlineConnection {
+  return {
+    key,
     fromKey: f.from,
     toKey: f.to,
     from: nameOf.get(f.from) ?? "Factory not listed",
@@ -195,7 +214,7 @@ export function factoryConnections(flows: readonly AggregateFlow[], nameOf: Read
     carrier: carrierWord(f.carrier),
     capacity: null,
     flow: flowText(f.flow, undefined),
-  }));
+  };
 }
 
 export type SortColumn = "from" | "to" | "item" | "rate" | "carrier";

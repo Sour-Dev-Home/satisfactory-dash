@@ -195,17 +195,18 @@ export function PlannerOutline({
   }, [factories, nodes]);
   // Opening the outline after a card was selected in the graph opens what hides its row and moves the keyboard there
   // (Decision 3, graph sync): the disclosures start flipped for it, and the focus waits for the first render below.
-  const [flipped, setFlipped] = useState<ReadonlySet<string>>(
-    () => new Set(current === null ? [] : (shape.ancestors.get(current) ?? []).filter((k) => shape.defaults.get(k) !== true)),
+  // The viewer's choices are kept as explicit open/closed values, not "flipped from the default": a poll that moves a
+  // factory across OUTLINE_OPEN_MAX changes its default, and must not turn the viewer's choice over.
+  const [chosen, setChosen] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map((current === null ? [] : (shape.ancestors.get(current) ?? [])).map((k): [string, boolean] => [k, true])),
   );
-  const isOpen = useCallback((key: string) => (shape.defaults.get(key) ?? false) !== flipped.has(key), [shape, flipped]);
-  const toggle = useCallback((key: string) => {
-    setFlipped((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(key)) next.add(key);
-      return next;
-    });
-  }, []);
+  const isOpen = useCallback((key: string) => chosen.get(key) ?? shape.defaults.get(key) ?? false, [shape, chosen]);
+  const toggle = useCallback(
+    (key: string) => {
+      setChosen((prev) => new Map(prev).set(key, !(prev.get(key) ?? shape.defaults.get(key) ?? false)));
+    },
+    [shape],
+  );
   const rows = useRef(new Map<string, HTMLElement>());
   const pending = useRef<string | null>(current);
   const goTo = useCallback(
@@ -214,9 +215,9 @@ export function PlannerOutline({
       if (chain === undefined) return false;
       const closed = chain.filter((k) => !isOpen(k));
       if (closed.length > 0)
-        setFlipped((prev) => {
-          const next = new Set(prev);
-          for (const k of closed) if (!next.delete(k)) next.add(k);
+        setChosen((prev) => {
+          const next = new Map(prev);
+          for (const k of closed) next.set(k, true);
           return next;
         });
       pending.current = key;
@@ -277,7 +278,7 @@ export function PlannerOutline({
           </Heading>
           {findings === undefined && <p className="m-0 text-sm text-muted">Bottlenecks not read yet.</p>}
           {attention.length === 0 ? (
-            <p className="m-0">Nothing needs attention.</p>
+            <p className="m-0">{findings === undefined ? "Nothing else needs attention so far." : "Nothing needs attention."}</p>
           ) : (
             <ul aria-label="Needs attention" className="m-0 grid list-none gap-2 p-0">
               {attention.map((a) => (
@@ -344,9 +345,31 @@ function ShowInGraph({ label, onShow }: { label: string; onShow: () => void }) {
   );
 }
 
-/** A row's frame: focusable from script only, ringed and tinted while it is the graph's selection. */
+/**
+ * A row's frame: focusable from script only (a neighbour's button, the graph sync), its border marking where the focus
+ * landed even after a pointer press (no focus ring then); tinted too while it is the graph's selection.
+ */
 function rowClass(current: boolean) {
-  return cn("grid content-start gap-1 rounded-card border border-line p-3", current && "border-accent bg-info-soft");
+  return cn("grid content-start gap-1 rounded-card border border-line p-3 focus:border-accent", current && "border-accent bg-info-soft");
+}
+
+/** A disclosure's open or closed cue beside its words (the state itself is `aria-expanded`): points right, then down. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden
+      focusable="false"
+      className={cn("inline-block size-4 shrink-0 text-muted", open && "rotate-90")}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 5l7 7-7 7" />
+    </svg>
+  );
 }
 
 function FactoryItem({ entry, level }: { entry: TreeNode; level: number }) {
@@ -362,7 +385,14 @@ function FactoryItem({ entry, level }: { entry: TreeNode; level: number }) {
   return (
     <li ref={outline.register(entry.key)} tabIndex={-1} aria-current={current ? "true" : undefined} data-outline-row={entry.kind} className={rowClass(current)}>
       <Heading level={level}>
-        <button type="button" aria-expanded={open} aria-controls={`${ids}-parts`} onClick={() => outline.toggle(entry.key)} className="min-h-touch break-words text-left">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${ids}-parts`}
+          onClick={() => outline.toggle(entry.key)}
+          className="inline-flex min-h-touch items-center gap-1 break-words text-left"
+        >
+          <Chevron open={open} />
           {factoryTitle(model.factory)}
         </button>
       </Heading>
@@ -406,7 +436,8 @@ function GroupList({ nodes, scope, label }: { nodes: readonly PlannerNode[]; sco
         const shown = outline.isOpen(key);
         return (
           <li key={entry.key} className="grid gap-2">
-            <button type="button" aria-expanded={shown} onClick={() => outline.toggle(key)} className="min-h-touch justify-self-start">
+            <button type="button" aria-expanded={shown} onClick={() => outline.toggle(key)} className="inline-flex min-h-touch items-center gap-1 justify-self-start">
+              <Chevron open={shown} />
               {shown ? "Hide" : "Show"} {foldText(entry)}
             </button>
             {shown && (
@@ -595,7 +626,8 @@ function ConnectionsSection({ level, rows, empty }: { level: number; rows: reado
   return (
     <section aria-labelledby={`${ids}-heading`} className="grid gap-2">
       <Heading level={level} id={`${ids}-heading`}>
-        <button type="button" aria-expanded={open} aria-controls={`${ids}-body`} onClick={() => setOpen(!open)} className="min-h-touch">
+        <button type="button" aria-expanded={open} aria-controls={`${ids}-body`} onClick={() => setOpen(!open)} className="inline-flex min-h-touch items-center gap-1">
+          <Chevron open={open} />
           All connections
         </button>
       </Heading>
@@ -651,7 +683,7 @@ function ConnectionsTable({ rows }: { rows: readonly OutlineConnection[] }) {
           const detailId = `${ids}-${i}`;
           const main = (
             <tr key={row.key}>
-              <th scope="row" className="break-words">
+              <th scope="row" data-label="From" className="break-words">
                 {row.from}
               </th>
               <td data-label="To" className="break-words">
@@ -686,7 +718,7 @@ function ConnectionsTable({ rows }: { rows: readonly OutlineConnection[] }) {
           if (!shown) return [main];
           return [
             main,
-            <tr key={`${row.key}|detail`} id={detailId}>
+            <tr key={`${row.key}|detail`} id={detailId} data-detail="">
               <td colSpan={COLUMNS.length} className="text-sm">
                 Capacity: {row.capacity ?? "not known"} · Flow: {row.flow}
               </td>

@@ -246,6 +246,16 @@ per group.
   (`e2e/planner-graph.spec.ts`, "the outline of 160 groups records its render time", attached as
   `outline-render-times.json`) **[NEEDS MEASUREMENT]**: to record from the PR's CI run. Virtualise only if the browser's
   number passes 50 ms (jsdom is several times slower than Chromium, so its number is an upper bound, not the trigger).
+- **What a switch keeps.** The open and closed choices are explicit values (`test-hunter`: stored as "flipped from the
+  default", a poll moving a factory across 20 groups reversed them). Switching to the graph unmounts the outline, so its
+  disclosures, sort and open Details start afresh on the way back; only the selection is kept (the cost of not keeping
+  160 hidden rows under the canvas). Connection rows are keyed by their content (and their count among equal ones), so
+  an open Details stays on its row through a poll.
+- **Look** (`ui-reviewer`, from the diff; no live check yet). Disclosures carry a chevron (`aria-hidden`) beside their
+  words; a row focused from script shows `border-accent` (a pointer press shows no ring); the outline's h5 and h6 wear
+  the display face and a button inside a heading takes its face (`[data-planner-outline]` rules in `index.css`, so the
+  other pages' h5 are unchanged); on a phone the stacked table labels its From cell too. The neighbours' inline buttons
+  rely on WCAG 2.5.8's inline exception (links in a sentence); each row also has its full-size buttons.
 - **Old tables.** `PlannerTables.tsx` and `FactoryParts.tsx`'s `FactoryFlows` are no longer rendered or imported; they
   stay until the owner reviews the outline (build PR 5 deletes them). The tests that read their cells read the outline.
 

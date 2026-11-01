@@ -115,8 +115,10 @@ describe("Needs attention", () => {
 
   it("says when nothing needs attention, and when the bottlenecks have not been read", () => {
     renderOutline([group("a")]);
-    expect(screen.getByText("Nothing needs attention.")).toBeInTheDocument();
     expect(screen.getByText("Bottlenecks not read yet.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing else needs attention so far.")).toBeInTheDocument();
+    renderOutline([group("b")], { findings: [] });
+    expect(screen.getByText("Nothing needs attention.")).toBeInTheDocument();
   });
 });
 
