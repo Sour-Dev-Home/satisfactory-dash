@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
   errorConnectionTestFailed,
@@ -10,7 +10,7 @@ import {
   serverConnectionOk,
   switchToLocalRequest,
 } from "@satisfactory-dash/shared/fixtures";
-import { queries } from "../api/queries";
+import { MANAGED_KEY, queries } from "../api/queries";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { ServerManagementView } from "./ServerManagementView";
@@ -167,10 +167,10 @@ describe("ServerManagementView: switching an agent server back to local (#273)",
   });
 
   it("re-reads the managed list, the member list and this server's agent status afterwards", async () => {
-    // The managed list is actively mounted here, so invalidating it triggers an immediate refetch
-    // (its `isInvalidated` flag would already be back to false by the time we could check it) -
-    // a call count is what actually shows the invalidation happened. `servers()` isn't mounted by
-    // this view (only by ServerGate elsewhere), so its `isInvalidated` flag does stay observable.
+    // No `isInvalidated` flag is a stable witness here: the managed list refetches at once, and the agent status is
+    // observed by the agent row's update line (ServerUpdateLine), which unmounts while the form is open and remounts
+    // when the form closes, so its refetch races the assertion and resets the flag. The invalidations themselves are
+    // asserted instead, plus the managed list's second GET as the actual re-read.
     let managedGets = 0;
     server.use(
       http.get(endpoints.serverManagement.list.route, () => {
@@ -184,15 +184,14 @@ describe("ServerManagementView: switching an agent server back to local (#273)",
     const view = renderWithClient(<ServerManagementView />);
     fireEvent.click(await screen.findByRole("button", { name: `Switch back to local for ${agentServer.displayName}` }));
     await waitFor(() => expect(managedGets).toBe(1));
-    const { client } = view;
-    const agentKey = queries.agentStatus(agentServer.id).queryKey;
-    client.setQueryData(agentKey, { enrolled: true, online: true, lastSeenAt: null, agentVersion: "0.1.0", connectionKind: "agent" });
-    client.setQueryData(queries.servers().queryKey, { servers: [], canManageServers: true });
+    const invalidate = vi.spyOn(view.client, "invalidateQueries");
     fillConnection();
     fireEvent.click(screen.getByRole("button", { name: "Test and switch back" }));
     await screen.findByText(/is read directly again/);
-    expect(client.getQueryState(agentKey)?.isInvalidated).toBe(true);
-    expect(client.getQueryState(queries.servers().queryKey)?.isInvalidated).toBe(true);
+    const invalidated = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(invalidated).toEqual(
+      expect.arrayContaining([MANAGED_KEY, queries.servers().queryKey, queries.agentStatus(agentServer.id).queryKey]),
+    );
     await waitFor(() => expect(managedGets).toBe(2));
   });
 

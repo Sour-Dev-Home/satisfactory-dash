@@ -11,7 +11,8 @@ import type { withTransaction } from "../../platform/db/transaction.js";
 import type { ServerDirectory } from "../servers/index.js";
 import type { TelemetryScope } from "../telemetry/index.js";
 import { AGENT_CADENCE } from "./config.js";
-import { setAgentVersion } from "./repositories/agentRepository.js";
+import { setAgentVersion, setGameConnection } from "./repositories/agentRepository.js";
+import { GameConnectionStore } from "./services/gameConnection.js";
 import { createAgentApiRouter } from "./routes/agentApi.js";
 import { createAgentUserRouter } from "./routes/agentUser.js";
 import { createPairingApiRouter } from "./routes/pairingApi.js";
@@ -27,6 +28,7 @@ import type { AgentsService } from "./services/agentsService.js";
 export { AGENT_CADENCE, loadEnrollmentCodesPerHour } from "./config.js";
 export { createAgentsService } from "./services/agentsService.js";
 export type { AgentsService, AgentsServiceDeps } from "./services/agentsService.js";
+export type { GameConnection, GameConnectionStore } from "./services/gameConnection.js";
 export { createCommandsService } from "./services/commandsService.js";
 export type { AgentCommandsService, CommandsService, CommandsServiceDeps } from "./services/commandsService.js";
 export { CommandNotifier } from "./services/commandNotifier.js";
@@ -91,6 +93,14 @@ export interface AgentApiModuleDeps {
   /** The one `createAgentAuth` instance of the process, shared with the world-layer routes (#562): a second instance
    *  would double the failure budgets and the per-credential lookup budget. */
   auth: RequestHandler;
+  /** #740 follow-up: the one store of the process, shared with the agents service's `gameConnection` (`createGameConnectionStore`). */
+  gameConnections?: GameConnectionStore;
+}
+
+/** #740 follow-up: the agents' latest game connection, kept from each snapshot and written to their credential rows. Build
+ *  one per process and hand it to both `createAgentApiRouters` and `createAgentsService` (`gameConnection: (id) => store.get(id)`). */
+export function createGameConnectionStore(db: Queryable): GameConnectionStore {
+  return new GameConnectionStore({ record: (serverUuid, values) => setGameConnection(db, serverUuid, values) });
 }
 
 /** The agent's own API, to be mounted at /agent/v1 (createApp's `agentRouters`): no session, its own credential. */
@@ -104,6 +114,7 @@ export function createAgentApiRouters(deps: AgentApiModuleDeps): Router[] {
       directory: deps.directory,
       attachAgentRuntime: deps.attachAgentRuntime,
       recordVersion: (serverUuid, agentVersion) => setAgentVersion(deps.db, serverUuid, agentVersion),
+      gameConnections: deps.gameConnections,
       cadence,
       isReady: deps.isReady,
     }),

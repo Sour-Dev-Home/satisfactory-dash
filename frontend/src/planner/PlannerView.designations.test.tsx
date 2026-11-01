@@ -166,26 +166,15 @@ describe("PlannerView: designating from the text form (ADR-0055 Decision 5)", ()
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("You can have up to 50 designated factories"));
   });
 
-  it("keeps a suggestion: Reason factories for me shows automatic factories dashed, and Keep saves one under a name", async () => {
+  it("shows an automatic factory's card plainly: no Reason factories for me, no dashed border, no Suggestion or Keep", async () => {
     serve();
     renderView();
     const plate = await card("Iron Plate factory");
+    expect(screen.queryByRole("button", { name: "Reason factories for me" })).not.toBeInTheDocument();
+    expect(plate).toHaveClass("border-line");
     expect(plate).not.toHaveClass("border-dashed");
+    expect(plate).not.toHaveTextContent("Suggestion");
     expect(within(plate).queryByRole("button", { name: /^Keep/ })).not.toBeInTheDocument();
-    const toggle = screen.getByRole("button", { name: "Reason factories for me" });
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
-    expect(plate).toHaveClass("border-dashed");
-    expect(plate).toHaveTextContent("Suggestion");
-    fireEvent.click(within(plate).getByRole("button", { name: "Keep Iron Plate factory" }));
-    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Iron Plate factory");
-    fireEvent.click(screen.getByRole("button", { name: "Keep factory" }));
-    await waitFor(() => expect(seen).toHaveLength(1));
-    const body = seen[0].body as { name: string; mode: string; members: unknown[] };
-    expect(body).toMatchObject({ name: "Iron Plate factory", mode: "core" });
-    // Its miner, depot, four smelters, four constructors and storage container.
-    expect(body.members).toHaveLength(11);
   });
 });
 
@@ -261,10 +250,7 @@ describe("PlannerView: a viewer", () => {
     expect(await within(rod).findByText(/All machines missing/)).toBeInTheDocument();
     expect(rod).toHaveTextContent("Designated");
     expect(within(rod).queryByRole("button", { name: /Rename|Remove|Clean up/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Reason factories for me" }));
     const plate = await card("Iron Plate factory");
-    expect(plate).toHaveTextContent("Suggestion");
-    expect(within(plate).queryByRole("button", { name: /^Keep/ })).not.toBeInTheDocument();
     fireEvent.click(within(plate).getByRole("button", { name: /^Open factory/ }));
     await screen.findByRole("heading", { name: "Groups" });
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
@@ -373,26 +359,17 @@ describe("PlannerView: designating on the canvas (ADR-0055 Decision 5, PR 10b)",
     expect(transformOf(svg)).not.toBe(before);
   });
 
-  it("shows suggestions on the overview canvas, dashed with Keep, and Keep saves one; Cancel hands focus back", async () => {
+  it("draws the overview's automatic factories plainly: no Reason factories for me, no dashed outline, no Suggestion or Keep", async () => {
     serve();
     renderView();
     const svg = await screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
-    expect(svg.querySelector("[data-suggested]")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Reason factories for me" }));
-    // The canvas stays: suggestions are drawn on it now.
-    expect(screen.getByRole("img", { name: /^Graph of Factories/ })).toBe(svg);
-    expect(svg.querySelectorAll("[data-suggested]").length).toBeGreaterThan(0);
-    expect(within(svg).getAllByText("Suggestion").length).toBeGreaterThan(0);
-    const keep = within(screen.getByRole("list", { name: "Suggested factories" })).getByRole("button", { name: "Keep Iron Plate factory" });
-    fireEvent.click(keep);
-    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Iron Plate factory");
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(keep).toHaveFocus());
-    fireEvent.click(keep);
-    fireEvent.click(screen.getByRole("button", { name: "Keep factory" }));
-    await waitFor(() => expect(seen).toHaveLength(1));
-    expect(seen[0].body).toMatchObject({ name: "Iron Plate factory", mode: "core" });
-    expect((seen[0].body as { members: unknown[] }).members).toHaveLength(11);
+    expect(screen.queryByRole("button", { name: "Reason factories for me" })).not.toBeInTheDocument();
+    const cards = svg.querySelectorAll('[data-card="factory"]');
+    expect(cards.length).toBeGreaterThan(1);
+    expect(svg.querySelectorAll('[data-card="factory"] rect[stroke-dasharray]')).toHaveLength(0);
+    expect(svg.querySelector("[data-suggested], [data-keep]")).toBeNull();
+    expect(within(svg).queryByText("Suggestion")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Keep/ })).not.toBeInTheDocument();
   });
 
   it("a second finger cancels the lasso: nothing is picked and the pinch zooms", async () => {
@@ -427,28 +404,5 @@ describe("PlannerView: designating on the canvas (ADR-0055 Decision 5, PR 10b)",
     const one = svg.querySelectorAll("[data-picked]").length;
     lassoAll(svg, { shiftKey: true });
     expect(svg.querySelectorAll("[data-picked]").length).toBeGreaterThan(one);
-  });
-
-  it("an open Keep form does not come back when the suggestions are switched off and on", async () => {
-    serve();
-    renderView();
-    await screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
-    const toggle = screen.getByRole("button", { name: "Reason factories for me" });
-    fireEvent.click(toggle);
-    fireEvent.click(within(screen.getByRole("list", { name: "Suggested factories" })).getByRole("button", { name: "Keep Iron Plate factory" }));
-    expect(screen.getByRole("textbox", { name: "Name" })).toBeInTheDocument();
-    fireEvent.click(toggle);
-    fireEvent.click(toggle);
-    expect(screen.queryByRole("textbox", { name: "Name" })).not.toBeInTheDocument();
-  });
-
-  it("a member sees the suggestions on the canvas but no Keep", async () => {
-    serve();
-    renderView(serversRoleViewer);
-    const svg = await screen.findByRole("img", { name: /^Graph of Factories/ }, { timeout: 3_000 });
-    fireEvent.click(screen.getByRole("button", { name: "Reason factories for me" }));
-    expect(svg.querySelectorAll("[data-suggested]").length).toBeGreaterThan(0);
-    expect(svg.querySelector("[data-keep]")).toBeNull();
-    expect(screen.queryByRole("list", { name: "Suggested factories" })).not.toBeInTheDocument();
   });
 });

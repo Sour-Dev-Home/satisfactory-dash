@@ -5,7 +5,7 @@ import { ApiFailure, ForbiddenError, RateLimitedError, ServerNotFoundError, Serv
 import { createLogger } from "../../../platform/logger.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { sha256 } from "../repositories/agentRepository.js";
-import { AGENT_OFFLINE_DEFAULT_SECONDS } from "@satisfactory-dash/shared";
+import { AGENT_OFFLINE_DEFAULT_SECONDS, AgentStatusResponseSchema } from "@satisfactory-dash/shared";
 import { createAgentsService } from "./agentsService.js";
 import { createEnrollmentService } from "./enrollmentService.js";
 
@@ -252,9 +252,75 @@ describe("the user-facing agents service", () => {
   });
 
   it("reads the status: a revoked credential reads as not enrolled, without a version or a time", async () => {
-    const { pool } = fakePool(() => ({ rows: [{ connection_kind: "agent", enrolled: false, last_seen_at: new Date(), agent_version: "0.1.0" }] }));
-    const service = createAgentsService({ db: pool, canManage: () => false });
+    const { pool } = fakePool(() => ({
+      rows: [{ connection_kind: "agent", enrolled: false, last_seen_at: new Date(), agent_version: "0.1.0", game_reachable: true, last_game_read_at: new Date(), mod_version: "1.4.2" }],
+    }));
+    const memory = vi.fn(() => ({ gameReachable: true, lastGameReadAt: Date.now(), modVersion: "1.4.2" }));
+    const service = createAgentsService({ db: pool, canManage: () => false, gameConnection: memory });
     expect(await service.getStatus("alpha")).toEqual({ enrolled: false, lastSeenAt: null, agentVersion: null, connectionKind: "agent" });
+    expect(memory).not.toHaveBeenCalled();
+  });
+
+  describe("the game connection (#740 follow-up): memory first, then the database copy", () => {
+    const NOW = Date.parse("2026-10-27T12:00:00.000Z");
+    const enrolledRow = (extra: Record<string, unknown> = {}) => ({
+      connection_kind: "agent",
+      enrolled: true,
+      last_seen_at: new Date(NOW - 10_000),
+      agent_version: "1.4.2",
+      game_reachable: null,
+      last_game_read_at: null,
+      mod_version: null,
+      ...extra,
+    });
+    const statusOf = (row: Record<string, unknown>, memory?: { gameReachable: boolean | null; lastGameReadAt: number | null; modVersion: string | null }) => {
+      const asked: string[] = [];
+      const service = createAgentsService({
+        db: fakePool(() => ({ rows: [row] })).pool,
+        canManage: () => false,
+        now: () => NOW,
+        gameConnection: (serverId) => {
+          asked.push(serverId);
+          return memory;
+        },
+      });
+      return service.getStatus("alpha").then((status) => ({ status, asked }));
+    };
+
+    it("leaves every field out when neither the memory nor the database has one (an older agent, or none yet)", async () => {
+      const { status, asked } = await statusOf(enrolledRow());
+      for (const key of ["gameReachable", "lastGameReadAt", "modVersion"]) expect(Object.hasOwn(status, key), key).toBe(false);
+      expect(asked).toEqual(["alpha"]);
+    });
+
+    it("uses the database copy before the first snapshot since the start", async () => {
+      const { status } = await statusOf(enrolledRow({ game_reachable: false, last_game_read_at: new Date(NOW - 720_000), mod_version: "1.4.2" }));
+      expect(status).toMatchObject({ gameReachable: false, lastGameReadAt: new Date(NOW - 720_000).toISOString(), modVersion: "1.4.2" });
+    });
+
+    it("prefers the memory's reachability and version, even when it says the newer snapshot did not report them", async () => {
+      const row = enrolledRow({ game_reachable: true, last_game_read_at: new Date(NOW - 60_000), mod_version: "1.4.2" });
+      expect((await statusOf(row, { gameReachable: false, lastGameReadAt: NOW - 1_000, modVersion: "1.5.0" })).status).toMatchObject({
+        gameReachable: false,
+        lastGameReadAt: new Date(NOW - 1_000).toISOString(),
+        modVersion: "1.5.0",
+      });
+      const older = (await statusOf(row, { gameReachable: null, lastGameReadAt: null, modVersion: null })).status;
+      expect(Object.hasOwn(older, "gameReachable")).toBe(false);
+      expect(Object.hasOwn(older, "modVersion")).toBe(false);
+    });
+
+    it("lastGameReadAt is the later of the memory and the database copy", async () => {
+      const row = enrolledRow({ game_reachable: true, last_game_read_at: new Date(NOW - 5_000) });
+      expect((await statusOf(row, { gameReachable: false, lastGameReadAt: NOW - 60_000, modVersion: null })).status.lastGameReadAt).toBe(new Date(NOW - 5_000).toISOString());
+      expect((await statusOf(row, { gameReachable: false, lastGameReadAt: null, modVersion: null })).status.lastGameReadAt).toBe(new Date(NOW - 5_000).toISOString());
+      expect((await statusOf(enrolledRow(), { gameReachable: true, lastGameReadAt: NOW - 2_000, modVersion: null })).status.lastGameReadAt).toBe(new Date(NOW - 2_000).toISOString());
+    });
+
+    it("the answer passes the shared schema", async () => {
+      const { status } = await statusOf(enrolledRow({ game_reachable: true, last_game_read_at: new Date(NOW - 5_000), mod_version: "1.4.2" }));
+      expect(AgentStatusResponseSchema.safeParse(status).success).toBe(true);
+    });
   });
 
   describe("`online` (from the backend's memory of the last snapshot)", () => {

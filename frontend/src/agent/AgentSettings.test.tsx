@@ -6,6 +6,9 @@ import {
   agentEnrollmentCodeResponse,
   agentStatusEnrolled,
   agentStatusEnrolledSilent,
+  agentStatusGameNeverRead,
+  agentStatusGameReachable,
+  agentStatusGameUnreachable,
   errorForbidden,
   serversSingle,
 } from "@satisfactory-dash/shared/fixtures";
@@ -144,6 +147,70 @@ describe("AgentSettings", () => {
     renderSection(owner);
     await screen.findByText("Last seen 8 s ago");
     expect(screen.queryByText(/^(Online|Offline)$/)).not.toBeInTheDocument();
+  });
+
+  // #740 follow-up: the agent's own view of the game, in words with an icon (never colour alone).
+  it("says the agent can reach the game, with its last read and the time in full on hover", async () => {
+    // The dash agent sends its own version as `modVersion` too.
+    agentIs({ ...agentStatusGameReachable, agentVersion: agentStatusGameReachable.modVersion });
+    renderSection(owner);
+    const label = await screen.findByText("Reachable");
+    expect(label).toHaveClass("text-ok");
+    expect(label.querySelector("svg[aria-hidden='true']")).not.toBeNull();
+    const read = screen.getByText("last read 9 s ago");
+    expect(read).toHaveAttribute("dateTime", agentStatusGameReachable.lastGameReadAt);
+    expect(read).toHaveAttribute("title");
+    expect(screen.getByText("Game")).toBeInTheDocument();
+    // The same version twice is shown once.
+    expect(screen.getByText(agentStatusGameReachable.modVersion)).toBeInTheDocument();
+    expect(screen.queryByText(/sender/)).not.toBeInTheDocument();
+  });
+
+  it("adds the sender's version when it isn't the agent's", async () => {
+    agentIs(agentStatusGameReachable);
+    renderSection(owner);
+    expect(await screen.findByText(`${agentStatusGameReachable.agentVersion} · sender ${agentStatusGameReachable.modVersion}`)).toBeInTheDocument();
+  });
+
+  it("warns when the agent can't reach the game, with an icon and how long since it last could", async () => {
+    agentIs(agentStatusGameUnreachable);
+    renderSection(owner);
+    const label = await screen.findByText("Not reachable");
+    expect(label).toHaveClass("text-warn");
+    expect(label.querySelector("svg[aria-hidden='true']")).not.toBeNull();
+    expect(screen.getByText("last read 12 m ago")).toHaveAttribute("dateTime", agentStatusGameUnreachable.lastGameReadAt);
+  });
+
+  it("says when the agent hasn't read the game since it started", async () => {
+    agentIs(agentStatusGameNeverRead);
+    renderSection(owner);
+    expect(await screen.findByText("Not reachable")).toBeInTheDocument();
+    expect(screen.getByText(/not read since the agent started/)).toBeInTheDocument();
+    expect(screen.queryByRole("time", { name: /last read/ })).not.toBeInTheDocument();
+  });
+
+  it("doesn't vouch for the game while the agent is offline, but still says when it last read it", async () => {
+    agentIs({ ...agentStatusGameReachable, online: false });
+    renderSection(owner);
+    const label = await screen.findByText("Unknown while the agent is offline");
+    expect(label).toHaveClass("text-muted");
+    expect(label.querySelector("svg")).toBeNull();
+    expect(screen.queryByText("Reachable")).not.toBeInTheDocument();
+    expect(screen.getByText("last read 9 s ago")).toBeInTheDocument();
+  });
+
+  it("shows no game line for an agent (or backend) that doesn't report it", async () => {
+    agentIs(agentStatusEnrolled);
+    renderSection(owner);
+    await screen.findByText("Last seen 8 s ago");
+    expect(screen.queryByText("Game")).not.toBeInTheDocument();
+    expect(screen.queryByText(/reachable/i)).not.toBeInTheDocument();
+  });
+
+  it("lets a viewer read the game line too, like the rest of the agent's status", async () => {
+    agentIs(agentStatusGameUnreachable);
+    renderSection(viewer);
+    expect(await screen.findByText("Not reachable")).toBeInTheDocument();
   });
 
   it("keeps Online even when this PC's clock says the last-seen time is old", async () => {

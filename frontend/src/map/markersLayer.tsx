@@ -113,6 +113,7 @@ function Sample({ kind }: { kind: MapMarker["kind"] }) {
 export const markersLayer: MapLayer<MapMarker[]> = {
   id: "mapMarkers",
   label: "Markers",
+  caption: "players' markers",
   defaultVisible: true,
 
   draw({ L, map, project, renderer, color }, markers) {

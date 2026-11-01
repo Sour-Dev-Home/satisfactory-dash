@@ -1,9 +1,18 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { isBackedUpState, type FactoryBuilding, type FactoryResponse, type ProductionRate } from "@satisfactory-dash/shared";
 import { formatPercent, formatRate, formatTime } from "../format";
 import { DataAge } from "../components/DataAge";
 import { cn } from "../lib/cn";
+import { MACHINES_ANCHOR } from "../lib/deepLinks";
+import { useHashTarget } from "../lib/useHashTarget";
 import { machineState } from "./machineState";
+import { ShowAllRows } from "./ShowAllRows";
+import { useRowCap } from "./useRowCap";
+
+const isMachinesAnchor = (id: string) => id === MACHINES_ANCHOR;
+
+/** ADR-0062 F.5: the table's first render shows this many machines, then "Show all", so the page height is bounded. */
+export const FACTORY_ROW_CAP = 50;
 
 type Filter = "all" | "backedUp" | "paused" | "noRecipe";
 
@@ -20,18 +29,22 @@ const FILTERS: { id: Filter; label: string; match: (b: FactoryBuilding) => boole
  * normal steady-state play, so it's a count and a filter, never a red banner.
  * `refetchFailed`: the last refresh failed, so this snapshot is what the cache kept.
  * `search`/`onSearch`: the view keeps the search in the URL (?q=, #351); without them it's local.
+ * `nav`: the page's in-page nav (ADR-0062 F.4), shown in the filter bar so the two stick as one.
  */
 export function FactoryPanel({
   snapshot,
   refetchFailed = false,
   search: searchProp,
   onSearch,
+  nav,
 }: {
   snapshot: FactoryResponse;
   refetchFailed?: boolean;
   search?: string;
   onSearch?: (search: string) => void;
+  nav?: ReactNode;
 }) {
+  useHashTarget(isMachinesAnchor);
   const { buildings } = snapshot.data;
   const backedUpCount = buildings.filter(isBackedUpState).length;
   const [filter, setFilter] = useState<Filter>("all");
@@ -46,6 +59,8 @@ export function FactoryPanel({
       active.match(b) &&
       (!needle || b.name.toLowerCase().includes(needle) || (b.recipe ?? "").toLowerCase().includes(needle)),
   );
+  // ADR-0062 F.5: after the filter and search, so a search reaches a machine past the cap. A new filter or search caps again.
+  const rowCap = useRowCap(shown, FACTORY_ROW_CAP, `${filter}\n${needle}`);
   const paused = buildings.filter((b) => b.isPaused).length;
   const noRecipe = buildings.filter((b) => b.recipe === null).length;
   // An older backend sends no ingredients at all: no Inputs column rather than an empty one.
@@ -53,50 +68,74 @@ export function FactoryPanel({
 
   return (
     // data-stale: dimmed while the game is unreachable and this is its last reading (ADR-0052; index.css).
-    <section aria-labelledby="factory-heading" className="panel" data-stale={snapshot.unreachableSince !== undefined ? "" : undefined}>
+    // id: the in-page nav's and a link's target (#machines); scroll-mt leaves a gap above the heading when it jumps here.
+    <section
+      id={MACHINES_ANCHOR}
+      aria-labelledby="factory-heading"
+      className="panel scroll-mt-4"
+      data-stale={snapshot.unreachableSince !== undefined ? "" : undefined}
+    >
       <h3 id="factory-heading">Factory</h3>
       {snapshot.stale && <p>Showing last known factory data from {formatTime(snapshot.observedAt)}.</p>}
 
       {buildings.length === 0 ? (
-        <p>No machines yet.</p>
+        <div data-sticky-scope="" className={STICKY_SCOPE}>
+          <FilterBar nav={nav} />
+          <p>No machines yet.</p>
+        </div>
       ) : (
         <>
           <p className="summary">
             {buildings.length} {buildings.length === 1 ? "machine" : "machines"} · {backedUpCount} backed up · {paused} paused · {noRecipe} without a recipe
           </p>
-          <div role="group" aria-label="Filter machines">
-            {FILTERS.map((f) => (
-              <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
-                {f.label}
-              </button>
-            ))}
-          </div>
-          <label className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
-            Search machines
-            <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
-          </label>
+          <div data-sticky-scope="" className={STICKY_SCOPE}>
+            <FilterBar
+              nav={nav}
+              search={
+                <label className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+                  Search machines
+                  <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
+                </label>
+              }
+              filters={
+                <div role="group" aria-label="Filter machines">
+                  {FILTERS.map((f) => (
+                    <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              }
+            />
 
-          {shown.length === 0 ? (
-            <p>No machines match.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Machine</th>
-                  <th scope="col">Recipe</th>
-                  {showInputs && <th scope="col">Inputs</th>}
-                  <th scope="col">Outputs</th>
-                  <th scope="col">State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((building) => (
-                  // id is unique within one response; never persisted (stability unverified).
-                  <BuildingRow key={building.id} building={building} showInputs={showInputs} />
-                ))}
-              </tbody>
-            </table>
-          )}
+            {shown.length === 0 ? (
+              <p>No machines match.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Machine</th>
+                    <th scope="col">Recipe</th>
+                    {showInputs && <th scope="col">Inputs</th>}
+                    <th scope="col">Outputs</th>
+                    <th scope="col">State</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rowCap.visible.map((building, i) => (
+                    // id is unique within one response; never persisted (stability unverified).
+                    <BuildingRow
+                      key={building.id}
+                      building={building}
+                      showInputs={showInputs}
+                      focusRef={rowCap.expanded && i === FACTORY_ROW_CAP ? rowCap.firstRevealedRef : undefined}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <ShowAllRows rowCap={rowCap} noun="machines" />
+          </div>
         </>
       )}
 
@@ -107,10 +146,57 @@ export function FactoryPanel({
   );
 }
 
-function BuildingRow({ building, showInputs }: { building: FactoryBuilding; showInputs: boolean }) {
+/**
+ * The box the filter bar sticks within: the bar and the table, in a flex column. Not the `.panel` grid itself: a sticky
+ * grid item is bounded by its own grid area, which is one auto row exactly the bar's height, so it would never move.
+ * The gap is the panel's.
+ */
+const STICKY_SCOPE = "flex min-w-0 flex-col gap-3";
+
+/**
+ * ADR-0062 F.4: the in-page nav and the table's controls, in one bar that sticks to the top of the screen while the
+ * table scrolls under it (one sticky layer, never two stacked). Sticky is bounded by `STICKY_SCOPE`, so it lets go once
+ * the table has scrolled past; no ancestor up to the page scrolls on its own (an `overflow` there would turn sticky off).
+ * On a phone the whole bar wraps to about four touch rows, a quarter of a 390 x 844 screen, so there only the nav and the
+ * search stick (two rows): the outer box becomes `contents`, which makes the inner row a child of the scope and lets it stick there,
+ * while the state filters scroll away with the table above them. From `sm` the outer box sticks with all three.
+ */
+function FilterBar({ nav, search, filters }: { nav?: ReactNode; search?: ReactNode; filters?: ReactNode }) {
+  if (nav == null && search == null && filters == null) return null;
+  return (
+    <div
+      data-filter-bar=""
+      className="contents sm:sticky sm:top-0 sm:z-(--z-sticky) sm:flex sm:flex-col sm:gap-3 sm:border-b sm:border-line sm:bg-surface sm:py-2"
+    >
+      {(nav != null || search != null) && (
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 max-sm:sticky max-sm:top-0 max-sm:z-(--z-sticky) max-sm:border-b max-sm:border-line max-sm:bg-surface max-sm:py-2">
+          {nav}
+          {search}
+        </div>
+      )}
+      {filters}
+    </div>
+  );
+}
+
+/**
+ * `focusRef`: on the first row "Show all" revealed, whose name takes focus (focusable from script only, never a tab stop),
+ * so the reader carries on at the row after the one they stopped at.
+ */
+function BuildingRow({
+  building,
+  showInputs,
+  focusRef,
+}: {
+  building: FactoryBuilding;
+  showInputs: boolean;
+  focusRef?: (el: HTMLElement | null) => void;
+}) {
   return (
     <tr>
-      <th scope="row">{building.name}</th>
+      <th scope="row" ref={focusRef} tabIndex={focusRef ? -1 : undefined}>
+        {building.name}
+      </th>
       <td>
         {building.recipe ?? "No recipe"}
         <Clock percent={building.clockSpeedPercent} />

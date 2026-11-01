@@ -1,4 +1,4 @@
-import { endpoints, ownValue, PlannerDesignationsResponseSchema, ProductionGraphResponseSchema, type Command } from "@satisfactory-dash/shared";
+import { endpoints, ownValue, PlannerDesignationsResponseSchema, ProductionGraphResponseSchema, type Command, type PlannerEdge } from "@satisfactory-dash/shared";
 import {
   errorForbidden,
   errorServiceUnavailable,
@@ -10,6 +10,8 @@ import {
   agentRevokeResponse,
   agentStatusEnrolled,
   agentStatusEnrolledSilent,
+  agentStatusGameReachable,
+  agentStatusGameUnreachable,
   agentStatusNotEnrolled,
   alertDeleteDestinationResponse,
   alertDeleteRuleResponse,
@@ -63,6 +65,7 @@ import {
   managedServersAllStates,
   productionGraphEmpty,
   productionGraphFactories,
+  productionGraphStaleEnd,
   productionGraphStalled,
   productionGraphTwoSites,
   plannerDesignationDeleteResponse,
@@ -89,6 +92,8 @@ import {
   mapMarkersWorldResponse,
   powerLinesWorldResponse,
   droneRoutesWorldResponse,
+  conveyorsWorldResponse,
+  conveyorsWorldResponseEmpty,
   railsWorldResponse,
   railsWorldResponseEmpty,
   railsWorldResponseTruncated,
@@ -118,6 +123,7 @@ import {
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "./mapLiveResponses";
 import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "./mapMarkersResponses";
 import { powerLinesWorldResponseEmpty, powerLinesWorldResponseTruncated } from "./powerLinesResponses";
+import { conveyorsWorldResponseTruncated } from "./conveyorsResponses";
 import { droneRoutesWorldResponseAmbiguous, droneRoutesWorldResponseEmpty, droneRoutesWorldResponseTruncated } from "./droneRoutesResponses";
 import { accountDeleted, errorOperatorServers, errorReauthRequired, serverLeft } from "./accountMocks";
 import {
@@ -185,6 +191,8 @@ export const ROUTES = {
   mapPowerLines: endpoints.map.worldLayer,
   // ADR-0055 Decision 1 (#330): the drone ports and their pairings, the same endpoint (on by default).
   mapDroneRoutes: endpoints.map.worldLayer,
+  // #330: the belts, lifts and pipes, the same endpoint (off by default on the page, so asked for once toggled on).
+  mapConveyors: endpoints.map.worldLayer,
   // ADR-0038 M6: the live trains and stations (its own endpoint).
   mapLive: endpoints.map.live,
   settings: endpoints.settings.get,
@@ -258,6 +266,7 @@ export const WORLD_LAYER_ROUTES = {
   mapMarkers: "mapMarkers",
   mapPowerLines: "powerLines",
   mapDroneRoutes: "droneRoutes",
+  mapConveyors: "conveyors",
 } as const;
 
 /** A route's path pattern as a router sees it: the world-layer routes have their `:layer` filled in. */
@@ -309,6 +318,7 @@ const BASE: Record<RouteKey, MockResponse> = {
   mapMarkers: ok(mapMarkersWorldResponse),
   mapPowerLines: ok(powerLinesWorldResponse),
   mapDroneRoutes: ok(droneRoutesWorldResponse),
+  mapConveyors: ok(conveyorsWorldResponse),
   mapLive: ok(mapLiveResponse),
   metrics: ok(metricsOverviewWithCharts),
   settings: ok(settingsEditable),
@@ -433,7 +443,7 @@ const plannerFactoriesTwoTrees = (() => {
 /**
  * ADR-0055 PR 10a: the factories fixture with one id per machine (its own is one per group) and a building for each at the
  * group's place, the Iron Rod factory designated "Rod works" by two machines it holds and one it no longer finds, and the
- * viewer an owner. The Iron Plate factory stays automatic, for the suggestions and the "Designate selected" form.
+ * viewer an owner. The Iron Plate factory stays automatic, for the "Designate selected" form.
  */
 const plannerDesignated = (() => {
   const base = ProductionGraphResponseSchema.parse(productionGraphFactories);
@@ -529,6 +539,112 @@ const plannerFactoriesTransports = (() => {
     },
   };
 })();
+
+/**
+ * ADR-0062 amendment build PR 3, the marching dashes' measurement: one site of 160 groups and 210 lines (the measured site's
+ * size, ADR-0055's 160 groups and 204 edges), built from the two-sites fixture. Groups stand in layers of 10, each fed by the
+ * one a layer before and every third also by a neighbour of it. The lines mix every step (slow, mid, fast), measured,
+ * estimated and unknown rates, pipes and mixed belts, so the in-view cap has a real choice to make.
+ */
+export const plannerLarge = (() => {
+  const base = productionGraphTwoSites.data;
+  const GROUPS = 160;
+  const WIDTH = 10;
+  const SITE = "site|0|0";
+  const ITEMS = [
+    ["Desc_IronIngot_C", "Iron Ingot"],
+    ["Desc_IronPlate_C", "Iron Plate"],
+    ["Desc_IronRod_C", "Iron Rod"],
+    ["Desc_IronScrew_C", "Screw"],
+    ["Desc_Wire_C", "Wire"],
+  ] as const;
+  const node = (i: number) => ({
+    ...base.nodes[1],
+    key: `group-${i}`,
+    recipe: `Recipe ${i}`,
+    count: 1 + (i % 9),
+    machineIds: [`Build_SmelterMk1_C_${100 + i}`],
+    stateCounts: { producing: 1 },
+    at: { x: i * 10, y: (i % WIDTH) * 10 },
+    siteKey: SITE,
+  });
+  const nodes = Array.from({ length: GROUPS }, (_, i) => node(i));
+  const edges: PlannerEdge[] = [];
+  const edge = (from: number, to: number) => {
+    const j = edges.length;
+    const pipe = j % 9 === 4;
+    const rate = j % 11 === 5 ? "unknown" : j % 3 === 1 ? "estimated" : "measured";
+    const [itemClassName, itemName] = pipe ? ["Desc_Water_C", "Water"] : ITEMS.at(j % ITEMS.length)!;
+    const ratePerMinute = rate === "unknown" ? null : (pipe ? [100, 400, 700] : [30, 150, 300, 600]).at(j % (pipe ? 3 : 4))!;
+    edges.push({ ...base.edges[0], from: `group-${from}`, to: `group-${to}`, kind: pipe ? "pipe" : "belt", itemClassName, itemName, ratePerMinute, rate, mixed: j % 13 === 7, capacityPerMinute: null, conveyorCount: 1 });
+  };
+  for (let i = WIDTH; i < GROUPS; i++) edge(i - WIDTH, i);
+  for (let i = WIDTH; i < GROUPS && edges.length < 210; i += 2) edge(i - WIDTH + (i % WIDTH === WIDTH - 1 ? -1 : 1), i);
+  const site = { ...base.sites[0], key: SITE, name: "Large site", machineCount: GROUPS * 5, stateCounts: { producing: GROUPS }, nodeKeys: nodes.map((n) => n.key) };
+  return { ...productionGraphTwoSites, data: { ...base, nodes, edges, sites: [site], unconnectedMachineIds: [], beltData: "present" as const } };
+})();
+
+/**
+ * ADR-0062 Decision 1, the destination caps' measurement: an overview of 48 factories (one group each, built from the
+ * factories fixture) in six chains of eight, so the lines between them march too, and each factory sending to one to five
+ * kinds of end (storage, the Depot, the Sink, power, a station) that belong to no factory, so each kind is a cap and five
+ * kinds are three caps and a "+2". The caps mix every step, measured, estimated and unknown rates, and counts past one.
+ */
+export const plannerCapsLarge = (() => {
+  const base = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
+  const FACTORIES = 48;
+  const CHAIN = 8;
+  const template = base.nodes.find((n) => n.className === "Build_ConstructorMk1_C")!;
+  const edge0 = base.edges.find((e) => e.destination === "storage")!;
+  const KINDS = ["storage", "depot", "sink", "power", "export"] as const;
+  const ends = KINDS.map((kind, k) => ({ ...template, key: `end-${kind}`, kind: "storage", className: "Build_StorageContainerMk1_C", name: kind, recipe: null, count: 1, machineIds: [`end-${k}`], stateCounts: {}, products: [], ingredients: [], at: { x: 9000 + k, y: 0 }, factoryKey: undefined, role: kind }));
+  const groups = Array.from({ length: FACTORIES }, (_, i) => ({ ...template, key: `group-${i}`, recipe: `Recipe ${i}`, machineIds: [`Build_ConstructorMk1_C_${200 + i}`], stateCounts: { producing: 1 }, at: { x: i * 10, y: 0 }, factoryKey: `factory-${i}` }));
+  const edges: PlannerEdge[] = [];
+  for (let i = 0; i < FACTORIES; i++) {
+    if (i % CHAIN !== CHAIN - 1) edges.push({ ...edge0, from: `group-${i}`, to: `group-${i + 1}`, destination: "factory", ratePerMinute: [30, 150, 600].at(i % 3)!, rate: i % 2 === 0 ? "measured" : "estimated" });
+    KINDS.slice(0, 1 + (i % KINDS.length)).forEach((kind, k) => {
+      const j = i + k;
+      const rate = j % 7 === 3 ? "unknown" : j % 3 === 1 ? "estimated" : "measured";
+      const ratePerMinute = rate === "unknown" ? null : [30, 150, 300, 600].at(j % 4)!;
+      // Every third kind gets a second flow, so its cap wears a count badge.
+      for (let n = 0; n < (j % 3 === 0 ? 2 : 1); n++) edges.push({ ...edge0, from: `group-${i}`, to: `end-${kind}`, destination: kind, ratePerMinute, rate });
+    });
+  }
+  const factories = groups.map((g, i) => ({ ...base.factories![0], key: `factory-${i}`, name: `Factory ${i + 1}`, designationId: null, nodeKeys: [g.key], siteKeys: [g.siteKey], machineCount: g.count, sharedNodeCount: 0, sideProducts: [] }));
+  return { ...productionGraphFactories, data: { ...base, nodes: [...groups, ...ends], edges, transports: [], factories, topologyHash: "sha256-planner-caps-large" } };
+})();
+
+/**
+ * ADR-0062 amendment build PR 4, the transport glyphs' measurement: the caps' 48-factory overview (its lines march and its
+ * caps move too, so this is everything that moves at once) with 48 transports between the factories, more than the glyphs'
+ * cap (40): each factory to the one in the next chain, and every fourth of the first 32 also two chains on. Every mode the
+ * canvas has a glyph for, and measured, estimated (dashed) and unknown (dotted) rates.
+ */
+export const plannerTransportsLarge = (() => {
+  const base = ProductionGraphResponseSchema.parse(plannerCapsLarge).data;
+  const FACTORIES = 48;
+  const CHAIN = 8;
+  const MODES = ["train", "truck", "drone", "depot"] as const;
+  const transports: NonNullable<typeof base.transports> = [];
+  const via = (from: number, to: number) => {
+    const j = transports.length;
+    const rate = j % 7 === 3 ? "unknown" : j % 3 === 1 ? "estimated" : "measured";
+    transports.push({ from: `group-${from}`, to: `group-${to}`, mode: MODES.at(j % MODES.length)!, itemClassName: "Desc_IronPlate_C", itemName: "Iron Plate", ratePerMinute: rate === "unknown" ? null : [30, 150, 600].at(j % 3)!, rate, carriers: 1 + (j % 3), routeName: `Route ${j + 1}`, flow: "supply", destination: "factory" });
+  };
+  for (let i = 0; i + CHAIN < FACTORIES; i++) via(i, i + CHAIN);
+  for (let i = 0; i + 2 * CHAIN < FACTORIES && transports.length < 48; i += 4) via(i, i + 2 * CHAIN);
+  return { ...plannerCapsLarge, data: { ...base, transports, topologyHash: "sha256-planner-transports-large" } };
+})();
+
+/** ADR-0062 F.5: the mixed factory's five machines twelve times over (60, each its own id), past the table's 50-row cap. */
+const factoryManyMachines = {
+  ...factoryMixed,
+  data: {
+    ...factoryMixed.data,
+    buildings: Array.from({ length: 12 }, (_, n) => factoryMixed.data.buildings.map((b) => ({ ...b, id: `${b.id}-${n + 1}` }))).flat(),
+    backedUpCount: factoryMixed.data.backedUpCount * 12,
+  },
+};
 
 /** The factory read with the planner fixture's constructor manifold in it (Build_ConstructorMk1_C_1..8), for the graph's group panel. */
 const factoryWithPlannerManifold = {
@@ -690,6 +806,7 @@ export const SCENARIOS = {
     mapMarkers: slow(BASE.mapMarkers),
     mapPowerLines: slow(BASE.mapPowerLines),
     mapDroneRoutes: slow(BASE.mapDroneRoutes),
+    mapConveyors: slow(BASE.mapConveyors),
     mapLive: slow(BASE.mapLive),
     settings: slow(BASE.settings),
     managedServers: slow(BASE.managedServers),
@@ -766,6 +883,11 @@ export const SCENARIOS = {
   "map-power-lines-empty": { mapPowerLines: ok(powerLinesWorldResponseEmpty) },
   "map-power-lines-truncated": { mapPowerLines: ok(powerLinesWorldResponseTruncated) },
   "map-power-lines-error": { mapPowerLines: fail(502, errorUpstreamUnreachable) },
+  // #330, the belts, lifts and pipes (off by default, so their states act on the toggle): none reported yet, cut to the
+  // layer's cap, and the read failing. The default scenario has the captured sample.
+  "map-conveyors-empty": { mapConveyors: ok(conveyorsWorldResponseEmpty) },
+  "map-conveyors-truncated": { mapConveyors: ok(conveyorsWorldResponseTruncated) },
+  "map-conveyors-error": { mapConveyors: fail(502, errorUpstreamUnreachable) },
   // ADR-0055 Decision 1 (#330), the drone ports (on by default, so empty and failing are in map-world-empty and
   // map-world-error): cut to the layer's cap, and a pairing that names two ports. The default scenario has the captured
   // pair and an unpaired port.
@@ -777,6 +899,8 @@ export const SCENARIOS = {
   "map-live-error": { mapLive: fail(502, errorUpstreamUnreachable) },
   // Ingredients and every machine state (ADR-0027), plus an unknown state, none, and an older backend.
   "factory-states": { factory: ok(factoryStatesAndIngredients) },
+  // ADR-0062 F.5: more machines than the table's first render shows, so it ends in "Showing 50 of 60" and "Show all".
+  "factory-many-machines": { factory: ok(factoryManyMachines) },
   // ADR-0048 (#349), the Bottlenecks section: an older FRM (item level, update note), connection data over the cap,
   // nothing to report, and a newer backend's unknown step kind and note.
   "bottlenecks-old-frm": { bottlenecks: ok(bottlenecksItemLevelOldFrm) },
@@ -784,6 +908,8 @@ export const SCENARIOS = {
   "bottlenecks-not-received": { bottlenecks: ok(bottlenecksNotReceived) },
   "bottlenecks-empty": { bottlenecks: ok(bottlenecksEmpty) },
   "bottlenecks-unknown-kind": { bottlenecks: ok(bottlenecksUnknownKind) },
+  // ADR-0062 F.1: the read failing, so the summary at the top shows the panel error in its reserved box (and the list too).
+  "bottlenecks-error": { bottlenecks: fail(502, errorUpstreamAuthRejected) },
   // ADR-0050 task 5, the Planner page at /app/planner (default shows two sites, a loop, a mixed belt, an estimated edge and
   // a machine on no conveyor yet): an empty factory, belt data unavailable (older FRM, over the cap), the data stale, a
   // bottleneck finding on a planner machine (the per-site count), and the read failing.
@@ -815,7 +941,12 @@ export const SCENARIOS = {
   "planner-factories": { productionGraph: ok(productionGraphFactories) },
   "planner-factories-trees": { productionGraph: ok(plannerFactoriesTwoTrees) },
   "planner-factories-transports": { productionGraph: ok(plannerFactoriesTransports) },
-  // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate or suggest.
+  // ADR-0062 amendment build PR 3: a 160-group, 210-line site, for the marching dashes' in-view cap and frame times.
+  "planner-large": { productionGraph: ok(plannerLarge) },
+  // ADR-0062 Decision 1: a 48-factory overview whose every card has destination caps, for their frame times.
+  "planner-caps-large": { productionGraph: ok(plannerCapsLarge) },
+  "planner-transports-large": { productionGraph: ok(plannerTransportsLarge) },
+  // ADR-0055 PR 10a: an owner, one designated factory with a machine gone, and one automatic factory to designate.
   "planner-designations": plannerDesignated,
   // ADR-0055 #727: merge, split, pop-out, dissolve and undo offered (revisions present); the factories not connected; and
   // a replace that finds a designation changed meanwhile.
@@ -836,6 +967,9 @@ export const SCENARIOS = {
   // #728 step 2: a stalled group. The manifold is backed up at "0 of 160", its card says so in a muted line, and so does
   // its side panel; the recycler it feeds is underfed at 0.
   "planner-stalled": { productionGraph: ok(productionGraphStalled), factory: ok(factoryStalledManifold) },
+  // #728 cause 11: a conveyor end names a machine the latest factory read lacks. Its card in the Iron Rod factory says the
+  // conveyor data is older (muted, a clock glyph), never an unknown card.
+  "planner-stale-end": { productionGraph: ok(productionGraphStaleEnd) },
   // ADR-0057 Decision 2 step 1: a vanilla-only server. The game answers (status, and no player list, as in BASE); nothing of
   // power or factory was ever served, so those reads fail as an agent server's never-reported part does.
   "basic-data": {
@@ -923,6 +1057,13 @@ export const SCENARIOS = {
   "agent-enrolled-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolled) },
   "agent-silent-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusEnrolledSilent) },
   "agent-enrolled-viewer": { servers: ok(serversRoleViewer), agentStatus: ok(agentStatusEnrolled) },
+  // #740 follow-up: the agent's own view of the game. Reading it (the dash agent sends its version twice), and not
+  // reaching it for 12 minutes (that one keeps the fixture's differing versions, so it also shows "· sender 1.4.2").
+  "agent-game-reachable-owner": {
+    servers: ok(serversRoleOwner),
+    agentStatus: ok({ ...agentStatusGameReachable, agentVersion: agentStatusGameReachable.modVersion }),
+  },
+  "agent-game-unreachable-owner": { servers: ok(serversRoleOwner), agentStatus: ok(agentStatusGameUnreachable) },
   // ADR-0057 Decision 7: the version banners. An agent behind the newest release; the mod behind it (applies at the next
   // restart); a version older than minSupported; a mod inside an advisory's range; and an agent below minSafe with no advisory.
   "update-agent": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("0.3.5+ec24244.20261025")), compat: ok(compatPolicy) },

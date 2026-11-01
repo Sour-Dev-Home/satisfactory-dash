@@ -1,11 +1,15 @@
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import type { Bottleneck, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { Bottleneck, FactoryBuilding, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
+import { queries } from "../../api/queries";
 import { cn } from "../../lib/cn";
+import { useSelectedServer } from "../../servers/ServerContext";
 import { useReducedMotion } from "../../overview/reducedMotion";
-import { bottleneckCountText, carrierWord, siteFindings, UNKNOWN_FLOW_NOTE } from "../plannerText";
+import type { FactoryTree } from "../factoryTree";
+import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
-import { factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
-import { reachFor, siteItems } from "./graphModel";
+import { TOO_LARGE_TO_EXPAND, expandAllKeys, factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
+import { minedRates, reachFor, siteItems } from "./graphModel";
 import type { FactoryModel } from "./hierarchy";
 import { BuildingGlyph, GLYPH_BOX } from "./buildingGlyphs";
 import type { GlyphKind } from "./buildingIcons";
@@ -13,27 +17,80 @@ import {
   BUILDING_ICON_GAP,
   BUILDING_ICON_SIZE,
   CHAR_W_BODY,
+  COLLAPSE_W,
   COUNT_BADGE_H,
+  EXPAND_W,
   FRAME_HEADER_H,
+  MACHINE_CARD_H,
+  MACHINE_CARD_W,
+  NODE_PAD_Y,
+  machineLineY,
+  machineSlot,
+  machineSlots,
   ICON_TOP,
   LABEL_LINE_H,
+  LABEL_PAD,
   NODE_PAD_X,
   PILL_H,
+  PILL_HIT,
+  cardLineMid,
   cardLineY,
   countBadgeWidth,
   isHeadingLine,
   isTransport,
+  labelBox,
   layoutScene,
+  FOCUS_CARD_H,
+  FOCUS_CARD_W,
+  FOCUS_LAYOUT_BUDGET_MS,
   type LaidEdge,
   type LaidFrame,
   type LaidNode,
+  type SiteLayout,
 } from "./layoutSite";
-import { MOTION_OPTIONS, motionOn, useCollapsedUpstream, useMotionPref, useStorageDetail, type MotionPref } from "./plannerPrefs";
+import { overviewFoldsKey, useFolds } from "./foldMemory";
+import { machineCardKey, machineCards, type MachineCardText } from "./machineCards";
+import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStateStyle, useStorageDetail, type MotionPref } from "./plannerPrefs";
+import { StateMarkGlyph } from "./StateMark";
+import type { StalledKind } from "../plannerText";
+import { machineState } from "../../factory/machineState";
 import { TransportGlyph } from "./transportGlyphs";
 import { GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
-import { BADGE_H, BADGE_W, suggestionTag } from "./cardBadges";
+import { BADGE_H, BADGE_W } from "./cardBadges";
 import { roundedOrthogonalPath } from "./edgeShapes";
+import { lineStroke } from "./lineWidth";
+import { CARD_STACK_OFFSET, MARCH_SETTLE_MS, PULSE_DASH, PULSE_MIN_W, marchCandidates, marchHoles, marchingLines, type MarchHole } from "./marching";
+import { glyphCandidates, movingGlyphs, type GlyphCandidate } from "./glyphMotion";
+import type { RateStep } from "./rateStep";
+import { useSettled } from "./useSettled";
+import {
+  BUBBLE_D,
+  BUBBLE_ICON,
+  CHIP_H,
+  CHIP_W,
+  bubbleDetail,
+  bubbleName,
+  bubbleOffsets,
+  bubbleStops,
+  chipName,
+  edgeKeyOf,
+  stopId,
+  type BubbleDetail,
+  type BubbleItem,
+  type BubbleStop,
+  type ItemFocus,
+} from "./bubbleRow";
+import { BubbleButtons, ItemList } from "./ItemFocusLayer";
+import { CapButtons, CapMarchStroke, CapRow } from "./DestinationCaps";
+import { capCandidates, capStops, marchingCaps, type CapMarch, type CapStop } from "./capLayout";
+import { ItemCard } from "./ItemCard";
+import { CanvasOverlay } from "./CanvasOverlay";
+import { placeOverlay, screenRect, stageBesideOverlay } from "./overlayPlacement";
+import { useLargeScreen } from "./useWideScreen";
+import { CARD_RX, bubbleCentre, bubbleRowOrigin, itemCardText } from "./itemCardText";
+import { tweenMs, useTween } from "./useTween";
+import { itemIconUrl } from "./itemIcons";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -43,12 +100,10 @@ import {
   clippedEdges,
   fitView,
   isClipped,
-  isInView,
   keyView,
   panBy,
   pinchView,
   revealRect,
-  stageBesidePanel,
   toStage,
   zoomAt,
   zoomCentre,
@@ -64,20 +119,25 @@ const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
 const PILL_MIN_W = 24;
-const PILL_HIT = 44;
-/** The Collapse button in a frame's header. */
-const COLLAPSE_W = 76;
-/** A glyph crosses its edge at this many units a second, within these bounds; at most this many edges move at once. */
-const GLYPH_SPEED = 40;
-const GLYPH_MIN_S = 4;
-const GLYPH_MAX_S = 16;
-const MAX_MOVING = 40;
+/** Why the toolbar's blow-up "Expand all" is disabled: every card here would pass `EXPAND_MAX_CARDS`. */
+const NOTHING_FITS = "Nothing here fits under the cap; open a factory to see its parts.";
 /** A lasso adds a point once the pointer is this far (stage units) from the last one. */
 const LASSO_STEP = 3;
-/** The Keep pill on a suggested factory's card. */
-const KEEP_W = 56;
 /** The check on a selected card's corner. */
 const CHECK_R = 10;
+const NONE_OPEN: ReadonlySet<string> = new Set();
+/** The kinds a stalled line's stop bar is drawn in (one marker each, in its tone). */
+const STALLED_KINDS: readonly StalledKind[] = ["backedUp", "underfed", "paused", "idle"];
+/** A kind's colour as a text class (`stroke-current`/`fill-current` take it): the state's tone, as `StateMark` draws it. */
+const stateMarkTone = (kind: StalledKind): string => machineState(kind)?.tone ?? "text-muted";
+/** A stalled item bubble's corner mark: its centre from the bubble's, the disc behind it, and the glyph's scale. */
+const BUBBLE_MARK_AT = 14;
+const BUBBLE_MARK_R = 8;
+const BUBBLE_MARK_SCALE = 0.6;
+/** A stalled bubble's ring: thinner than the accent focus ring (3), so the two never read alike. */
+const STALLED_RING_W = 2.5;
+/** A stalled card's mark on its note row: the glyph's scale (the row is `LINE_H` tall, the glyph box `GLYPH_BOX`). */
+const CARD_MARK_SCALE = 0.75;
 
 
 type EdgeStyle = Pick<CanvasFlow, "mixed" | "carrier" | "rate">;
@@ -88,7 +148,60 @@ function edgeClass(e: EdgeStyle) {
   return e.carrier === "pipe" ? "stroke-info" : e.rate === "unknown" ? "stroke-line" : "stroke-muted";
 }
 const edgeDash = (rate: CanvasFlow["rate"]) => (rate === "measured" ? undefined : rate === "estimated" ? "8 5" : "2 5");
-const edgeWidth = (mixed: boolean) => (mixed ? 3 : 2);
+/**
+ * The arrowhead (`markerUnits="userSpaceOnUse"`, so it keeps its size on every width): 8 units long, 8 wide at its base,
+ * its viewBox 10 wide. It is placed at its middle (`ARROW_REF_X`) and the line stops `LINE_UNDER_ARROW` short of its end, so
+ * the line ends where the head is 4 wide (the widest line) and never blunts the tip; the tip stays 0.8 past the route's
+ * end, under the card, as before. A stalled line's stop bar (marks mode) needs no trim: the line ends inside the bar.
+ */
+const ARROW_REF_X = 5;
+const LINE_UNDER_ARROW = 3.2;
+/**
+ * A transport's double line (`TRANSPORT_W`, 6) ends where the head is 6 wide, so its rails never stick out beside it. The
+ * marker rides the path's end, so the double line has its own marker placed further back (`DOUBLE_ARROW_REF_X`): the line
+ * stops `DOUBLE_UNDER_ARROW` short, the tip stays 0.8 past the route's end and the base at 7.2 short, as on a belt.
+ */
+const DOUBLE_ARROW_REF_X = 2.5;
+const DOUBLE_UNDER_ARROW = 5.2;
+/** A mixed line's inner stroke stops before the arrowhead's base (7.2 short of the end), or at a stop bar's back (3 short). */
+const INNER_TRIM = 8;
+const INNER_TRIM_STALLED = 3;
+/**
+ * A dashed or dotted mixed line's inner dashes: each one unit shorter (its gap one longer) and centred in the line's dash by
+ * `INNER_DASH_OFFSET`, so each dash's hole is closed at both ends instead of splitting the dash in two.
+ */
+const innerDash = (dash: string | undefined) => dash?.split(" ").map((n, i) => Number(n) + (i % 2 === 0 ? -1 : 1)).join(" ");
+const INNER_DASH_OFFSET = -0.5;
+/**
+ * Marching dashes (ADR-0062 amendment build PR 3), one class per step, each timed by its `--duration-flow-*` token. An
+ * estimated line's own dashes march (and a mixed one's inner dashes with them, in step). A measured line stays solid: pulses
+ * ride over it, a thin `PULSE_DASH` stroke that is visible only while its animation runs, so a still frame is today's line.
+ * The dash cycles (8 + 5, 7 + 6, 3 + 10) all equal `--flow-dash-cycle`, the distance one animation cycle shifts them.
+ */
+const MARCH_CLASS: ReadonlyMap<RateStep, string> = new Map([
+  ["slow", "animate-flow-slow"],
+  ["mid", "animate-flow-mid"],
+  ["fast", "animate-flow-fast"],
+]);
+const MARCH_INNER_CLASS: ReadonlyMap<RateStep, string> = new Map([
+  ["slow", "animate-flow-inner-slow"],
+  ["mid", "animate-flow-inner-mid"],
+  ["fast", "animate-flow-inner-fast"],
+]);
+const PULSE_CLASS: ReadonlyMap<RateStep, string> = new Map([
+  ["slow", "animate-flow-pulse-slow"],
+  ["mid", "animate-flow-pulse-mid"],
+  ["fast", "animate-flow-pulse-fast"],
+]);
+/**
+ * The march layer (`MarchLayer`) draws an estimated line's moving dashes over the canvas's still ones, so first it covers
+ * them with a canvas-coloured stroke this much wider than the line (its antialiased edge included). It and the dashes stop at
+ * the arrowhead's base (`LINE_UNDER_ARROW` plus half the head's 8), so they never paint over the canvas's arrowhead.
+ */
+const MARCH_COVER_PAD = 1;
+const MARCH_TRIM = LINE_UNDER_ARROW + 4;
+/** The march layer's mask reaches this far past the layout's box, so a route that bends just outside it is not cut. */
+const MARCH_MASK_PAD = 50;
 
 /** The overflow fades, one per edge: where it sits, the gradient direction towards the drawing, and the edge's name. */
 const FADES = [
@@ -100,15 +213,51 @@ const FADES = [
 
 const ICON_PROPS = { viewBox: "0 0 24 24", "aria-hidden": true, className: "size-5", fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
-/** A toolbar button: an icon below `sm` (a 44 px square, the name for assistive tech), the words from `sm` up. */
-function ToolButton({ name, icon, onClick, disabled, pressed }: { name: string; icon: ReactNode; onClick: () => void; disabled?: boolean; pressed?: boolean }) {
+/**
+ * A toolbar button: an icon below `sm` (a 44 px square, the name for assistive tech), the words from `sm` up. `iconOnly` keeps the
+ * icon at every width, with the name as its tooltip (the owner, 2026-10-27: zoom, fit and Select read as the usual icons).
+ */
+/** `description`: why the button is as it is (a disabled one's reason), as its tooltip and its accessible description. */
+function ToolButton({
+  name,
+  icon,
+  onClick,
+  disabled,
+  pressed,
+  iconOnly,
+  description,
+}: {
+  name: string;
+  icon: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  pressed?: boolean;
+  iconOnly?: boolean;
+  description?: string | undefined;
+}) {
+  const describedBy = useId();
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={pressed} className="inline-flex min-h-touch min-w-touch items-center justify-center">
-      <svg {...ICON_PROPS} className="size-5 sm:hidden">
-        {icon}
-      </svg>
-      <span className="sr-only sm:not-sr-only">{name}</span>
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        aria-pressed={pressed}
+        aria-describedby={description === undefined ? undefined : describedBy}
+        title={description ?? (iconOnly ? name : undefined)}
+        className="inline-flex min-h-touch min-w-touch items-center justify-center"
+      >
+        <svg {...ICON_PROPS} className={iconOnly ? "size-5" : "size-5 sm:hidden"}>
+          {icon}
+        </svg>
+        <span className={iconOnly ? "sr-only" : "sr-only sm:not-sr-only"}>{name}</span>
+      </button>
+      {description !== undefined && (
+        <span id={describedBy} className="sr-only">
+          {description}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -124,19 +273,23 @@ const usePageVisible = () =>
     () => true,
   );
 
-/** What the canvas shows: one site (an older backend), the factory overview, or one opened factory. */
-export type GraphTarget = { kind: "site"; site: PlannerSite } | { kind: "overview"; models: readonly FactoryModel[] } | { kind: "factory"; model: FactoryModel };
+/** What the canvas shows: one site (an older backend), the factory overview (one level of the tree, ADR-0061), or one opened factory. */
+export type GraphTarget =
+  | { kind: "site"; site: PlannerSite }
+  | {
+      kind: "overview";
+      models: readonly FactoryModel[];
+      tree?: FactoryTree | undefined;
+      path?: readonly string[] | undefined;
+      /** ADR-0061 Decision 5, behind `planner.nesting`: a card can blow up in place into its parts (needs `tree`). */
+      blowUp?: boolean | undefined;
+    }
+  | { kind: "factory"; model: FactoryModel };
 
 /** The groups picked to designate (ADR-0055 Decision 5), shared with the Groups table's ticks. */
 export interface CanvasSelection {
   selected: ReadonlySet<string>;
   replace: (nodeKeys: ReadonlySet<string>) => void;
-}
-
-/** The overview's automatic factories shown as suggestions, and the Keep form for one (owners and admins only). */
-export interface CanvasSuggestions {
-  keys: ReadonlySet<string>;
-  keepForm?: ((factoryKey: string, onClose: (saved: boolean) => void) => ReactNode) | undefined;
 }
 
 export interface SiteGraphProps {
@@ -147,11 +300,13 @@ export interface SiteGraphProps {
   onOpenFactory?: (key: string) => void;
   /** Given, the canvas has a Select mode: a lasso (or a click) picks the groups of the cards it takes. */
   selection?: CanvasSelection | undefined;
-  suggestions?: CanvasSuggestions | undefined;
   /** ADR-0055 Decision 12 (#727), the overview only: factory keys picked to merge; Shift- or Ctrl-click picks one. */
   factoryPicks?: CanvasSelection | undefined;
-  /** In an opened factory that can be split: the group panel's "Pop out" moves that group into its own factory. */
-  onPopOut?: ((nodeKey: string) => void) | undefined;
+  /**
+   * In an opened factory that can be split: the group panel's "Pop out" moves that group into its own factory. It rejects
+   * when the write fails, and the panel shows why.
+   */
+  onPopOut?: ((nodeKey: string) => Promise<void>) | undefined;
 }
 
 /** Whether a card can be picked: it stands for groups that are drawn (a fold's are hidden, a factory is not a group). */
@@ -174,28 +329,81 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
  * image's children are presentational, so buttons inside it would be hidden from assistive tech), and the focused card is
  * ringed in the picture. The Tables view is the full text alternative. With a selection, Select mode (or Shift+drag)
  * draws a lasso that picks the cards whose centre it encloses (ADR-0055 Decision 5); in Select mode a click (or a card's
- * button) picks or unpicks one card instead of opening it. Suggested factories are dashed, with Keep.
+ * button) picks or unpicks one card instead of opening it.
  */
-export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, suggestions, factoryPicks, onPopOut }: SiteGraphProps) {
-  // View state of this session: which bubbles differ from their default, which folds are open; and the viewer's saved
-  // choices: whose upstream is hidden, storage shown, motion.
-  const [flipped, setFlipped] = useState<ReadonlySet<string>>(new Set());
-  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
+export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, factoryPicks, onPopOut }: SiteGraphProps) {
+  // View state of this session, per factory (it outlives this canvas: foldMemory): which bubbles differ from their
+  // default, which folds are open; and the viewer's saved choices: whose upstream is hidden, storage shown, motion.
+  // Blow-up (ADR-0061 Decision 5) works on a level of the factory tree; its choices are remembered per path, like folds.
+  const blowUpTree = target.kind === "overview" && target.blowUp === true ? target.tree : undefined;
+  const levelPath = target.kind === "overview" ? (target.path ?? []) : [];
+  const [folds, setFolds] = useFolds(
+    target.kind === "factory" ? target.model.factory.key : target.kind === "site" ? target.site.key : blowUpTree !== undefined ? overviewFoldsKey(levelPath) : null,
+  );
+  const { flipped, unfolded } = folds;
+  const machinesOpen = folds.machines ?? NONE_OPEN;
+  const expanded = folds.expanded ?? NONE_OPEN;
+  const setExpanded = (next: ReadonlySet<string>) => setFolds({ expanded: next });
+  const setFlipped = (next: ReadonlySet<string>) => setFolds({ flipped: next });
+  const setUnfolded = (next: ReadonlySet<string>) => setFolds({ unfolded: next });
+  const setMachinesOpen = (next: ReadonlySet<string>) => setFolds({ machines: next });
   const [collapsed, setCollapsed] = useCollapsedUpstream();
   const [storageDetail, setStorageDetail] = useStorageDetail();
   const [motionPref, setMotionPref] = useMotionPref();
   const reduced = useReducedMotion();
   const visible = usePageVisible();
   const animate = motionOn(motionPref, reduced);
+  // ADR-0062 Decision 2: marks (the default) or words for a stalled group; the words stay in every title and aria text.
+  const [stateStyle, setStateStyle] = useStateStyle();
+  const marks = stateStyle === "marks";
 
-  const view: FactoryView = useMemo(() => ({ flipped, unfolded, collapsed, storageDetail }), [flipped, unfolded, collapsed, storageDetail]);
+  const view: FactoryView = useMemo(() => ({ flipped, unfolded, collapsed, storageDetail, machinesOpen }), [flipped, unfolded, collapsed, storageDetail, machinesOpen]);
   const scene: Scene = useMemo(
-    () => (target.kind === "site" ? siteScene(target.site, graph) : target.kind === "overview" ? overviewScene(graph, target.models) : factoryScene(graph, target.model, view)),
-    [target, graph, view],
+    () =>
+      target.kind === "site"
+        ? siteScene(target.site, graph)
+        : target.kind === "overview"
+          ? overviewScene(graph, target.models, target.path, target.tree, blowUpTree === undefined ? undefined : expanded)
+          : factoryScene(graph, target.model, view),
+    [target, graph, view, blowUpTree, expanded],
   );
-  const layout = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
+  const overview = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
+  const rates = useMemo(() => minedRates(graph.edges), [graph.edges]);
+  // Item focus (ADR-0060 builds PR 3 and 4), behind its flag, here because the picture makes room for the focused line.
+  // A focus whose line (or item) left the graph (a poll) clears: lines are found by key, not index.
+  const [itemFocusOn] = useState(readItemFocus);
+  const [itemFocus, setItemFocus] = useState<ItemFocus | null>(null);
+  const overviewByKey = useMemo(() => new Map(overview.edges.map((e) => [edgeKeyOf(e.flow), e])), [overview]);
+  const focusEdge = itemFocus === null ? undefined : overviewByKey.get(itemFocus.edgeKey);
+  const focus = itemFocusOn && focusEdge !== undefined && focusEdge.bubbles.all.some((i) => i.key === itemFocus!.item) ? itemFocus : null;
+  // Make room (Decision 3): the focused line's box is laid out at the detail card's size. A layout over the budget is not
+  // drawn: focus then only dims. Both layouts are remembered, so moving between them costs nothing after the first time.
+  const roomFor = focus?.edgeKey ?? null;
+  const room = useMemo(
+    () => (roomFor === null ? null : layoutScene(scene, graph.topologyHash, { edgeKey: roomFor, width: FOCUS_CARD_W, height: FOCUS_CARD_H })),
+    [scene, graph.topologyHash, roomFor],
+  );
+  const layout = room !== null && room.placeMs <= FOCUS_LAYOUT_BUDGET_MS ? room : overview;
   const nodeByKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
   const laidByKey = useMemo(() => new Map(layout.nodes.map((n) => [n.key, n])), [layout]);
+  // An opened group's machine cards: their words come from the Factory read (the page's own, the same cache entry the group
+  // panel uses) joined by id, and from the group for a machine that read does not hold.
+  const server = useSelectedServer();
+  const factoryRead = useQuery(queries.factory(server.id));
+  const buildings = useMemo((): FactoryBuilding[] | undefined => {
+    const data = factoryRead.data?.data;
+    // A read that failed with nothing cached is "not read", not "still reading": the cards then say so instead of waiting for ever.
+    if (data === undefined) return factoryRead.isError ? [] : undefined;
+    return [...data.buildings, ...(data.extractors ?? [])];
+  }, [factoryRead.data, factoryRead.isError]);
+  const machineWords = useMemo(() => {
+    const words = new Map<string, MachineCardText[]>();
+    for (const c of scene.cards) {
+      const node = nodeByKey.get(c.key);
+      if (c.machines?.open === true && node !== undefined) words.set(c.key, machineCards(node, c.machines, buildings));
+    }
+    return words;
+  }, [scene, nodeByKey, buildings]);
   const items = useMemo(() => siteItems(layout.flows), [layout]);
   const ids = useId();
   const markerId = `${ids}-arrow`;
@@ -210,6 +418,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // Until the user pans or zooms the view is the fit, so it follows the measured size; after that it is theirs.
   const [moved, setMoved] = useState<View | null>(null);
   const viewport = moved ?? fit;
+  // One object per detail step, so a zoom inside a step does not change any bubble's props.
+  const { full, iconSize } = bubbleDetail(viewport.k, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+  const detail = useMemo((): BubbleDetail => ({ full, iconSize }), [full, iconSize]);
   const viewRef = useRef(viewport);
   const stageRef = useRef(stage);
   const layoutRef = useRef(layout);
@@ -223,44 +434,196 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const setView = (change: View | ((v: View) => View)) => setMoved(typeof change === "function" ? change(viewRef.current) : change);
   const [item, setItem] = useState(ALL_ITEMS);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  // The machine card (`machineCardKey`) whose click opened the group panel: the panel marks it, and closing returns there.
+  const [openMachine, setOpenMachine] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
+  const machineButtons = useRef(new Map<string, HTMLButtonElement>());
+  // Where the keyboard goes once an opened or closed group has been drawn: its first machine's button, or its own.
+  const focusAfter = useRef<string | null>(null);
+  // A card just blown up from the keyboard: once its frame is drawn, the keyboard goes to the frame's first part.
+  const focusFrame = useRef<string | null>(null);
+  // The picture before a blow-up or a collapse, and the card's key: the cards glide from there (below).
+  const blowGlide = useRef<{ layout: SiteLayout; key: string } | null>(null);
+  useEffect(() => {
+    const blown = focusFrame.current;
+    if (blown !== null) {
+      const frame = layout.frames.find((f) => f.expands === blown);
+      // Its parts, or a remembered blow-up's inside it; the first in the tab order (left to right, then down).
+      const within = new Set(frame === undefined ? [] : [frame.key, ...layout.frames.filter((f) => f.parent === frame.key).map((f) => f.key)]);
+      const first = layout.nodes.filter((n) => n.card.frame !== undefined && within.has(n.card.frame)).sort((a, b) => a.x - b.x || a.y - b.y)[0];
+      if (first !== undefined) {
+        focusFrame.current = null;
+        focusAfter.current = first.key;
+      }
+    }
+    const key = focusAfter.current;
+    if (key === null) return;
+    const el = machineButtons.current.get(key) ?? buttons.current.get(key);
+    if (el === undefined) return;
+    focusAfter.current = null;
+    el.focus();
+  });
+  // Item focus's other state: the line whose "+k" list is open, the bubble stop that holds the tab stop and the one the
+  // keyboard is on (ringed), and what the status line last said.
+  const [listKey, setListKey] = useState<string | null>(null);
+  const [activeStop, setActiveStop] = useState<string | null>(null);
+  const [keyStop, setKeyStop] = useState<BubbleStop | null>(null);
+  const [announced, setAnnounced] = useState("");
+  // The card of a focus just left, while it shrinks back to its bubble.
+  const [closingCard, setClosingCard] = useState<ItemFocus | null>(null);
+  const bubbleButtons = useRef(new Map<string, HTMLButtonElement>());
+  // The destination caps' keyboard stops (ADR-0062 Decision 1): the one that holds the tab stop, and the one the keyboard is on.
+  const [activeCap, setActiveCap] = useState<string | null>(null);
+  const [keyCap, setKeyCap] = useState<CapStop | null>(null);
+  const capButtons = useRef(new Map<string, HTMLButtonElement>());
   const svgRef = useRef<SVGSVGElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const dragged = useRef(false);
   // Select mode (only with a selection) and the lasso being drawn, in layout units; the ref is what the window listeners see.
   const [selecting, setSelecting] = useState(false);
-  const selectMode = selecting && selection !== undefined;
+  // Select mode: in a factory it picks groups (a click, or a lasso); on the overview it picks factories for a merge (a
+  // click or a tap, the owner 2026-10-27: Shift-click alone left a phone, and anyone not told, no way to pick).
+  const overviewPicks = factoryPicks !== undefined && scene.level === "overview";
+  const selectMode = selecting && (selection !== undefined || overviewPicks);
+  const pickingFactories = selectMode && overviewPicks;
+  // ADR-0061 Decision 6: with the tree (the `planner.nesting` flag) the picks also group and move. `blowUp` is that flag
+  // (PlannerPanel passes `nesting` to both), so the hint follows the same switch as the bar.
+  const pickFor = blowUpTree !== undefined ? "to merge, group or move" : "for a merge";
   const [lasso, setLasso] = useState<readonly Point[] | null>(null);
   const lassoRef = useRef<{ id: number; points: Point[]; add: boolean } | null>(null);
-  // The suggested factory whose Keep form is open, and the hidden Keep buttons that focus returns to.
-  const [keeping, setKeeping] = useState<string | null>(null);
-  const keepButtons = useRef(new Map<string, HTMLButtonElement>());
-  // A cancelled Keep form hands focus back to that factory's Keep button once the form is gone.
-  // A new object each time, so cancelling the same factory's form twice still refocuses.
-  const [refocusKeep, setRefocusKeep] = useState<{ key: string } | null>(null);
-  useEffect(() => {
-    if (refocusKeep !== null) keepButtons.current.get(refocusKeep.key)?.focus();
-  }, [refocusKeep]);
-
   // A filter item that left the scene (a poll changed the edges) falls back to "all items".
   const activeItem = items.some((i) => i.className === item) ? item : ALL_ITEMS;
   const reach = useMemo(() => (activeItem === ALL_ITEMS ? null : reachFor(activeItem, layout.flows)), [activeItem, layout]);
+  // The drawn lines by key, where they are now (the focused layout's when it makes room).
+  const edgeByKey = useMemo(() => new Map(layout.edges.map((e) => [edgeKeyOf(e.flow), e])), [layout]);
+  const listEdge = itemFocusOn && listKey !== null ? edgeByKey.get(listKey) : undefined;
+  // Forget what a poll took away, so a line that comes back does not reopen its list (and take the keyboard), and say so
+  // when focus ended that way. Adjusting state while rendering, guarded so it settles in one extra pass.
+  if (listKey !== null && listEdge === undefined) setListKey(null);
+  if (itemFocus !== null && focus === null) {
+    setItemFocus(null);
+    if (itemFocusOn) setAnnounced("Overview");
+  }
+
+  // The glide between the overview and the room-making layout (ADR-0060 Decisions 3 and 4). The view moves by the focused
+  // line's shift, so its bubble stays where it was on screen (never a zoom); the cards slide from where they were, and the
+  // lines and frames cross-fade, old over new, since paths of different shapes cannot be interpolated. Each frame writes
+  // attributes through the DOM, not React state. Reduced motion (or Motion: Off) skips straight to the end.
+  const { run: runTween, cancel: cancelTween } = useTween();
+  const drawingRef = useRef<SVGGElement>(null);
+  const freshRef = useRef<SVGGElement>(null);
+  const ghostRef = useRef<SVGGElement>(null);
+  const [ghost, setGhost] = useState<{ layout: SiteLayout; dx: number; dy: number } | null>(null);
+  const roomShown = layout === room ? roomFor : null;
+  const shown = useRef({ layout, room: roomShown });
+  // React only rewrites a card's transform when its prop changes, so after the glide's own writes every card is put back
+  // where the picture *now* has it: a glide cut short leaves no card mid-way, and a poll that moved cards during a glide
+  // is not undone by the glide's end (which knew only the layout it started for).
+  const settle = useCallback(() => {
+    const now = new Map(shown.current.layout.nodes.map((n) => [n.key, n]));
+    for (const el of drawingRef.current?.querySelectorAll<SVGGElement>("[data-node]") ?? []) {
+      const n = now.get(el.getAttribute("data-node") ?? "");
+      if (n !== undefined) el.setAttribute("transform", `translate(${n.x} ${n.y})`);
+    }
+    freshRef.current?.removeAttribute("opacity");
+    setGhost(null);
+  }, []);
+  useLayoutEffect(() => {
+    const before = shown.current;
+    shown.current = { layout, room: roomShown };
+    // Only a change of room starts a glide: a poll or a pan does not.
+    if (before.room === roomShown || before.layout === layout) return;
+    cancelTween();
+    settle();
+    const anchor = roomShown ?? before.room;
+    const from = before.layout.edges.find((e) => edgeKeyOf(e.flow) === anchor);
+    const to = layout.edges.find((e) => edgeKeyOf(e.flow) === anchor);
+    if (from === undefined || to === undefined) return;
+    const dx = to.labelX - from.labelX;
+    const dy = to.labelY - from.labelY;
+    setView((v) => ({ ...v, x: v.x - dx * v.k, y: v.y - dy * v.k }));
+    const ms = animate ? tweenMs() : 0;
+    const drawing = drawingRef.current;
+    if (ms <= 0 || drawing === null) return;
+    setGhost({ layout: before.layout, dx, dy });
+    // In the new picture's frame, a card that was at p is at p + (dx, dy): it slides from there to its new place.
+    const was = new Map(before.layout.nodes.map((n) => [n.key, { x: n.x + dx, y: n.y + dy }]));
+    const now = new Map(layout.nodes.map((n) => [n.key, n]));
+    const gliding = [...drawing.querySelectorAll<SVGGElement>("[data-node]")].flatMap((el) => {
+      const end = now.get(el.getAttribute("data-node") ?? "");
+      const start = end === undefined ? undefined : was.get(end.key);
+      return end === undefined || start === undefined || Math.hypot(end.x - start.x, end.y - start.y) < 1 ? [] : [{ el, start, end }];
+    });
+    runTween(
+      ms,
+      (t) => {
+        for (const m of gliding) m.el.setAttribute("transform", `translate(${m.start.x + (m.end.x - m.start.x) * t} ${m.start.y + (m.end.y - m.start.y) * t})`);
+        freshRef.current?.setAttribute("opacity", String(t));
+        ghostRef.current?.setAttribute("opacity", String(1 - t));
+      },
+      settle,
+    );
+  }, [layout, roomShown, animate, runTween, cancelTween, settle]);
+  // A blow-up or a collapse (ADR-0061 Decision 5): every card glides from where it was, by the same tween (`--duration-slow`,
+  // `--ease-standard`); a part comes out of the card it was in, and a card that comes back grows out of its frame's corner.
+  // Reduced motion or Motion: Off jumps (the new picture is already drawn).
+  useLayoutEffect(() => {
+    const from = blowGlide.current;
+    if (from === null || from.layout === layout) return;
+    blowGlide.current = null;
+    const ms = animate ? tweenMs() : 0;
+    const drawing = drawingRef.current;
+    if (ms <= 0 || drawing === null) return;
+    cancelTween();
+    const was = new Map(from.layout.nodes.map((n) => [n.key, { x: n.x, y: n.y }]));
+    const source = was.get(from.key) ?? from.layout.frames.find((f) => f.expands === from.key);
+    const now = new Map(layout.nodes.map((n) => [n.key, n]));
+    const gliding = [...drawing.querySelectorAll<SVGGElement>("[data-node]")].flatMap((el) => {
+      const end = now.get(el.getAttribute("data-node") ?? "");
+      const start = end === undefined ? undefined : (was.get(end.key) ?? source);
+      return end === undefined || start === undefined || Math.hypot(end.x - start.x, end.y - start.y) < 1 ? [] : [{ el, start, end }];
+    });
+    if (gliding.length === 0) return;
+    runTween(
+      ms,
+      (t) => {
+        for (const m of gliding) m.el.setAttribute("transform", `translate(${m.start.x + (m.end.x - m.start.x) * t} ${m.start.y + (m.end.y - m.start.y) * t})`);
+      },
+      settle,
+    );
+  }, [layout, animate, runTween, cancelTween, settle]);
   // An open group that left the graph (a poll) shows no panel.
   const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
   const clipped = clippedEdges(viewport, layout, stage);
   const overflowing = isClipped(clipped);
-  const panelRef = useRef<HTMLDivElement>(null);
+  // The floating card (the group panel, or a line's "+k" list): from lg beside what was clicked, below lg across the
+  // canvas's bottom. It is placed from the view on every render, so it follows a pan or a zoom (closing on a pan would lose
+  // what the user was reading for a small move of the picture). Its content's height is measured by CanvasOverlay.
+  const wide = useLargeScreen();
+  const [overlayH, setOverlayH] = useState(0);
+  const overlayHRef = useRef(0);
+  const onOverlayHeight = useCallback((h: number) => {
+    overlayHRef.current = h;
+    setOverlayH(h);
+  }, []);
+  const openLaid = openNode === undefined ? undefined : laidByKey.get(openNode.key);
+  const overlayBox = openLaid ?? (listEdge === undefined ? undefined : labelBox(listEdge));
+  const overlayPlace = overlayBox === undefined ? null : placeOverlay(screenRect(viewport, overlayBox), overlayH, stage, wide);
 
-  // From lg the panel is a drawer over the canvas's right side: bring the opened group into the part left of it. Once,
-  // when it opens: a later layout (a refetch of any read the page shows) must not move a view the user may have panned.
+  // When it opens over what was clicked (no side had room, or below lg the card is in the bottom half), the view moves the
+  // least that brings that clear of it. Once, when it opens: a later layout (a refetch of any read the page shows) must not
+  // move a view the user may have panned.
   useEffect(() => {
-    const panel = panelRef.current;
-    const n = openKey === null ? undefined : layoutRef.current.nodes.find((node) => node.key === openKey);
-    if (!panel || !n || getComputedStyle(panel).position !== "absolute") return;
-    const visibleStage = stageBesidePanel(stageRef.current, panel.offsetWidth);
-    setView((v) => revealRect(v, n, visibleStage));
-  }, [openKey]);
+    const laid = layoutRef.current;
+    const n = openKey === null ? undefined : laid.nodes.find((node) => node.key === openKey);
+    const e = n !== undefined || listKey === null ? undefined : laid.edges.find((edge) => edgeKeyOf(edge.flow) === listKey);
+    const box = n ?? (e === undefined ? undefined : labelBox(e));
+    if (box === undefined) return;
+    const s = stageRef.current;
+    const place = placeOverlay(screenRect(viewRef.current, box), overlayHRef.current, s, wide);
+    if (place.covers) setView((v) => revealRect(v, box, stageBesideOverlay(place, s, wide)));
+  }, [openKey, listKey, wide]);
 
   // A bubble that just opened: if the user has moved the view, bring its frame into sight.
   const revealFrame = useRef<string | null>(null);
@@ -400,16 +763,155 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 
   const close = () => {
     const key = openKey;
+    const machine = openMachine;
     setOpenKey(null);
-    if (key !== null) buttons.current.get(key)?.focus();
+    setOpenMachine(null);
+    if (key !== null) ((machine === null ? undefined : machineButtons.current.get(machine)) ?? buttons.current.get(key))?.focus();
+  };
+
+  // Item focus (ADR-0060 Decisions 2 and 5). A focused item outside the first three is reached through its line's chip.
+  const titleOf = (key: string) => laidByKey.get(key)?.title ?? "";
+  const itemStop = (f: ItemFocus): string => {
+    const e = edgeByKey.get(f.edgeKey);
+    return e !== undefined && e.bubbles.items.some((i) => i.key === f.item) ? stopId(f.edgeKey, f.item) : stopId(f.edgeKey, null);
+  };
+  const leaveFocus = () => {
+    if (focus === null) return;
+    // The card runs its morph backwards to the bubble, then goes (at once with no motion).
+    setClosingCard(focus);
+    setItemFocus(null);
+    setAnnounced("Overview");
+    bubbleButtons.current.get(itemStop(focus))?.focus();
+  };
+  // "Show the whole path" (owner answer 1): the item filter lights the item's supply path, which focus's dimming would hide.
+  const showPath = (className: string) => {
+    if (dragged.current) return;
+    setItem(className);
+    leaveFocus();
+  };
+  // A focus's detail card (Decision 4): where its line is now, the item, its words, the bubble it grows from, and whether
+  // its supply path can be shown (an item the filter knows; never for an unknown item).
+  const cardOf = (f: ItemFocus) => {
+    const edge = edgeByKey.get(f.edgeKey);
+    const item = edge?.bubbles.all.find((i) => i.key === f.item);
+    if (edge === undefined || item === undefined) return null;
+    const text = itemCardText(item, edge.flow, edge.bubbles.all.length - 1, titleOf(edge.flow.from), titleOf(edge.flow.to));
+    const path = item.className !== null && items.some((i) => i.className === item.className) ? item.className : null;
+    return { edge, item, text, from: bubbleCentre(edge, item.key), path };
+  };
+  const cardMs = animate ? tweenMs() : 0;
+  // A closing card whose line (or item) a poll took away has nothing to shrink to, and its tween never ends: forget it, so it
+  // does not come back when the line does.
+  if (closingCard !== null && cardOf(closingCard) === null) setClosingCard(null);
+  const card = (f: ItemFocus, closing: boolean) => {
+    const c = cardOf(f);
+    if (c === null) return null;
+    return (
+      <ItemCard
+        key={`${closing ? "closing" : "open"}|${f.edgeKey}|${f.item}`}
+        item={c.item}
+        text={c.text}
+        cx={c.edge.labelX}
+        cy={c.edge.labelY}
+        from={c.from}
+        ms={cardMs}
+        closing={closing}
+        onClosed={() => setClosingCard(null)}
+        onClose={() => {
+          if (!dragged.current) leaveFocus();
+        }}
+        onShowPath={c.path === null ? undefined : () => showPath(c.path!)}
+      />
+    );
+  };
+  const openCard = focus === null ? null : cardOf(focus);
+  const focusItem = (edgeKey: string, item: BubbleItem) => {
+    if (dragged.current) return;
+    if (focus !== null && focus.edgeKey === edgeKey && focus.item === item.key) {
+      leaveFocus();
+      return;
+    }
+    const e = edgeByKey.get(edgeKey);
+    // Moving focus straight to another item shrinks the old card away while the new one grows (and drops any still closing).
+    setClosingCard(focus);
+    setItemFocus({ edgeKey, item: item.key });
+    setAnnounced(`Focused ${item.name ?? "Item unknown"} from ${titleOf(e?.flow.from ?? "")} to ${titleOf(e?.flow.to ?? "")}`);
+  };
+  const closeList = () => {
+    const key = listKey;
+    setListKey(null);
+    if (key !== null) bubbleButtons.current.get(stopId(key, null))?.focus();
+  };
+  const openList = (edgeKey: string) => {
+    if (dragged.current) return;
+    if (listKey === edgeKey) {
+      closeList();
+      return;
+    }
+    // The list takes the group panel's place over the canvas.
+    setOpenKey(null);
+    setListKey(edgeKey);
+  };
+  const activateStop = (stop: BubbleStop) => {
+    // A key press, not the end of a drag.
+    dragged.current = false;
+    if (stop.item === null) {
+      openList(stop.edgeKey);
+      return;
+    }
+    const item = edgeByKey.get(stop.edgeKey)?.bubbles.all.find((i) => i.key === stop.item);
+    if (item !== undefined) focusItem(stop.edgeKey, item);
+  };
+  // A press on the canvas's background (not a bubble, a chip or a card) leaves focus, or else closes the floating card;
+  // the end of a drag is not a press. The press already moved focus to the viewport, so it stays there (handing it to the
+  // card's hidden button would move the view after a click that meant to leave).
+  const onCanvasClick = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (dragged.current) return;
+    const on = (selector: string) => event.target instanceof Element && event.target.closest(selector) !== null;
+    if (on("[data-bubble], [data-bubble-more], [data-card], [data-item-card]")) return;
+    if (focus !== null) {
+      leaveFocus();
+      return;
+    }
+    if ((openKey === null && listKey === null) || on("[data-frame-collapse]")) return;
+    setOpenKey(null);
+    setListKey(null);
+    viewportRef.current?.focus({ preventScroll: true });
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "Escape") {
-      // One thing at a time: the panel, then what is picked, then the last card whose upstream was hidden.
+      // One thing at a time: a "+k" list, the focused item, the panel, then what is picked, then the last card whose
+      // upstream was hidden.
+      if (listEdge !== undefined) {
+        event.preventDefault();
+        closeList();
+        return;
+      }
+      if (focus !== null) {
+        event.preventDefault();
+        leaveFocus();
+        return;
+      }
       if (openKey !== null) {
         close();
+        return;
+      }
+      // On an opened group's machine: fold the group back, and the keyboard returns to its card (as a bubble's Escape
+      // returns to its button).
+      const machineOf = event.target instanceof HTMLElement ? event.target.dataset.machineOf : undefined;
+      if (machineOf !== undefined && machinesOpen.has(machineOf)) {
+        event.preventDefault();
+        setMachinesOpen(toggled(machinesOpen, machineOf));
+        focusAfter.current = machineOf;
+        return;
+      }
+      // On a part of a blown-up card (ADR-0061 Decision 5): collapse that frame, and the keyboard returns to the card.
+      const blownFrom = event.target instanceof HTMLElement ? event.target.dataset.blownFrom : undefined;
+      if (blownFrom !== undefined && expanded.has(blownFrom)) {
+        event.preventDefault();
+        collapseBlowUp(blownFrom, true);
         return;
       }
       if (selection !== undefined && selection.selected.size > 0) {
@@ -440,7 +942,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     // A drag that ends on a card is not a click on it.
     if (dragged.current) return;
     // Shift- or Ctrl-click on the overview picks a factory for a merge instead of opening it.
-    if (additive && factoryPicks !== undefined && card.kind === "factory") {
+    if ((additive || pickingFactories) && factoryPicks !== undefined && card.kind === "factory") {
       factoryPicks.replace(toggled(factoryPicks.selected, card.key));
       return;
     }
@@ -457,7 +959,76 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       setFlipped(toggled(flipped, card.bubbleKey));
       revealFrame.current = card.bubbleKey;
     } else if (card.kind === "fold") setUnfolded(toggled(unfolded, card.key));
-    else setOpenKey(card.key);
+    else {
+      // The group panel takes the "+k" list's place over the canvas.
+      setListKey(null);
+      setOpenKey(card.key);
+      setOpenMachine(null);
+    }
+  };
+  /** A machine card chosen: the group's panel, marking that machine (in Select mode, the group is picked as a whole). */
+  const activateMachine = (card: Card, machine: MachineCardText) => {
+    if (dragged.current) return;
+    if (selectMode && selection !== undefined) {
+      activate(card);
+      return;
+    }
+    setListKey(null);
+    setOpenKey(card.key);
+    setOpenMachine(machine.key);
+  };
+  /** Opens a group into its machines or folds it back; from the keyboard, focus goes to its first machine or its card. */
+  const toggleMachines = (card: Card, fromKeyboard = false) => {
+    if (dragged.current || card.machines === undefined) return;
+    const opening = !machinesOpen.has(card.key);
+    setMachinesOpen(toggled(machinesOpen, card.key));
+    if (fromKeyboard) focusAfter.current = opening ? machineCardKey(card.key, card.machines.ids[0] ?? null) : card.key;
+  };
+  /**
+   * ADR-0061 Decision 5: blows a card up in place (when it fits under the cap) or collapses its frame. From the keyboard,
+   * focus goes to the frame's first part, and back to the card on collapse. The cards glide from where they were.
+   */
+  const expandBlowUp = (card: Card, fromKeyboard = false) => {
+    if (dragged.current || card.blowUp === undefined) return;
+    // Past the cap the pill and its button say "open it": they open the factory, as the card's own click does.
+    if (!card.blowUp.fits) {
+      if (card.kind === "factory") onOpenFactory?.(card.key);
+      return;
+    }
+    blowGlide.current = { layout, key: card.key };
+    setExpanded(new Set([...expanded, card.key]));
+    revealFrame.current = card.key;
+    // From the mouse too when the keyboard was on the canvas (the card's own button goes with the card): into the frame.
+    const active = document.activeElement;
+    const viewportEl = viewportRef.current;
+    if (fromKeyboard || (viewportEl !== null && active !== null && active !== viewportEl && viewportEl.contains(active))) focusFrame.current = card.key;
+  };
+  /**
+   * A group whose panel is open and that a collapse takes off the canvas: its panel closes rather than hiding, or blowing
+   * the card up again would reopen it unasked. `blownUp` is the collapsing card's key, or undefined for all of them.
+   */
+  const closePanelLeaving = (blownUp: string | undefined) => {
+    if (openKey === null) return;
+    const outer = layout.frames.filter((f) => f.expands !== undefined && (blownUp === undefined || f.expands === blownUp)).map((f) => f.key);
+    const leaving = new Set([...outer, ...layout.frames.filter((f) => f.parent !== undefined && outer.includes(f.parent)).map((f) => f.key)]);
+    const frame = layout.nodes.find((n) => n.key === openKey)?.card.frame;
+    if (frame === undefined || !leaving.has(frame)) return;
+    setOpenKey(null);
+    setOpenMachine(null);
+  };
+  const collapseBlowUp = (key: string, fromKeyboard = false) => {
+    if (dragged.current) return;
+    blowGlide.current = { layout, key };
+    const next = new Set(expanded);
+    next.delete(key);
+    setExpanded(next);
+    closePanelLeaving(key);
+    if (fromKeyboard) focusAfter.current = key;
+  };
+  const focusMachine = (n: LaidNode, key: string, i: number) => {
+    setFocusKey(key);
+    const at = machineSlot(i, n.card.machines === undefined ? 1 : machineSlots(n.card.machines));
+    setView((v) => revealRect(v, { x: n.x + at.x, y: n.y + at.y, width: MACHINE_CARD_W, height: MACHINE_CARD_H }, stageRef.current));
   };
   const collapseBubble = (bubbleKey: string) => {
     if (dragged.current) return;
@@ -467,22 +1038,49 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     if (dragged.current) return;
     setCollapsed(toggled(collapsed, key));
   };
-  const keepCard = (key: string) => {
-    if (dragged.current) return;
-    setKeeping(key);
-  };
   const focusNode = (n: LaidNode) => {
     setFocusKey(n.key);
     setView((v) => revealRect(v, n, stageRef.current));
   };
+  /**
+   * A destination cap chosen (ADR-0062 Decision 1), drawn or by its button: the card's detail, which lists every destination
+   * in words. A factory opens (its facts list where its flows end), a group's panel opens (its facts, focused), a closed
+   * bubble opens in place into its groups and their caps. Never a pick, even in Select mode: a cap is not the card.
+   */
+  const showCapDetail = (card: Card) => {
+    if (dragged.current) return;
+    if (card.kind === "factory") onOpenFactory?.(card.key);
+    else if (card.kind === "group") {
+      setListKey(null);
+      setOpenKey(card.key);
+      setOpenMachine(null);
+    } else if (card.kind === "bubble" && card.bubbleKey !== undefined) {
+      setFlipped(toggled(flipped, card.bubbleKey));
+      revealFrame.current = card.bubbleKey;
+    }
+  };
+  // The keyboard reaching a cap rings it in the picture and brings its card into view.
+  const focusCap = (stop: CapStop | null) => {
+    setKeyCap(stop);
+    if (stop === null) return;
+    setActiveCap(stop.id);
+    const n = laidByKey.get(stop.nodeKey);
+    if (n !== undefined) setView((v) => revealRect(v, n, stageRef.current));
+  };
   /** "Collapse all" when most are open, "Expand all" otherwise: each flips every bubble to the other state. */
-  const everyBubbleOpen = scene.bubbleKeys.length > 0 && scene.cards.every((c) => c.kind !== "bubble");
+  // A group opened into its machines also makes it "Collapse all", which folds those back too; "Expand all" opens the bubbles
+  // only (every group's machines at once would be a wall of cards).
+  const anyMachinesOpen = scene.cards.some((c) => c.machines?.open === true);
+  const everyBubbleOpen = (scene.bubbleKeys.length > 0 && scene.cards.every((c) => c.kind !== "bubble")) || anyMachinesOpen;
   const setAllBubbles = (open: boolean) => {
     // A bubble is open by default in a small factory, collapsed in a big one: `flipped` holds what differs from that.
-    setFlipped(open === scene.openByDefault ? new Set() : new Set(scene.bubbleKeys));
+    const bubbles = open === scene.openByDefault ? new Set<string>() : new Set(scene.bubbleKeys);
+    setFolds(open ? { flipped: bubbles } : { flipped: bubbles, machines: new Set() });
   };
 
-  const lit = (key: string) => reach === null || reach.nodes.has(key);
+  // Focus is hop-1 (owner answer 1): only the focused line and its two cards stay lit; otherwise the item filter decides.
+  const lit = (key: string) => (focus !== null && focusEdge !== undefined ? key === focusEdge.flow.from || key === focusEdge.flow.to : reach === null || reach.nodes.has(key));
+  const edgeLit = (e: LaidEdge) => (focus !== null ? edgeKeyOf(e.flow) === focus.edgeKey : reach === null || e.parts.some((i) => reach.edges.has(i)));
   const findingsByCard = useMemo(() => {
     const counts = new Map<string, number>();
     if (findings === undefined) return counts;
@@ -495,39 +1093,100 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const findingsOf = (key: string) => findingsByCard.get(key) ?? 0;
   // Tab order follows the picture: left to right, then top to bottom.
   const tabOrder = useMemo(() => [...layout.nodes].sort((a, b) => a.x - b.x || a.y - b.y || a.key.localeCompare(b.key)), [layout]);
+  // Each blow-up frame's key to the card it stands for (ADR-0061 Decision 5): Escape on a part collapses it.
+  const blowUpOf = useMemo(() => new Map(layout.frames.flatMap((f): [string, string][] => (f.expands === undefined ? [] : [[f.key, f.expands]]))), [layout]);
+  const stops = useMemo(() => (itemFocusOn ? bubbleStops(layout.edges, tabOrder.map((n) => n.key)) : []), [itemFocusOn, layout, tabOrder]);
+  const stopNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const s of stops) {
+      const e = edgeByKey.get(s.edgeKey);
+      if (e === undefined) continue;
+      const from = laidByKey.get(e.flow.from)?.title ?? "";
+      const to = laidByKey.get(e.flow.to)?.title ?? "";
+      const item = s.item === null ? undefined : e.bubbles.all.find((i) => i.key === s.item);
+      names.set(s.id, item === undefined ? chipName(e.bubbles.more, from, to) : bubbleName(item, e.flow.unit, from, to));
+    }
+    return names;
+  }, [stops, edgeByKey, laidByKey]);
+  // The keyboard reaching a bubble brings its label into view, as a card's button does for its card.
+  const focusStop = (stop: BubbleStop | null) => {
+    setKeyStop(stop);
+    if (stop === null) return;
+    setActiveStop(stop.id);
+    const e = edgeByKey.get(stop.edgeKey);
+    if (e !== undefined) setView((v) => revealRect(v, labelBox(e), stageRef.current));
+  };
   const loops = useMemo(() => scene.cards.filter((c) => c.loop).length, [scene]);
 
-  // The transport glyphs that move: only those whose edge is in view, at most MAX_MOVING, and never in a hidden tab.
-  const moving = useMemo(() => {
-    const set = new Set<number>();
-    if (!animate || !visible) return set;
-    for (const e of transports) {
-      if (set.size >= MAX_MOVING) break;
-      if (e.points.length < 2) continue;
-      const xs = e.points.map((p) => p.x);
-      const ys = e.points.map((p) => p.y);
-      const box = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
-      if (isInView(viewport, stage, box)) set.add(e.index);
+  // The lines whose dashes march (ADR-0062 amendment build PR 3): only those in the settled view, at most MARCH_MAX, never
+  // with Motion off, under reduced motion (even with Motion on, as its CSS would stop them anyway), in a hidden tab, or during
+  // a make-room glide (the march layer does not follow the gliding cards). Chosen per layout, then per settled view. They are
+  // drawn by `MarchLayer`, not the canvas, so their repaint each frame is the layer's alone.
+  const marchable = useMemo(() => marchCandidates(layout.edges), [layout]);
+  const viewNow = useMemo(() => ({ view: viewport, stage }), [viewport, stage]);
+  const settledView = useSettled(viewNow, MARCH_SETTLE_MS);
+  // The transport glyphs that move (ADR-0055 PR 8b; amendment build PR 4): in the settled view, at most GLYPH_MOVE_MAX, never
+  // in a hidden tab, during a glide or a lasso, nor (marks mode) on a stalled line. Motion's On still moves them under reduced
+  // motion, as before; System follows it. They ride their line in `MarchLayer`: an `animateMotion` inside the canvas repainted
+  // the whole canvas every frame, as a marching dash did (#808).
+  const glyphMovable = useMemo(() => glyphCandidates(layout.edges, marks), [layout, marks]);
+  const glyphsMoving = useMemo(
+    () => (animate && visible && ghost === null && lasso === null ? movingGlyphs(glyphMovable, settledView.view, settledView.stage) : []),
+    [animate, visible, ghost, lasso, glyphMovable, settledView],
+  );
+  const moving = useMemo(() => new Set(glyphsMoving.map((g) => g.edge.index)), [glyphsMoving]);
+  const marching = useMemo(
+    () =>
+      animate && !reduced && visible && ghost === null && lasso === null
+        ? marchingLines(marchable, settledView.view, settledView.stage)
+        : new Map<number, RateStep>(),
+    [animate, reduced, visible, ghost, lasso, marchable, settledView],
+  );
+  // The destination caps that move (ADR-0062 Decision 1): by the same rules and the same settled view as the lines, in the
+  // same march layer, under their own budget (`CAP_MARCH_MAX`), so a cap never takes a line's place under `MARCH_MAX`.
+  const capMarchable = useMemo(() => capCandidates(layout.nodes), [layout]);
+  const capsMarching = useMemo(
+    () => (animate && !reduced && visible && ghost === null && lasso === null ? marchingCaps(capMarchable, settledView.view, settledView.stage) : []),
+    [animate, reduced, visible, ghost, lasso, capMarchable, settledView],
+  );
+  const capSlotsMarching = useMemo(() => {
+    const byNode = new Map<string, Set<number>>();
+    for (const c of capsMarching) {
+      const set = byNode.get(c.nodeKey);
+      if (set === undefined) byNode.set(c.nodeKey, new Set([c.slot]));
+      else set.add(c.slot);
     }
-    return set;
-  }, [animate, visible, transports, viewport, stage]);
+    return byNode;
+  }, [capsMarching]);
+  const caps = useMemo(() => capStops(tabOrder), [tabOrder]);
+  // The march layer's mask: every label pill and card (with its badge and pills), and the open or closing item card.
+  const cardHoles = useMemo(() => marchHoles(layout.nodes, layout.edges, Math.max(BADGE_H, PILL_H)), [layout]);
+  const openEdgeKey = focus?.edgeKey;
+  const closingEdgeKey = closingCard?.edgeKey;
+  // The open or closing item card is drawn over the cards, so it is a hole for the caps too (their own mask: a cap sits in its card).
+  const focusHoles = useMemo(
+    () => [openEdgeKey, closingEdgeKey].flatMap((key) => focusCardHole(key === undefined ? undefined : edgeByKey.get(key))),
+    [openEdgeKey, closingEdgeKey, edgeByKey],
+  );
+  const holes = useMemo(() => [...cardHoles, ...focusHoles], [cardHoles, focusHoles]);
 
   // The drawing eases in when its shape changes (a card opened, closed or hid its upstream), not on a poll's new rates.
   const shape = useMemo(() => `${scene.cards.map((c) => c.key).join("|")}#${scene.flows.length}`, [scene]);
 
   const canSwitchStorage = scene.hasStorage;
-  const canFold = scene.bubbleKeys.length > 0;
-  const suggested = (key: string) => scene.level === "overview" && suggestions !== undefined && suggestions.keys.has(key);
-  const factoryPicked = (card: Card) => card.kind === "factory" && factoryPicks !== undefined && factoryPicks.selected.has(card.key);
-  const keepForm = suggestions?.keepForm;
-  // A form for a card that is no longer a suggestion (switched off, kept elsewhere, gone from a poll) is dropped for good.
-  // (React's adjust-state-during-render: it re-renders at once, before any child or effect sees the stale form.)
-  const keepingGone = keeping !== null && !suggested(keeping);
-  if (keepingGone) setKeeping(null);
-  const closeKeep = (saved: boolean) => {
-    if (!saved && keeping !== null) setRefocusKeep({ key: keeping });
-    setKeeping(null);
+  // Blow-up's toolbar control (ADR-0061 Decision 5): "Collapse all" while anything is blown up, else "Expand all", which
+  // blows up what fits under the cap (disabled when nothing does).
+  const anyBlownUp = scene.frames.some((f) => f.expands !== undefined);
+  const canBlowUp = blowUpTree !== undefined && (anyBlownUp || scene.cards.some((c) => c.blowUp !== undefined));
+  const anyFits = scene.cards.some((c) => c.blowUp?.fits === true);
+  const setAllBlownUp = () => {
+    if (blowUpTree === undefined || target.kind !== "overview") return;
+    blowGlide.current = { layout, key: "" };
+    if (anyBlownUp) closePanelLeaving(undefined);
+    setExpanded(anyBlownUp ? new Set() : expandAllKeys(graph, target.models, levelPath, blowUpTree, expanded));
   };
+  const canFold = scene.bubbleKeys.length > 0 || anyMachinesOpen;
+  const factoryPicked = (card: Card) => card.kind === "factory" && factoryPicks !== undefined && factoryPicks.selected.has(card.key);
 
   return (
     <div className="grid gap-3">
@@ -547,15 +1206,31 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         <div role="group" aria-label="Zoom" className="flex gap-2">
           <ToolButton
             name="Zoom in"
+            iconOnly
             onClick={() => setView((v) => zoomCentre(v, ZOOM_STEP, stage))}
             disabled={viewport.k >= MAX_ZOOM}
-            icon={<path d="M12 5v14M5 12h14" />}
+            icon={<path d="M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM15.5 15.5L20 20M10.5 8v5M8 10.5h5" />}
           />
-          <ToolButton name="Zoom out" onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))} disabled={viewport.k <= MIN_ZOOM} icon={<path d="M5 12h14" />} />
-          <ToolButton name="Fit to view" onClick={() => setView(fit)} icon={<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />} />
+          <ToolButton
+            name="Zoom out"
+            iconOnly
+            onClick={() => setView((v) => zoomCentre(v, 1 / ZOOM_STEP, stage))}
+            disabled={viewport.k <= MIN_ZOOM}
+            icon={<path d="M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM15.5 15.5L20 20M8 10.5h5" />}
+          />
+          <ToolButton name="Fit to view" iconOnly onClick={() => setView(fit)} icon={<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z" />} />
         </div>
-        {(canFold || canSwitchStorage) && (
+        {(canFold || canSwitchStorage || canBlowUp) && (
           <div role="group" aria-label="Detail" className="flex gap-2">
+            {canBlowUp && (
+              <ToolButton
+                name={anyBlownUp ? "Collapse all" : "Expand all"}
+                onClick={setAllBlownUp}
+                disabled={!anyBlownUp && !anyFits}
+                description={!anyBlownUp && !anyFits ? NOTHING_FITS : undefined}
+                icon={anyBlownUp ? <path d="M8 4l4 4 4-4M8 20l4-4 4 4" /> : <path d="M8 8l4-4 4 4M8 16l4 4 4-4" />}
+              />
+            )}
             {canFold && (
               <ToolButton
                 name={everyBubbleOpen ? "Collapse all" : "Expand all"}
@@ -573,29 +1248,54 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             )}
           </div>
         )}
-        {selection !== undefined && (
-          <div role="group" aria-label="Designate" className="flex gap-2">
+        {(selection !== undefined || overviewPicks) && (
+          <div role="group" aria-label={selection !== undefined ? "Designate" : "Merge"} className="flex gap-2">
             <ToolButton
               name="Select"
+              iconOnly
               pressed={selectMode}
               onClick={() => setSelecting(!selecting)}
-              icon={<path d="M12 4c4.4 0 8 2.2 8 5s-3.6 5-8 5-8-2.2-8-5 3.6-5 8-5zM7 13l-1 5 3-2" />}
+              icon={<path d="M5 3l5.5 16 2.3-6.7L19.5 10zM13 12.5l6 6" />}
             />
           </div>
         )}
-        {transports.length > 0 && <MotionSelect value={motionPref} onChange={setMotionPref} />}
-        {reach !== null && (
-          <span role="status" className="w-full text-sm text-muted sm:w-auto">
-            {reach.nodes.size} of {layout.nodes.length} {scene.level === "overview" ? "factories" : scene.level === "site" ? "groups" : "cards"} carry or feed this item.
+        {/* Marks or words for a stalled group (ADR-0062 Decision 2): pressed is marks, the default. One icon at every width,
+            so the phone row stays one row. */}
+        <ToolButton
+          name="State marks"
+          iconOnly
+          pressed={marks}
+          onClick={() => setStateStyle(marks ? "words" : "marks")}
+          icon={<path d="M4 8h6M4 16h6M14 6v12" />}
+        />
+        {/* Shown whenever something can move: a transport's glyph, a marching line (ADR-0062 amendment build PR 3) or a
+            destination cap (Decision 1). */}
+        {(transports.length > 0 || marchable.length > 0 || capMarchable.length > 0) && <MotionSelect value={motionPref} onChange={setMotionPref} />}
+        {/* With item focus on, the status line stays mounted (a live region added with its words is often not read) and
+            also says what focus did; the item filter's words show, focus's are for screen readers. */}
+        {(reach !== null || itemFocusOn) && (
+          <span role="status" className={reach === null ? "sr-only" : "w-full text-sm text-muted sm:w-auto"}>
+            {reach !== null && (
+              <>
+                {reach.nodes.size} of {layout.nodes.length} {scene.level === "overview" ? "factories" : scene.level === "site" ? "groups" : "cards"} carry or feed this item.
+              </>
+            )}
+            {itemFocusOn && announced !== "" && <span className="sr-only">{` ${announced}`}</span>}
           </span>
         )}
       </div>
 
-      {keeping !== null && !keepingGone && keepForm !== undefined && keepForm(keeping, closeKeep)}
 
       {/* What a drag does now, or what to do about a drawing that runs past the canvas; the line keeps its height. */}
       <p className="m-0 h-lh text-sm text-muted">
-        {selectMode
+        {pickingFactories
+          ? (
+              <>
+                <span className="sm:hidden">Tap factories to pick them {pickFor}.</span>
+                <span className="hidden sm:inline">Click factories to pick them {pickFor}; Escape clears.</span>
+              </>
+            )
+          : selectMode
           ? (
               // One line at any width: a phone has no Shift or Escape, and one finger now draws, so two move the view.
               <>
@@ -607,16 +1307,16 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             ? "Drag or use the arrow keys to see more →"
             : factoryPicks !== undefined &&
               scene.level === "overview" && (
-                // One line at any width: a phone has no Shift, so it points at the Tables view's ticks.
+                // One line at any width: Select works everywhere; a keyboard or mouse also has Shift.
                 <>
-                  <span className="sm:hidden">Tick factories in Tables to merge them.</span>
-                  <span className="hidden sm:inline">Shift- or Ctrl-click factories (or Shift+Enter) to pick them for a merge, or tick them in Tables.</span>
+                  <span className="sm:hidden">Turn on Select to pick factories {pickFor}.</span>
+                  <span className="hidden sm:inline">Turn on Select (or Shift-click) to pick factories {pickFor}.</span>
                 </>
               )}
       </p>
 
-      {/* From lg the group panel is a drawer over the canvas's right side (it never shrinks the canvas); below, it stacks. */}
-      <div className="relative flex flex-col gap-3 lg:block">
+      {/* The group panel and the "+k" list float over the canvas (CanvasOverlay): they never shrink it or push the page. */}
+      <div className="relative">
         <div
           ref={viewportRef}
           role="group"
@@ -634,49 +1334,127 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             height={canvasH}
             preserveAspectRatio="xMidYMid meet"
             onPointerDown={onPointerDown}
+            onClick={onCanvasClick}
             // A pan must not start a text selection or drag a building icon away as an image.
             onDragStart={(e) => e.preventDefault()}
-            className={cn("max-h-map min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode ? "cursor-crosshair" : "cursor-grab")}
+            className={cn("max-h-map min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode && !pickingFactories ? "cursor-crosshair" : "cursor-grab")}
           >
             <defs>
-              <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+              <marker id={markerId} viewBox="0 0 10 10" refX={ARROW_REF_X} refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
                 <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
               </marker>
+              <marker id={`${markerId}-double`} viewBox="0 0 10 10" refX={DOUBLE_ARROW_REF_X} refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+                <path d="M0 0 L10 5 L0 10 z" fill="context-stroke" />
+              </marker>
+              {/* A stalled line's end (ADR-0062 Decision 2): a bar across it in the state's tone, not an arrowhead. */}
+              {marks && STALLED_KINDS.map((kind) => (
+                <marker key={kind} id={`${markerId}-${kind}`} viewBox="0 0 10 12" refX="9" refY="6" markerWidth="10" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+                  <rect x={6} y={0} width={4} height={12} rx={1} data-stop-bar={kind} className={cn("fill-current", stateMarkTone(kind))} />
+                </marker>
+              ))}
             </defs>
-            <g key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`} className={cn(animate && "animate-graph-in")}>
-              {layout.frames.map((f) => (
-                <Frame key={f.key} frame={f} onCollapse={() => collapseBubble(f.bubbleKey)} />
-              ))}
-              {/* Every line first, then every label: a label is never under another edge's line (2026-10-27). */}
-              {[EdgeLine, EdgeLabel].map((Layer, layer) => (
-                <g key={layer} data-edge-layer={layer === 0 ? "lines" : "labels"}>
-                  {layout.edges.map((e) => {
-                    const on = reach === null || e.parts.some((i) => reach.edges.has(i));
-                    const from = laidByKey.get(e.flow.from);
-                    const to = laidByKey.get(e.flow.to);
-                    return <Layer key={e.index} edge={e} markerId={markerId} dim={!on} moving={moving.has(e.index)} from={from?.title ?? ""} to={to?.title ?? ""} />;
-                  })}
+            <g ref={drawingRef} key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`} className={cn(animate && "animate-graph-in")}>
+              {/* During a make-room glide: the old lines and frames, where they were on screen, fading out. */}
+              {ghost !== null && (
+                <g ref={ghostRef} transform={`translate(${ghost.dx} ${ghost.dy})`} aria-hidden="true" data-ghost="" className="pointer-events-none">
+                  {ghost.layout.frames.map((f) => (
+                    <Frame key={f.key} frame={f} onCollapse={() => {}} />
+                  ))}
+                  {[EdgeLine, EdgeLabel].map((Layer, layer) => (
+                    <g key={layer}>
+                      {ghost.layout.edges.map((e) => (
+                        <Layer key={e.index} edge={e} markerId={markerId} marks={marks} dim={false} moving={false} from="" to="" detail={detail} />
+                      ))}
+                    </g>
+                  ))}
                 </g>
-              ))}
+              )}
+              {/* The lines and frames of the picture now (faded in during a glide), then the cards over them. */}
+              <g ref={freshRef}>
+                {layout.frames.map((f) => (
+                  <Frame key={f.key} frame={f} onCollapse={() => (f.expands === undefined ? collapseBubble(f.bubbleKey) : collapseBlowUp(f.expands))} />
+                ))}
+                {/* Every line first, then every label: a label is never under another edge's line (2026-10-27). */}
+                {[EdgeLine, EdgeLabel].map((Layer, layer) => (
+                  <g key={layer} data-edge-layer={layer === 0 ? "lines" : "labels"}>
+                    {layout.edges.map((e) => {
+                      const from = laidByKey.get(e.flow.from);
+                      const to = laidByKey.get(e.flow.to);
+                      const key = edgeKeyOf(e.flow);
+                      const focusable = itemFocusOn
+                        ? {
+                            focused: focus !== null && focus.edgeKey === key ? focus.item : null,
+                            ringed: keyStop !== null && keyStop.edgeKey === key ? keyStop.item ?? "+" : null,
+                            onBubble: (item: BubbleItem) => focusItem(key, item),
+                            onChip: () => openList(key),
+                          }
+                        : undefined;
+                      return (
+                        <Layer
+                          key={e.index}
+                          edge={e}
+                          markerId={markerId}
+                          marks={marks}
+                          dim={!edgeLit(e)}
+                          moving={moving.has(e.index)}
+                          from={from?.title ?? ""}
+                          to={to?.title ?? ""}
+                          detail={detail}
+                          focusable={focusable}
+                        />
+                      );
+                    })}
+                  </g>
+                ))}
+              </g>
               {layout.nodes.map((n) => (
                 <CardView
                   key={n.key}
                   node={n}
                   finding={findingsOf(n.key)}
+                  marks={marks}
                   ringed={openKey === n.key || focusKey === n.key}
                   picked={(selection !== undefined && isPicked(n.card, selection.selected)) || factoryPicked(n.card)}
-                  suggested={suggested(n.key)}
                   dim={!lit(n.key)}
                   onActivate={(additive) => activate(n.card, additive)}
                   onToggleUpstream={() => toggleUpstream(n.key)}
-                  onKeep={keepForm === undefined ? undefined : () => keepCard(n.key)}
+                  machines={machineWords.get(n.key)}
+                  ringedMachine={focusKey ?? (openKey === n.key ? openMachine : null)}
+                  onMachine={(m) => activateMachine(n.card, m)}
+                  onToggleMachines={() => toggleMachines(n.card)}
+                  onBlowUp={() => expandBlowUp(n.card)}
+                  capsMarching={capSlotsMarching.get(n.key)}
+                  ringedCap={keyCap !== null && keyCap.nodeKey === n.key ? keyCap.slot : null}
+                  onCap={() => showCapDetail(n.card)}
                 />
               ))}
+              {/* Over the cards: the focused item's detail card, and one that is closing (shrinking back to its bubble). */}
+              {closingCard !== null && card(closingCard, true)}
+              {focus !== null && card(focus, false)}
               {lasso !== null && (
                 <path d={lassoPath(lasso)} data-lasso="" strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" className="pointer-events-none fill-info-soft stroke-info" />
               )}
             </g>
           </svg>
+          {(marching.size > 0 || capsMarching.length > 0 || glyphsMoving.length > 0) && (
+            <MarchLayer
+              edges={layout.edges}
+              marching={marching}
+              dim={(e) => !edgeLit(e)}
+              caps={capsMarching}
+              capDim={(c) => !lit(c.nodeKey)}
+              capHoles={focusHoles}
+              glyphs={glyphsMoving}
+              holes={holes}
+              bounds={{ width: layout.width, height: layout.height }}
+              stage={stage}
+              viewport={viewport}
+              shape={shape}
+              fadeIn={animate}
+              maskId={`${ids}-march-mask`}
+              height={canvasH}
+            />
+          )}
           {/* A fade on each edge the drawing runs past: a cue that there is more, eased in and out. */}
           {FADES.map((f) => (
             <div
@@ -688,13 +1466,18 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             />
           ))}
           {/* The keyboard's way into the cards: real buttons, visually hidden, ringing the focused card in the picture. */}
-          <ul aria-label={scene.level === "overview" ? "Factories in the graph" : scene.level === "site" ? "Groups in the graph" : "Cards in the graph"} className="m-0 list-none p-0">
+          <ul
+            aria-label={scene.level === "overview" && scene.noun !== "card" ? "Factories in the graph" : scene.level === "site" ? "Groups in the graph" : "Cards in the graph"}
+            className="m-0 list-none p-0"
+          >
             {tabOrder.map((n) => {
               const card = n.card;
               const count = findingsOf(n.key);
-              const name = `${cardButtonName(card)}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}${suggested(n.key) ? ", suggestion" : ""}${factoryPicked(card) ? ", selected" : ""}`;
-              // In Select mode a pickable card's button picks it: a toggle, not an opener.
-              const picks = selectMode && pickable(card);
+              // In Select mode a pickable card's button picks it: a toggle, not an opener (on the overview, a factory).
+              const picksFactory = pickingFactories && card.kind === "factory";
+              const picks = (selectMode && pickable(card)) || picksFactory;
+              const what = picksFactory ? card.description : cardButtonName(card);
+              const name = `${what}${count > 0 ? `, ${bottleneckCountText(count)}` : ""}${factoryPicked(card) && !picksFactory ? ", selected" : ""}`;
               return (
                 <li key={n.key}>
                   <button
@@ -704,9 +1487,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                       else buttons.current.delete(n.key);
                     }}
                     aria-label={picks ? `Pick ${name}` : name}
-                    aria-pressed={picks && selection !== undefined ? isPicked(card, selection.selected) : undefined}
+                    aria-pressed={picksFactory ? factoryPicked(card) : picks && selection !== undefined ? isPicked(card, selection.selected) : undefined}
                     aria-expanded={picks ? undefined : card.kind === "group" ? openKey === n.key : card.kind === "factory" ? undefined : false}
                     aria-controls={!picks && card.kind === "group" && openKey === n.key ? panelId : undefined}
+                    // A part of a blown-up card: Escape collapses that frame (ADR-0061 Decision 5).
+                    data-blown-from={card.frame === undefined ? undefined : blowUpOf.get(card.frame)}
                     onClick={(e) => {
                       dragged.current = false;
                       activate(card, e.shiftKey || e.ctrlKey || e.metaKey);
@@ -715,44 +1500,79 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                     onBlur={() => setFocusKey((k) => (k === n.key ? null : k))}
                     className="sr-only"
                   />
+                  {/* An opened group's machines, right after its own button: each a real button (Escape folds them back). */}
+                  {machineWords.has(n.key) && (
+                    <ul aria-label={`Machines in ${card.label}`} className="m-0 list-none p-0">
+                      {machineWords.get(n.key)!.map((m, i) => (
+                        <li key={m.key}>
+                          <button
+                            type="button"
+                            data-machine-of={n.key}
+                            ref={(el) => {
+                              if (el) machineButtons.current.set(m.key, el);
+                              else machineButtons.current.delete(m.key);
+                            }}
+                            aria-label={m.full}
+                            aria-current={openKey === n.key && openMachine === m.key ? "true" : undefined}
+                            onClick={() => {
+                              dragged.current = false;
+                              activateMachine(card, m);
+                            }}
+                            onFocus={() => focusMachine(n, m.key, i)}
+                            onBlur={() => setFocusKey((k) => (k === m.key ? null : k))}
+                            className="sr-only"
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </li>
               );
             })}
           </ul>
-          {keepForm !== undefined && tabOrder.some((n) => suggested(n.key)) && (
-            <ul aria-label="Suggested factories" className="m-0 list-none p-0">
-              {tabOrder.flatMap((n) =>
-                suggested(n.key)
-                  ? [
-                      <li key={n.key}>
-                        <button
-                          type="button"
-                          ref={(el) => {
-                            if (el) keepButtons.current.set(n.key, el);
-                            else keepButtons.current.delete(n.key);
-                          }}
-                          onClick={() => setKeeping(n.key)}
-                          onFocus={() => focusNode(n)}
-                          onBlur={() => setFocusKey((k) => (k === n.key ? null : k))}
-                          className="sr-only"
-                        >
-                          {`Keep ${n.card.label}`}
-                        </button>
-                      </li>,
-                    ]
-                  : [],
-              )}
-            </ul>
-          )}
-          {(layout.frames.length > 0 || tabOrder.some((n) => n.card.upstream !== undefined)) && (
+          {(layout.frames.length > 0 || tabOrder.some((n) => n.card.upstream !== undefined || n.card.machines !== undefined || n.card.blowUp !== undefined)) && (
             <ul aria-label="Open and close parts of the graph" className="m-0 list-none p-0">
               {layout.frames.map((f) => (
                 <li key={f.key}>
-                  <button type="button" onClick={() => setFlipped(toggled(flipped, f.bubbleKey))} className="sr-only">
-                    {`Collapse ${f.title}`}
-                  </button>
+                  {f.expands === undefined ? (
+                    <button type="button" onClick={() => setFlipped(toggled(flipped, f.bubbleKey))} className="sr-only">
+                      {`Collapse ${f.title}`}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-expanded={true}
+                      onClick={() => {
+                        dragged.current = false;
+                        collapseBlowUp(f.expands!, true);
+                      }}
+                      className="sr-only"
+                    >
+                      {`Collapse ${f.description ?? f.title}`}
+                    </button>
+                  )}
                 </li>
               ))}
+              {tabOrder.flatMap((n) =>
+                n.card.blowUp === undefined
+                  ? []
+                  : [
+                      <li key={`blow-up|${n.key}`}>
+                        <button
+                          type="button"
+                          // Past the cap it opens the factory, as its name says, so it neither expands nor is disabled.
+                          aria-expanded={n.card.blowUp.fits ? false : undefined}
+                          onClick={() => {
+                            dragged.current = false;
+                            expandBlowUp(n.card, true);
+                          }}
+                          className="sr-only"
+                        >
+                          {blowUpName(n.card)}
+                        </button>
+                      </li>,
+                    ],
+              )}
               {tabOrder.flatMap((n) =>
                 n.card.upstream === undefined
                   ? []
@@ -764,21 +1584,96 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                       </li>,
                     ],
               )}
+              {tabOrder.flatMap((n) =>
+                n.card.machines === undefined
+                  ? []
+                  : [
+                      <li key={`machines|${n.key}`}>
+                        <button
+                          type="button"
+                          aria-expanded={n.card.machines.open}
+                          onClick={() => {
+                            dragged.current = false;
+                            toggleMachines(n.card, true);
+                          }}
+                          className="sr-only"
+                        >
+                          {machinesToggleName(n.card)}
+                        </button>
+                      </li>,
+                    ],
+              )}
             </ul>
           )}
+          <BubbleButtons
+            stops={stops}
+            names={stopNames}
+            active={activeStop}
+            focus={focus}
+            listOpen={listEdge === undefined ? null : listKey}
+            buttons={bubbleButtons}
+            onActivate={activateStop}
+            onFocusStop={focusStop}
+          />
+          <CapButtons
+            stops={caps}
+            active={activeCap}
+            buttons={capButtons}
+            onActivate={(stop) => {
+              // A key press, not the end of a drag.
+              dragged.current = false;
+              const n = laidByKey.get(stop.nodeKey);
+              if (n !== undefined) showCapDetail(n.card);
+            }}
+            onFocusStop={focusCap}
+          />
+          {/* The open card for the keyboard and screen readers: its words, then its two controls (Decision 5). */}
+          {openCard !== null && (
+            <div role="group" aria-label={`${openCard.item.name ?? "Item unknown"} card`} className="sr-only">
+              <p>{openCard.text.full}</p>
+              <button type="button" onClick={leaveFocus}>
+                {`Close ${openCard.item.name ?? "Item unknown"} card`}
+              </button>
+              {openCard.path !== null && (
+                <button type="button" onClick={() => showPath(openCard.path!)}>
+                  {`Show the whole path of ${openCard.item.name ?? "Item unknown"}`}
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        {openNode && (
-          <div ref={panelRef} className="rounded-card bg-surface lg:absolute lg:inset-y-0 lg:right-0 lg:w-graph-panel lg:overflow-y-auto">
+        {overlayPlace !== null && openNode !== undefined && (
+          <CanvasOverlay key={openNode.key} place={overlayPlace} onHeight={onOverlayHeight}>
             <GroupPanel
               key={openNode.key}
               id={panelId}
               node={openNode}
-              facts={laidByKey.get(openNode.key)?.card.facts}
+              facts={openLaid?.card.facts}
+              rates={rates}
               findings={findings}
+              machineId={openMachine === null ? undefined : (machineWords.get(openNode.key)?.find((m) => m.key === openMachine)?.id ?? undefined)}
               onClose={close}
               onPopOut={onPopOut === undefined ? undefined : () => onPopOut(openNode.key)}
             />
-          </div>
+          </CanvasOverlay>
+        )}
+        {overlayPlace !== null && openNode === undefined && listEdge !== undefined && listKey !== null && (
+          <CanvasOverlay key={`items|${listKey}`} place={overlayPlace} onHeight={onOverlayHeight}>
+            <ItemList
+              key={listKey}
+              id={`${panelId}-items`}
+              flow={listEdge.flow}
+              items={listEdge.bubbles.all}
+              from={titleOf(listEdge.flow.from)}
+              to={titleOf(listEdge.flow.to)}
+              focus={focus}
+              onFocusItem={(item) => {
+                dragged.current = false;
+                focusItem(listKey, item);
+              }}
+              onClose={closeList}
+            />
+          </CanvasOverlay>
         )}
       </div>
 
@@ -790,6 +1685,12 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 /** A card's keyboard name: what it is, and for a factory that choosing it opens it. */
 function cardButtonName(card: Card): string {
   return card.kind === "factory" ? `Open factory: ${card.description}` : card.description;
+}
+
+/** The words of a group's Expand control (the drawn pill's tooltip and the hidden button). */
+function machinesToggleName(card: Card): string {
+  const n = card.count ?? 0;
+  return card.machines?.open === true ? `Collapse the machines of ${card.label}` : `Expand ${card.label} into its ${n} machines`;
 }
 
 /** The hidden button's name for hiding or showing what a card post-dominates. */
@@ -814,48 +1715,389 @@ function MotionSelect({ value, onChange }: { value: MotionPref; onChange: (pref:
   );
 }
 
-type EdgeProps = { edge: LaidEdge; markerId: string; dim: boolean; moving: boolean; from: string; to: string };
+/** A label's part in item focus (behind its flag): the focused item's key, the stop the keyboard is on ("+" the chip), and
+ *  what a click on a bubble or the chip does. Absent with the flag off: the bubbles are then only a picture. */
+type Focusable = { focused: string | null; ringed: string | null; onBubble: (item: BubbleItem) => void; onChip: () => void };
 
-/** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. */
-function EdgeLine({ edge: e, markerId, dim, from, to }: EdgeProps) {
+type EdgeProps = {
+  edge: LaidEdge;
+  markerId: string;
+  /** The state style is marks (ADR-0062 Decision 2): a stalled line draws its marks; words mode draws none. */
+  marks: boolean;
+  dim: boolean;
+  /** A transport's glyph moves (drawn by `MarchLayer`), so the label leaves out its glyph at rest. */
+  moving: boolean;
+  from: string;
+  to: string;
+  detail: BubbleDetail;
+  focusable?: Focusable | undefined;
+};
+
+/** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. A stalled line in marks mode ends
+ *  in its state's stop bar instead of the arrowhead. Its width is its rate's step (`lineStroke`; a bundle's summed rate),
+ *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. A transport draws a double
+ *  line (amendment Decision 6): its wide stroke with a gap in the canvas colour down its middle, two rails, dashed alike. It
+ *  is always still: a marching line's motion and a transport's moving glyph are drawn over it by `MarchLayer`. */
+function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
+  const stalled = marks ? e.flow.stalled : undefined;
+  const stroke = lineStroke(e.flow);
+  const dash = edgeDash(e.flow.rate);
+  const underArrow = stroke.double ? DOUBLE_UNDER_ARROW : LINE_UNDER_ARROW;
   return (
-    <g data-edge={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
-      <path d={roundedOrthogonalPath(e.points)} fill="none" strokeWidth={edgeWidth(e.flow.mixed)} strokeDasharray={edgeDash(e.flow.rate)} markerEnd={`url(#${markerId})`} className={edgeClass(e.flow)} />
+      <path
+        d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? underArrow : 0)}
+        fill="none"
+        strokeWidth={stroke.width}
+        strokeDasharray={dash}
+        markerEnd={`url(#${stalled !== undefined ? `${markerId}-${stalled}` : stroke.double ? `${markerId}-double` : markerId})`}
+        className={edgeClass(e.flow)}
+      />
+      {stroke.inner !== null && stroke.double && (
+        // The gap between the rails: the same dashes at the same offset, so a dashed transport's dashes are each two short rails.
+        <path
+          d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? INNER_TRIM : INNER_TRIM_STALLED)}
+          fill="none"
+          strokeWidth={stroke.inner}
+          strokeDasharray={dash}
+          data-double-gap=""
+          className="stroke-surface"
+        />
+      )}
+      {stroke.inner !== null && !stroke.double && (
+        <path
+          d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? INNER_TRIM : INNER_TRIM_STALLED)}
+          fill="none"
+          strokeWidth={stroke.inner}
+          strokeDasharray={innerDash(dash)}
+          strokeDashoffset={dash === undefined ? undefined : INNER_DASH_OFFSET}
+          data-mixed-inner=""
+          className="stroke-surface"
+        />
+      )}
     </g>
   );
 }
 
-/** A flow's label with a halo, and for a transport the mode's glyph (moving along the line when it may): above every line. */
-function EdgeLabel({ edge: e, dim, moving, from, to }: EdgeProps) {
+/** The open (or closing) item card's box, at its full size, as a hole in the march layer's mask. */
+function focusCardHole(edge: LaidEdge | undefined): MarchHole[] {
+  if (edge === undefined) return [];
+  return [{ x: edge.labelX - FOCUS_CARD_W / 2, y: edge.labelY - FOCUS_CARD_H / 2, width: FOCUS_CARD_W, height: FOCUS_CARD_H, rx: CARD_RX }];
+}
+
+/**
+ * The marching lines (ADR-0062 amendment build PR 3), in their own `<svg>` stacked over the canvas: the same box, viewBox and
+ * pan and zoom, so each stroke lies exactly on its still line. A `stroke-dashoffset` animation inside the canvas repainted the
+ * whole canvas every frame (CI, 210 lines: p95 117 ms with only 4 lines marching, against 17 with Motion Off); here it
+ * repaints this layer, which holds only the marching strokes, and `will-change-transform` gives the layer its own compositing
+ * layer, so the canvas under it is not repainted at all.
+ *
+ * The canvas still draws every line, still, so a frame without this layer is the same picture. Over it, an estimated line's
+ * dashes march (first covering its still dashes with a canvas-coloured stroke, `MARCH_COVER_PAD` wider), a mixed one's inner
+ * dashes in step; a measured line keeps its solid stroke and pulses ride over it, invisible except while they run. Everything
+ * the canvas draws over its lines (labels, cards, the item card) is a hole in the layer's mask, so a marching stroke never
+ * shows over them. Decorative (`aria-hidden`) and pointer-transparent: the canvas keeps the tooltips and the pointer.
+ *
+ * The moving transport glyphs (amendment build PR 4) are drawn here too, after the lines and under the same mask: their
+ * `animateMotion` inside the canvas would repaint it whole every frame, as a dash did.
+ */
+function MarchLayer({
+  edges,
+  marching,
+  dim,
+  caps,
+  capDim,
+  capHoles,
+  glyphs,
+  holes,
+  bounds,
+  stage,
+  viewport,
+  shape,
+  fadeIn,
+  maskId,
+  height,
+}: {
+  edges: readonly LaidEdge[];
+  marching: ReadonlyMap<number, RateStep>;
+  dim: (e: LaidEdge) => boolean;
+  /**
+   * The destination caps that move (ADR-0062 Decision 1). A cap sits inside its card, which is a hole in the lines' mask, so
+   * the caps have a mask of their own whose only holes are `capHoles` (the item card, drawn over the cards).
+   */
+  caps: readonly CapMarch[];
+  capDim: (c: CapMarch) => boolean;
+  capHoles: readonly MarchHole[];
+  /** The transport glyphs that move (amendment build PR 4), each riding its line under the lines' mask, over the lines. */
+  glyphs: readonly GlyphCandidate<LaidEdge>[];
+  holes: readonly MarchHole[];
+  bounds: { width: number; height: number };
+  stage: Stage;
+  viewport: View;
+  /** The canvas drawing's key: the layer eases in with it when the picture's shape changes. */
+  shape: string;
+  fadeIn: boolean;
+  maskId: string;
+  /**
+   * The canvas's own height attribute. With the canvas's own height limits (`max-h-map min-h-graph-min`) it sizes the layer
+   * exactly as the canvas is sized: the box around the canvas is taller by the inline svg's baseline gap, so `inset-0` would not match.
+   */
+  height: number;
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      data-march-layer=""
+      viewBox={`0 0 ${stage.width} ${stage.height}`}
+      height={height}
+      preserveAspectRatio="xMidYMid meet"
+      // The canvas's 1px border is transparent here, so the two content boxes (and the viewBox in them) are the same; its
+      // rounded corners clip the strokes as the canvas's clip its lines.
+      className="pointer-events-none absolute top-0 left-0 max-h-map min-h-graph-min w-full rounded-card border border-transparent will-change-transform"
+    >
+      <defs>
+        <mask id={maskId} maskUnits="userSpaceOnUse" x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD}>
+          {/* A luminance mask: white shows, black hides. Not colours of the picture, so no theme token. */}
+          <rect x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD} className="fill-white" />
+          {holes.map((h, i) => (
+            <rect key={i} x={h.x} y={h.y} width={h.width} height={h.height} rx={h.rx} className="fill-black" />
+          ))}
+        </mask>
+        {capHoles.length > 0 && (
+          <mask id={`${maskId}-caps`} maskUnits="userSpaceOnUse" x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD}>
+            <rect x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD} className="fill-white" />
+            {capHoles.map((h, i) => (
+              <rect key={i} x={h.x} y={h.y} width={h.width} height={h.height} rx={h.rx} className="fill-black" />
+            ))}
+          </mask>
+        )}
+      </defs>
+      <g key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`} className={cn(fadeIn && "animate-graph-in")}>
+        <g mask={`url(#${maskId})`}>
+          {edges.map((e) => {
+            const step = marching.get(e.index);
+            return step === undefined ? null : <MarchLine key={e.index} edge={e} step={step} dim={dim(e)} />;
+          })}
+          {glyphs.length > 0 && (
+            <g data-march-glyphs="">
+              {glyphs.map((g) => (
+                <MovingGlyph key={g.edge.index} glyph={g} dim={dim(g.edge)} />
+              ))}
+            </g>
+          )}
+        </g>
+        {caps.length > 0 && (
+          <g data-march-caps="" mask={capHoles.length > 0 ? `url(#${maskId}-caps)` : undefined}>
+            {caps.map((c) => (
+              <CapMarchStroke key={c.id} cap={c} dim={capDim(c)} />
+            ))}
+          </g>
+        )}
+      </g>
+    </svg>
+  );
+}
+
+/** One marching line in the march layer: an estimated line's dashes (and a mixed one's inner dashes), or a measured line's
+ *  pulses, moving from source to destination, the arrowhead's way. Only ever a measured or estimated, unstalled line
+ *  (`marchStep`): a dash means estimated, none means measured. */
+function MarchLine({ edge: e, step, dim }: { edge: LaidEdge; step: RateStep; dim: boolean }) {
+  const stroke = lineStroke(e.flow);
+  const dash = edgeDash(e.flow.rate);
+  const d = roundedOrthogonalPath(e.points, undefined, MARCH_TRIM);
+  return (
+    <g data-march-edge={e.index} data-march-step={step}>
+      {dash !== undefined && <path d={d} fill="none" strokeWidth={stroke.width + MARCH_COVER_PAD} data-march-cover="" className="stroke-surface" />}
+      <g className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+        {dash !== undefined && (
+          <path d={d} fill="none" strokeWidth={stroke.width} strokeDasharray={dash} data-march={step} className={cn(edgeClass(e.flow), MARCH_CLASS.get(step))} />
+        )}
+        {dash !== undefined && stroke.inner !== null && (
+          <path
+            d={roundedOrthogonalPath(e.points, undefined, INNER_TRIM)}
+            fill="none"
+            strokeWidth={stroke.inner}
+            strokeDasharray={innerDash(dash)}
+            strokeDashoffset={INNER_DASH_OFFSET}
+            data-mixed-inner=""
+            data-march={step}
+            className={cn("stroke-surface", MARCH_INNER_CLASS.get(step))}
+          />
+        )}
+        {dash === undefined && (
+          <path
+            d={roundedOrthogonalPath(e.points, undefined, INNER_TRIM)}
+            fill="none"
+            strokeWidth={Math.max(PULSE_MIN_W, stroke.inner ?? stroke.width / 2)}
+            strokeDasharray={PULSE_DASH}
+            data-march={step}
+            data-march-pulse=""
+            className={cn("stroke-fg-strong opacity-0", PULSE_CLASS.get(step))}
+          />
+        )}
+      </g>
+    </g>
+  );
+}
+
+/**
+ * A transport's glyph riding its double line in the march layer (ADR-0055 PR 8b, amendment Decision 6): SVG `animateMotion`
+ * (no script, no inline style) along `motionPathAround`'s path, which leaves out the stretch through its own label box, so the
+ * glyph leaps the item bubbles. One trip takes `seconds`, by the line's length. The canvas leaves out its glyph at rest.
+ */
+function MovingGlyph({ glyph, dim }: { glyph: GlyphCandidate<LaidEdge>; dim: boolean }) {
+  return (
+    <g data-moving="true" data-glyph-edge={glyph.edge.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+      <TransportGlyph mode={glyph.edge.flow.carrier} />
+      <animateMotion path={glyph.path} dur={`${glyph.seconds}s`} repeatCount="indefinite" calcMode="linear" />
+    </g>
+  );
+}
+
+/**
+ * A flow's label with a halo: a bubble per item it carries (its icon, up to three, then a "+k" chip) over the short rate
+ * text (ADR-0060 Decision 1), and for a transport the mode's glyph at rest (the march layer draws it when it moves). Above
+ * every line.
+ * The words for each item stay in the `<title>` and the Tables view.
+ */
+function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }: EdgeProps) {
   const transport = isTransport(e.flow);
-  const seconds = Math.min(GLYPH_MAX_S, Math.max(GLYPH_MIN_S, e.length / GLYPH_SPEED));
+  const stalled = marks ? e.flow.stalled : undefined;
+  const row = e.bubbles;
+  const top = e.labelY - e.labelHeight / 2 + LABEL_PAD / 2;
+  // The same geometry the detail card's morph starts from (`bubbleCentre`).
+  const { left, cy } = bubbleRowOrigin(e);
+  const at = bubbleOffsets(row);
   return (
     <g data-edge-label={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
-      {/* In the box the layout reserved for it: a pill over its own line, so the line stops at the words. */}
+      {/* In the box the layout reserved for it: a pill over its own line, so the line stops at the bubbles. */}
       <rect
         x={e.labelX - e.labelWidth / 2}
         y={e.labelY - e.labelHeight / 2}
         width={e.labelWidth}
         height={e.labelHeight}
-        rx={e.labelHeight / 2}
+        rx={Math.min(e.labelHeight, e.labelWidth) / 2}
         data-label-pill=""
         className="fill-surface"
       />
-      <text x={e.textX} y={e.labelY} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
-        {e.labelLines.map((line, i) => (
-          <tspan key={i} x={e.textX} dy={i === 0 ? -((e.labelLines.length - 1) * LABEL_LINE_H) / 2 : LABEL_LINE_H}>
-            {line}
-          </tspan>
-        ))}
-      </text>
-      {/* After the label: at rest the glyph stands inside its own pill, left of the words; moving, it travels the line. */}
-      {transport && (
-        <g transform={moving ? undefined : `translate(${e.mid.x} ${e.mid.y})`} data-moving={moving}>
+      {/* At rest the glyph stands inside its own pill, left of the bubbles. Moving, it leaves the canvas: `MarchLayer` draws it
+          travelling the line, jumping the label box (`motionPathAround`), with every pill a hole in its mask as the backstop. */}
+      {transport && !moving && (
+        <g transform={`translate(${e.mid.x} ${e.mid.y})`} data-moving="false">
           <TransportGlyph mode={e.flow.carrier} />
-          {moving && <animateMotion path={roundedOrthogonalPath(e.points)} dur={`${seconds}s`} repeatCount="indefinite" calcMode="linear" />}
         </g>
+      )}
+      {row.items.map((item, i) => (
+        <ItemBubble
+          key={item.key}
+          item={item}
+          cx={left + at.bubbles[i]}
+          cy={cy}
+          detail={detail}
+          focused={focusable?.focused === item.key}
+          ringed={focusable?.ringed === item.key}
+          stalled={stalled}
+          onClick={focusable === undefined ? undefined : () => focusable.onBubble(item)}
+        />
+      ))}
+      {/* A stalled line's state, once per row: its mark on a disc at the last bubble's top-right corner, inside the bubble's
+          box (ADR-0062 Decision 2). The ring on each bubble carries the colour; this carries the shape. */}
+      {stalled !== undefined && row.items.length > 0 && (
+        <g
+          aria-hidden="true"
+          data-bubble-mark={stalled}
+          transform={`translate(${left + at.bubbles[row.items.length - 1] + BUBBLE_MARK_AT} ${cy - BUBBLE_MARK_AT})`}
+          className="pointer-events-none"
+        >
+          <circle r={BUBBLE_MARK_R} strokeWidth={1.5} className={cn("fill-surface stroke-current", stateMarkTone(stalled))} />
+          <g transform={`scale(${BUBBLE_MARK_SCALE})`}>
+            <StateMarkGlyph kind={stalled} />
+          </g>
+        </g>
+      )}
+      {at.chip !== null && (
+        <g data-bubble-more={row.more} onClick={focusable?.onChip} className={cn(focusable !== undefined && "cursor-pointer")}>
+          <rect
+            x={left + at.chip - CHIP_W / 2}
+            y={cy - CHIP_H / 2}
+            width={CHIP_W}
+            height={CHIP_H}
+            rx={CHIP_H / 2}
+            className={cn("fill-icon-chip", focusable?.ringed === "+" ? "stroke-accent" : "stroke-line")}
+          />
+          {detail.full && (
+            <text x={left + at.chip} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-surface text-xs">
+              {`+${row.more}`}
+            </text>
+          )}
+        </g>
+      )}
+      {detail.full && row.rateText !== null && (
+        <text x={e.textX} y={top + BUBBLE_D + LABEL_LINE_H / 2} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
+          {row.rateText}
+        </text>
+      )}
+    </g>
+  );
+}
+
+/**
+ * One item's bubble on a line: its icon on a disc, or, when its class has none (or the file fails to load), the item name's
+ * initials, or "?" for an unknown item. Never blank. Below `BUBBLE_DETAIL_ZOOM` only the disc.
+ */
+function ItemBubble({
+  item,
+  cx,
+  cy,
+  detail,
+  focused = false,
+  ringed = false,
+  stalled,
+  onClick,
+}: {
+  item: BubbleItem;
+  cx: number;
+  cy: number;
+  detail: BubbleDetail;
+  /** The item in focus mode: a thick accent ring. */
+  focused?: boolean;
+  /** The keyboard is on its button: the accent ring. */
+  ringed?: boolean;
+  /** Its line is stalled (marks mode): a ring in the state's tone, unless an accent ring is on it. */
+  stalled?: StalledKind | undefined;
+  /** Focus it (item focus on); a picture only otherwise. */
+  onClick?: (() => void) | undefined;
+}) {
+  const url = item.className === null ? undefined : itemIconUrl(item.className, detail.iconSize);
+  const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
+  const picture = detail.full && url !== undefined && url !== failedUrl;
+  return (
+    <g
+      aria-hidden="true"
+      data-bubble={item.className ?? "unknown"}
+      data-icon={!detail.full ? "disc" : picture ? "image" : "text"}
+      data-focused={focused || undefined}
+      onClick={onClick}
+      className={cn(onClick !== undefined && "cursor-pointer")}
+    >
+      <circle
+        cx={cx}
+        cy={cy}
+        r={BUBBLE_D / 2}
+        strokeWidth={focused ? 3 : stalled !== undefined && !ringed ? STALLED_RING_W : 1}
+        data-stalled-ring={stalled !== undefined && !focused && !ringed ? stalled : undefined}
+        className={cn("fill-icon-chip", focused || ringed ? "stroke-accent" : stalled !== undefined ? cn("stroke-current", stateMarkTone(stalled)) : "stroke-line")}
+      />
+      {picture ? (
+        <image href={url} x={cx - BUBBLE_ICON / 2} y={cy - BUBBLE_ICON / 2} width={BUBBLE_ICON} height={BUBBLE_ICON} onError={() => setFailedUrl(url)} />
+      ) : (
+        detail.full && (
+          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-surface text-xs">
+            {item.text}
+          </text>
+        )
       )}
     </g>
   );
@@ -870,14 +2112,15 @@ function Frame({ frame: f, onCollapse }: { frame: LaidFrame; onCollapse: () => v
   const title = f.title.length > room ? `${f.title.slice(0, room - 1)}…` : f.title;
   const tabY = -FRAME_HEADER_H / 2;
   return (
-    <g transform={`translate(${f.x} ${f.y})`} data-frame={f.bubbleKey}>
-      <rect width={f.width} height={f.height} rx={10} strokeWidth={1} strokeDasharray="6 4" className="fill-surface stroke-line" />
-      <title>{f.title}</title>
+    // A blow-up's frame (ADR-0061 Decision 5) is drawn the same, with the stronger edge of an opened group's frame.
+    <g transform={`translate(${f.x} ${f.y})`} data-frame={f.bubbleKey} data-blow-up-frame={f.expands === undefined ? undefined : ""}>
+      <rect width={f.width} height={f.height} rx={10} strokeWidth={1} strokeDasharray="6 4" className={cn("fill-surface", f.expands === undefined ? "stroke-line" : "stroke-muted")} />
+      <title>{f.description ?? f.title}</title>
       <rect x={NODE_PAD_X} y={tabY} width={title.length * CHAR_W_BODY + NODE_PAD_X} height={FRAME_HEADER_H} className="fill-surface" />
       <text x={NODE_PAD_X + NODE_PAD_X / 2} y={0} dominantBaseline="central" className="fill-fg text-sm">
         {title}
       </text>
-      <g transform={`translate(${f.width - COLLAPSE_W - NODE_PAD_X} ${tabY})`} onClick={onCollapse} className="cursor-pointer">
+      <g transform={`translate(${f.width - COLLAPSE_W - NODE_PAD_X} ${tabY})`} onClick={onCollapse} data-frame-collapse="" className="cursor-pointer">
         {/* An invisible target up to the touch size round the pill (the hidden "Collapse" button is the keyboard's way in). */}
         <rect y={(FRAME_HEADER_H - PILL_HIT) / 2} width={COLLAPSE_W} height={PILL_HIT} className="fill-transparent" />
         <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-line" />
@@ -913,53 +2156,87 @@ function CardIcon({ iconUrl, glyph }: { iconUrl: string | undefined; glyph: Glyp
 function CardView({
   node: n,
   finding,
+  marks,
   ringed,
   picked,
-  suggested,
   dim,
   onActivate,
   onToggleUpstream,
-  onKeep,
+  machines,
+  ringedMachine,
+  onMachine,
+  onToggleMachines,
+  onBlowUp,
+  capsMarching,
+  ringedCap,
+  onCap,
 }: {
   node: LaidNode;
   finding: number;
+  /** The state style is marks: a stalled card draws its `StateMark` on the note's row instead of the word. */
+  marks: boolean;
   ringed: boolean;
   /** Picked to designate: tinted, with a check on its corner (not colour alone). */
   picked: boolean;
-  /** An automatic factory shown as a suggestion: a dashed outline, a "Suggestion" tag and Keep. */
-  suggested: boolean;
   dim: boolean;
   /** `additive`: Shift, Ctrl or Cmd was held (a pick on the overview, not an open). */
   onActivate: (additive: boolean) => void;
   onToggleUpstream: () => void;
-  onKeep: (() => void) | undefined;
+  /** An opened group's machine cards (their words); absent while the group is closed. */
+  machines: readonly MachineCardText[] | undefined;
+  /** The machine card the keyboard (or the open panel) is on. */
+  ringedMachine: string | null;
+  onMachine: (machine: MachineCardText) => void;
+  onToggleMachines: () => void;
+  /** ADR-0061 Decision 5: blow the card up in place (its Expand pill; nothing when the card is past the cap). */
+  onBlowUp: () => void;
+  /** ADR-0062 Decision 1: the cap slots the march layer moves now (an estimated one's stub is drawn there, not here). */
+  capsMarching: ReadonlySet<number> | undefined;
+  /** The cap slot whose button the keyboard is on. */
+  ringedCap: number | null;
+  /** A cap chosen: the card's detail. */
+  onCap: () => void;
 }) {
   const card = n.card;
+  if (card.machines?.open === true && machines !== undefined) {
+    return (
+      <MachinesFrame
+        node={n}
+        words={machines}
+        finding={finding}
+        ringed={ringed}
+        ringedMachine={ringedMachine}
+        picked={picked}
+        dim={dim}
+        onActivate={onActivate}
+        onToggleUpstream={onToggleUpstream}
+        onMachine={onMachine}
+        onCollapse={onToggleMachines}
+      />
+    );
+  }
   const stacked = card.kind === "bubble" || card.kind === "fold";
-  const up = card.upstream;
-  const pillText = up === undefined ? "" : up.collapsed ? `+${up.count}` : "−";
-  const pillW = Math.max(PILL_MIN_W, pillText.length * CHAR_W_BODY + 16);
-  const { tagX, showTag } = suggestionTag(suggested, finding > 0, n.width);
+  // Marks mode (ADR-0062 Decision 2): the stalled note's row keeps its place (the card's size is the layout's), the glyph
+  // replaces the word; the word stays in the `<title>`, the keyboard button and the Tables view.
+  const markAt = marks && card.stalled !== undefined && card.mutedFrom !== undefined ? card.mutedFrom : null;
   return (
     <g
       transform={`translate(${n.x} ${n.y})`}
       onClick={(e) => onActivate(e.shiftKey || e.ctrlKey || e.metaKey)}
       data-card={card.kind}
+      data-node={n.key}
       data-picked={picked || undefined}
-      data-suggested={suggested || undefined}
       className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}
     >
-      <title>{suggested ? `${card.description} (suggestion)` : card.description}</title>
+      <title>{card.description}</title>
       {/* A pile of cards behind a bubble or a fold: more than one thing is in it. */}
-      {stacked && <rect x={5} y={5} width={n.width} height={n.height} rx={8} strokeWidth={1} className="fill-surface stroke-line" />}
+      {stacked && <rect x={CARD_STACK_OFFSET} y={CARD_STACK_OFFSET} width={n.width} height={n.height} rx={8} strokeWidth={1} className="fill-surface stroke-line" />}
       <rect
         width={n.width}
         height={n.height}
         rx={8}
-        strokeWidth={ringed || picked ? 3 : suggested ? 2 : 1}
-        // Dotted, so a suggestion never reads as an opened bubble's dashed frame.
-        strokeDasharray={suggested && !ringed ? "2 3" : undefined}
-        className={cn("fill-surface-2", ringed ? "stroke-accent" : picked ? "stroke-info" : suggested ? "stroke-muted" : "stroke-line")}
+        strokeWidth={ringed || picked ? 3 : 1}
+        className={cn("fill-surface-2", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-line")}
       />
       {picked && <rect width={n.width} height={n.height} rx={8} className="pointer-events-none fill-info-soft" />}
       <CardIcon iconUrl={n.iconUrl} glyph={card.glyph} />
@@ -968,14 +2245,6 @@ function CardView({
         <g aria-hidden="true" data-check="" transform={`translate(${-CHECK_R / 2} ${-CHECK_R / 2})`}>
           <circle r={CHECK_R} className="fill-info-solid stroke-surface" strokeWidth={2} />
           <path d="M-4.5 0 L-1.5 3 L4.5 -3.5" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="stroke-fg-strong" />
-        </g>
-      )}
-      {showTag && (
-        <g transform={`translate(${tagX} ${-BADGE_H / 2})`} data-suggestion-tag="">
-          <rect width={BADGE_W} height={BADGE_H} rx={8} strokeWidth={1} className="fill-surface stroke-muted" />
-          <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm">
-            Suggestion
-          </text>
         </g>
       )}
       {card.count !== undefined && (
@@ -987,16 +2256,25 @@ function CardView({
         </g>
       )}
       {/* One line (a factory's name, then one line; an extractor's muted "(inferred from the node)" under it); the recipe, the other outputs and the rest are in the tooltip and the panel. */}
-      {n.lines.map((line, i) => (
-        <text
-          key={i}
-          x={NODE_PAD_X}
-          y={cardLineY(i)}
-          className={cn(isHeadingLine(card, i) ? "fill-fg-strong text-base font-semibold" : card.mutedFrom !== undefined && i >= card.mutedFrom ? "fill-muted text-sm" : "fill-fg text-sm")}
-        >
-          {line}
-        </text>
-      ))}
+      {n.lines.map((line, i) =>
+        markAt !== null && i >= markAt ? null : (
+          <text
+            key={i}
+            x={NODE_PAD_X}
+            y={cardLineY(i)}
+            className={cn(isHeadingLine(card, i) ? "fill-fg-strong text-base font-semibold" : card.mutedFrom !== undefined && i >= card.mutedFrom ? "fill-muted text-sm" : "fill-fg text-sm")}
+          >
+            {line}
+          </text>
+        ),
+      )}
+      {markAt !== null && card.stalled !== undefined && (
+        <g data-card-mark={card.stalled} transform={`translate(${NODE_PAD_X + (GLYPH_BOX * CARD_MARK_SCALE) / 2} ${cardLineMid(markAt)}) scale(${CARD_MARK_SCALE})`}>
+          <StateMarkGlyph kind={card.stalled} />
+        </g>
+      )}
+      {/* ADR-0062 Decision 1: the footer row of destination caps, under the lines (the layout made the card one row taller). */}
+      <CapRow card={card} lines={n.lines.length} marks={marks} marching={capsMarching} ringed={ringedCap} onCap={onCap} />
       {finding > 0 && (
         <g transform={`translate(${n.width - BADGE_W - 8} ${-BADGE_H / 2})`}>
           <rect width={BADGE_W} height={BADGE_H} rx={8} className="fill-warn-solid" />
@@ -1005,46 +2283,212 @@ function CardView({
           </text>
         </g>
       )}
-      {/* Collapse upstream: a minus hides what only feeds this card, and leaves a "+N" that shows it again. The invisible
-          rect behind the pill widens its hit area towards the touch size; the hidden button is the keyboard's way in. */}
-      {up !== undefined && (
+      <UpstreamPill node={n} onToggle={onToggleUpstream} />
+      {/* A group of several machines opens into them: the pill at the bottom right (the hidden "Expand" button is the
+          keyboard's way in). */}
+      {card.machines !== undefined && (
         <g
-          transform={`translate(8 ${n.height - PILL_H / 2})`}
+          transform={`translate(${n.width - EXPAND_W - 8} ${n.height - PILL_H / 2})`}
           onClick={(e) => {
             e.stopPropagation();
-            onToggleUpstream();
+            onToggleMachines();
           }}
-          data-upstream={up.collapsed ? "collapsed" : "open"}
+          data-machines-expand=""
           className="cursor-pointer"
         >
-          <title>{upstreamName(card)}</title>
-          <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(pillW + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
-          <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
-          <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
-            {pillText}
+          <title>{machinesToggleName(card)}</title>
+          <rect y={(PILL_H - PILL_HIT) / 2} width={EXPAND_W} height={PILL_HIT} className="fill-transparent" />
+          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+          <text x={EXPAND_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
+            Expand
           </text>
         </g>
       )}
-      {/* Keep a suggestion: a pill at the bottom-right, its hit area up to the touch size; the hidden "Keep" button is the
-          keyboard's way in. */}
-      {suggested && onKeep !== undefined && (
+      {/* ADR-0061 Decision 5: a factory card blows up in place, by the same pill. Past the cap it is drawn disabled, its
+          tooltip says to open the factory instead, and a click does that (the hidden button says and does the same). */}
+      {card.blowUp !== undefined && (
         <g
-          transform={`translate(${n.width - KEEP_W - 8} ${n.height - PILL_H / 2})`}
+          transform={`translate(${n.width - EXPAND_W - 8} ${n.height - PILL_H / 2})`}
           onClick={(e) => {
             e.stopPropagation();
-            onKeep();
+            onBlowUp();
           }}
-          data-keep=""
+          data-blow-up={card.blowUp.fits ? "" : "disabled"}
           className="cursor-pointer"
         >
-          <title>{`Keep ${card.label}`}</title>
-          <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(KEEP_W + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
-          <rect width={KEEP_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-info" />
-          <text x={KEEP_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
-            Keep
+          <title>{blowUpName(card)}</title>
+          <rect y={(PILL_H - PILL_HIT) / 2} width={EXPAND_W} height={PILL_HIT} className="fill-transparent" />
+          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} strokeDasharray={card.blowUp.fits ? undefined : "4 3"} className={card.blowUp.fits ? "fill-surface-2 stroke-muted" : "fill-surface stroke-line"} />
+          <text x={EXPAND_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className={cn("text-sm font-semibold", card.blowUp.fits ? "fill-fg" : "fill-muted")}>
+            Expand
           </text>
         </g>
       )}
+    </g>
+  );
+}
+
+/** The words of a card's blow-up control (the drawn pill's tooltip and the hidden button), ADR-0061 Decision 5. */
+function blowUpName(card: Card): string {
+  const b = card.blowUp;
+  if (b === undefined) return "";
+  const parts = `${b.parts} ${b.parts === 1 ? (b.noun === "factories" ? "factory" : "group") : b.noun}`;
+  return b.fits ? `Expand ${card.label} in place into its ${parts}` : `Expand ${card.label} in place: ${TOO_LARGE_TO_EXPAND} (${parts})`;
+}
+
+/** Collapse upstream: a minus hides what only feeds this card, and leaves a "+N" that shows it again. The invisible rect
+ *  behind the pill widens its hit area towards the touch size; the hidden button is the keyboard's way in. */
+function UpstreamPill({ node: n, onToggle }: { node: LaidNode; onToggle: () => void }) {
+  const up = n.card.upstream;
+  if (up === undefined) return null;
+  const pillText = up.collapsed ? `+${up.count}` : "−";
+  const pillW = Math.max(PILL_MIN_W, pillText.length * CHAR_W_BODY + 16);
+  return (
+    <g
+      transform={`translate(8 ${n.height - PILL_H / 2})`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      data-upstream={up.collapsed ? "collapsed" : "open"}
+      className="cursor-pointer"
+    >
+      <title>{upstreamName(n.card)}</title>
+      <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(pillW + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
+      <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+      <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
+        {pillText}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * A group opened into its machines: a dashed frame (the group's lines join it, since the game reads belts per group) with
+ * the title and a Collapse pill in its header, and one small card per machine (name, state, output or fuel), then "+k
+ * more". A click on a machine opens the group's panel marking it; the hidden buttons are the keyboard's way in.
+ */
+function MachinesFrame({
+  node: n,
+  words,
+  finding,
+  ringed,
+  ringedMachine,
+  picked,
+  dim,
+  onActivate,
+  onToggleUpstream,
+  onMachine,
+  onCollapse,
+}: {
+  node: LaidNode;
+  words: readonly MachineCardText[];
+  finding: number;
+  ringed: boolean;
+  ringedMachine: string | null;
+  picked: boolean;
+  dim: boolean;
+  onActivate: (additive: boolean) => void;
+  onToggleUpstream: () => void;
+  onMachine: (machine: MachineCardText) => void;
+  onCollapse: () => void;
+}) {
+  const card = n.card;
+  const slots = words.length;
+  const badge = finding > 0 ? BADGE_W + NODE_PAD_X : 0;
+  const room = Math.max(4, Math.floor((n.width - 3 * NODE_PAD_X - COLLAPSE_W - badge) / CHAR_W_BODY));
+  const title = card.title.length > room ? `${card.title.slice(0, room - 1)}…` : card.title;
+  const headY = NODE_PAD_Y + FRAME_HEADER_H / 2;
+  return (
+    <g
+      transform={`translate(${n.x} ${n.y})`}
+      onClick={(e) => onActivate(e.shiftKey || e.ctrlKey || e.metaKey)}
+      data-card={card.kind}
+      data-node={n.key}
+      data-machines-open=""
+      data-picked={picked || undefined}
+      className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}
+    >
+      <title>{card.description}</title>
+      <rect
+        width={n.width}
+        height={n.height}
+        rx={10}
+        strokeWidth={ringed || picked ? 3 : 1}
+        strokeDasharray="6 4"
+        // A stronger edge than a bubble frame's (stroke-line), so an opened group reads apart from an opened bubble.
+        className={cn("fill-surface", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-muted")}
+      />
+      {picked && <rect width={n.width} height={n.height} rx={10} className="pointer-events-none fill-info-soft" />}
+      {picked && (
+        <g aria-hidden="true" data-check="" transform={`translate(${-CHECK_R / 2} ${-CHECK_R / 2})`}>
+          <circle r={CHECK_R} className="fill-info-solid stroke-surface" strokeWidth={2} />
+          <path d="M-4.5 0 L-1.5 3 L4.5 -3.5" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="stroke-fg-strong" />
+        </g>
+      )}
+      <text x={NODE_PAD_X} y={headY} dominantBaseline="central" className="fill-fg-strong text-sm font-semibold">
+        {title}
+      </text>
+      {finding > 0 && (
+        <g transform={`translate(${n.width - 2 * NODE_PAD_X - COLLAPSE_W - BADGE_W} ${headY - BADGE_H / 2})`}>
+          <rect width={BADGE_W} height={BADGE_H} rx={8} className="fill-warn-solid" />
+          <text x={BADGE_W / 2} y={BADGE_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg-strong text-sm font-semibold">
+            Bottleneck
+          </text>
+        </g>
+      )}
+      <g
+        transform={`translate(${n.width - COLLAPSE_W - NODE_PAD_X} ${NODE_PAD_Y})`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onCollapse();
+        }}
+        data-machines-collapse=""
+        className="cursor-pointer"
+      >
+        <title>{machinesToggleName(card)}</title>
+        <rect y={(FRAME_HEADER_H - PILL_HIT) / 2} width={COLLAPSE_W} height={PILL_HIT} className="fill-transparent" />
+        {/* Styled as its Expand pill (and the upstream pill): one control in two states. */}
+        <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+        <text x={COLLAPSE_W / 2} y={FRAME_HEADER_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
+          Collapse
+        </text>
+      </g>
+      {words.map((m, i) => {
+        const at = machineSlot(i, slots);
+        const on = ringedMachine === m.key;
+        return (
+          <g
+            key={m.key}
+            transform={`translate(${at.x} ${at.y})`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMachine(m);
+            }}
+            data-machine={m.id ?? "more"}
+            className="cursor-pointer"
+          >
+            <title>{m.full}</title>
+            {/* The "+k more" card is an action (it opens the panel), so it is dashed on the frame's own fill, not a machine. */}
+            <rect
+              width={MACHINE_CARD_W}
+              height={MACHINE_CARD_H}
+              rx={6}
+              strokeWidth={on ? 3 : 1}
+              strokeDasharray={m.id === null ? "6 4" : undefined}
+              className={cn(m.id === null ? "fill-surface" : "fill-surface-2", on ? "stroke-accent" : "stroke-muted")}
+            />
+            {m.lines.map((line, k) =>
+              line === "" ? null : (
+                <text key={k} x={NODE_PAD_X} y={machineLineY(k)} className={cn("text-sm", k === 0 ? "fill-fg-strong" : k === 1 && m.mutedState ? "fill-muted" : "fill-fg")}>
+                  {line}
+                </text>
+              ),
+            )}
+          </g>
+        );
+      })}
+      <UpstreamPill node={n} onToggle={onToggleUpstream} />
     </g>
   );
 }
@@ -1058,13 +2502,23 @@ const LEGEND: readonly { label: string; edge: EdgeStyle }[] = [
   { label: "pipe", edge: { mixed: false, carrier: "pipe", rate: "measured" } },
 ];
 
-/** The samples, then one line on why an item or a rate can be unknown (#728 step 5). */
+/** The samples. Why an item or a rate can be unknown (#728 step 5) is under the page's "About this data" (PlannerPanel). */
 function Legend({ modes }: { modes: readonly string[] }) {
+  return <LegendSamples modes={modes} />;
+}
+
+/** A legend sample at the base width (its rows for the width steps come with amendment build PR 5); a mixed belt's sample
+ *  wears the inner stroke, as on the canvas. */
+function LegendLine({ edge }: { edge: EdgeStyle }) {
+  const stroke = lineStroke({ ...edge, ratePerMinute: null, unit: "items/min" });
+  const dash = edgeDash(edge.rate);
   return (
-    <div className="grid gap-1">
-      <LegendSamples modes={modes} />
-      <p className="m-0 text-sm text-muted">{UNKNOWN_FLOW_NOTE}</p>
-    </div>
+    <>
+      <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={stroke.width} strokeDasharray={dash} className={edgeClass(edge)} />
+      {stroke.inner !== null && (
+        <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={stroke.inner} strokeDasharray={innerDash(dash)} strokeDashoffset={dash === undefined ? undefined : INNER_DASH_OFFSET} className="stroke-surface" />
+      )}
+    </>
   );
 }
 
@@ -1074,7 +2528,7 @@ function LegendSamples({ modes }: { modes: readonly string[] }) {
       {LEGEND.map(({ label, edge }) => (
         <li key={label} className="flex items-center gap-2">
           <svg aria-hidden="true" viewBox="0 0 32 6" className="h-1.5 w-8 shrink-0">
-            <line x1={1} y1={3} x2={31} y2={3} fill="none" strokeWidth={edgeWidth(edge.mixed)} strokeDasharray={edgeDash(edge.rate)} className={edgeClass(edge)} />
+            <LegendLine edge={edge} />
           </svg>
           <span>{label}</span>
         </li>

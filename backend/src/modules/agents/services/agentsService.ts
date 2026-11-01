@@ -9,7 +9,9 @@ import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { ENROLLMENT_CODES_PER_HOUR_DEFAULT, ENROLLMENT_CODES_PER_MINUTE, ENROLLMENT_CODE_TTL_MS } from "../config.js";
 import { deleteOpenCodes, getAgentStatus, insertCode, lockServer, revokeCredential, sha256 } from "../repositories/agentRepository.js";
+import type { AgentStatusRow } from "../repositories/agentRepository.js";
 import { generateEnrollmentCode } from "./enrollmentCode.js";
+import type { GameConnection } from "./gameConnection.js";
 
 /**
  * ADR-0031 PR 5a: the user-facing side of an agent: an owner or admin creates the one-time enrolment code, any member
@@ -44,6 +46,24 @@ export interface AgentsServiceDeps {
   /** When the backend last received a snapshot from this server's agent (ms), from memory; undefined before the first one.
    *  The composition root reads it from the server's observations. */
   lastHeardAt?: (serverId: string) => number | undefined;
+  /** #740 follow-up: the game connection the agent reported in its latest snapshot since this process started, from memory
+   *  (`GameConnectionStore.get`); undefined before the first one, when the database copy is used instead. */
+  gameConnection?: (serverId: string) => GameConnection | undefined;
+}
+
+/** The status's game connection fields: the memory when it has heard from the agent since the start, else the database
+ *  copy; `lastGameReadAt` is the later of the two (it only moves forward). Each is left out when not reported. */
+function gameConnectionFields(row: AgentStatusRow, memory: GameConnection | undefined): Pick<AgentStatusBody, "gameReachable" | "lastGameReadAt" | "modVersion"> {
+  const gameReachable = memory ? memory.gameReachable : row.gameReachable;
+  const modVersion = memory ? memory.modVersion : row.modVersion;
+  const stored = row.lastGameReadAt?.getTime() ?? null;
+  const memoryReadAt = memory?.lastGameReadAt ?? null;
+  const readAt = stored === null ? memoryReadAt : memoryReadAt === null ? stored : Math.max(stored, memoryReadAt);
+  return {
+    ...(gameReachable !== null ? { gameReachable } : {}),
+    ...(readAt !== null ? { lastGameReadAt: new Date(readAt).toISOString() } : {}),
+    ...(modVersion !== null ? { modVersion } : {}),
+  };
 }
 
 /** A database outage is a 503, never a 500 or a "not found". */
@@ -111,6 +131,8 @@ export function createAgentsService(deps: AgentsServiceDeps): AgentsService {
           lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
           agentVersion: row.agentVersion,
           connectionKind: row.connectionKind,
+          // Only for an enrolled agent: a revoked one's row reads as nulls, and the memory is not asked.
+          ...(row.enrolled ? gameConnectionFields(row, deps.gameConnection?.(serverId)) : {}),
         };
       }),
 

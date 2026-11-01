@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   CreatePlannerDesignationRequestSchema,
   DeletePlannerDesignationResponseSchema,
+  PLANNER_DESIGNATION_MAX_DEPTH,
   PlannerDesignationSchema,
   PlannerDesignationsResponseSchema,
   ReplacePlannerDesignationsRequestSchema,
@@ -38,9 +39,21 @@ export interface DesignationRoutesDeps {
 
 const DesignationIdSchema = z.uuid();
 
+/** ADR-0061 Contracts 4: the 409s of a write whose resulting tree breaks a rule (the store checks it under its lock). */
+function refuseHierarchy<T extends { kind: string }>(outcome: T): asserts outcome is Exclude<T, { kind: "cycle" | "depth" | "shape" }> {
+  if (outcome.kind === "cycle") throw new ApiFailure("designation_cycle", "A factory cannot sit inside itself");
+  if (outcome.kind === "depth") throw new ApiFailure("designation_depth", `Factories nest at most ${PLANNER_DESIGNATION_MAX_DEPTH} levels deep`);
+  if (outcome.kind === "shape") throw new ApiFailure("designation_shape", "A factory with no machines of its own needs factories inside it");
+}
+
 /**
  * ADR-0055 Decision 5: Planner designations. Mounted AFTER the servers router (its membership check and member-write guard
  * cover these paths). Without a database there is no table, so every route answers 503.
+ *
+ * ADR-0061 (nesting): create and replace take `parentId`; PUT never changes it. A missing parent is 409 `designation_stale`,
+ * then `designation_cycle`, `designation_depth` and `designation_shape` (no members and no children), each checked by the
+ * store on the whole resulting set. DELETE of a parent moves its children up to its own parent, and deletes an ancestor it
+ * leaves with no members and no children; the response stays `{ deleted: true }` (a client re-reads the list).
  */
 export function createDesignationRoutes(directory: ServerDirectory<unknown>, deps?: DesignationRoutesDeps): Router {
   const router = Router();
@@ -78,12 +91,20 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     const { serverId } = resolveServer(directory, req);
     if (!deps) throw new ServiceUnavailableError();
     const body = parseBody(CreatePlannerDesignationRequestSchema, req.body);
-    const outcome = await deps.store.create(serverId, { userId: userIdOf(res), name: body.name, mode: body.mode, members: body.members });
+    const outcome = await deps.store.create(serverId, {
+      userId: userIdOf(res),
+      name: body.name,
+      mode: body.mode,
+      members: body.members,
+      ...(body.parentId !== undefined && { parentId: body.parentId }),
+    });
     if (outcome.kind === "no_server") throw new ServerNotFoundError();
     if (outcome.kind === "cap") throw new ApiFailure("designation_cap", "This server already has the most designations allowed");
     if (outcome.kind === "overlap") {
       throw new ApiFailure("designation_overlap", "A building is already in another designation", undefined, undefined, outcome.other);
     }
+    if (outcome.kind === "stale") throw new ApiFailure("designation_stale", "The parent designation no longer exists");
+    refuseHierarchy(outcome);
     res.status(201);
     sendValidated(res, PlannerDesignationSchema, outcome.designation);
   });
@@ -106,6 +127,7 @@ export function createDesignationRoutes(directory: ServerDirectory<unknown>, dep
     if (outcome.kind === "overlap") {
       throw new ApiFailure("designation_overlap", "A building is already in another designation", undefined, undefined, outcome.other);
     }
+    refuseHierarchy(outcome);
     sendValidated(res, ReplacePlannerDesignationsResponseSchema, { designations: outcome.designations, removedIds: outcome.removedIds });
   });
 

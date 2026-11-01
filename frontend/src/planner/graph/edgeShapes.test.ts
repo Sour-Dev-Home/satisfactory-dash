@@ -41,6 +41,37 @@ describe("roundedOrthogonalPath", () => {
   it("ends on the route's last point along its last leg, so the arrowhead meets the card", () => {
     expect(roundedOrthogonalPath([P(0, 0), P(50, 0), P(50, 40), P(120, 40)]).endsWith("L120 40")).toBe(true);
   });
+
+  it("stops `trimEnd` short of the end along the last leg, every corner where it was", () => {
+    const route = [P(0, 0), P(50, 0), P(50, 40), P(120, 40)];
+    const full = roundedOrthogonalPath(route);
+    const trimmed = roundedOrthogonalPath(route, undefined, 3.2);
+    expect(trimmed).toBe(full.replace(/L120 40$/, "L116.8 40"));
+    // Upward and leftward last legs trim towards their previous point too.
+    expect(roundedOrthogonalPath([P(0, 100), P(0, 0)], 10, 8)).toBe("M0 100 L0 8");
+    expect(roundedOrthogonalPath([P(100, 0), P(0, 0)], 10, 8)).toBe("M100 0 L8 0");
+  });
+
+  it("never trims into the arc before the last run, and a trim of 0 or less is the full path", () => {
+    // The last run after the arc is 10 (ARROW_TAIL): a trim of 25 stops half a unit past the arc's end, a stub left so the
+    // marker keeps the last leg's direction.
+    expect(roundedOrthogonalPath([P(0, 0), P(0, 50), P(20, 50)], 10, 25)).toBe("M0 0 L0 40 A10 10 0 0 0 10 50 L10.5 50");
+    expect(roundedOrthogonalPath([P(0, 0), P(100, 0)], 10, 0)).toBe("M0 0 L100 0");
+    expect(roundedOrthogonalPath([P(0, 0), P(100, 0)], 10, -4)).toBe("M0 0 L100 0");
+    expect(roundedOrthogonalPath([P(5, 5)], 10, 4)).toBe("M5 5");
+  });
+
+  it("trims a diagonal last leg along its own direction, and never produces NaN for a zero-length or NaN trim", () => {
+    expect(roundedOrthogonalPath([P(0, 0), P(30, 40)], 10, 5)).toBe("M0 0 L27 36");
+    expect(roundedOrthogonalPath([P(0, 0), P(0, 0)], 10, 5)).not.toMatch(/NaN/);
+    expect(roundedOrthogonalPath([P(0, 0), P(0, 10), P(30, 10)], 10, Number.NaN)).not.toMatch(/NaN/);
+  });
+
+  it("trims a square-cornered short last run only up to a stub of it, so the arrowhead still points along the last leg", () => {
+    // Last run is 2 long (arc drawn square): a trim of 8 leaves 0.5 of it, not the corner.
+    const d = roundedOrthogonalPath([P(0, 0), P(0, 50), P(2, 50)], 10, 8);
+    expect(d).toBe("M0 0 L0 50 L0.5 50");
+  });
 });
 
 describe("segmentHitsRect", () => {

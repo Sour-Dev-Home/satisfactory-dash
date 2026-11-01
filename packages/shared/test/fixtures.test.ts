@@ -189,6 +189,8 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["plannerDesignationReplaceRequest", ReplacePlannerDesignationsRequestSchema],
   ["plannerDesignationReplaceResponse", ReplacePlannerDesignationsResponseSchema],
   ["plannerDesignationStaleError", ApiErrorResponseSchema],
+  // ADR-0061: "plannerDesignationListNested" and "plannerDesignationReplaceRequestGroup" are caught by the prefixes above.
+  ["plannerDesignationShapeError", ApiErrorResponseSchema],
   // ADR-0055 Decision 1: the trainRoutes world layer.
   ["trainRoutesWorldResponse", TrainRoutesWorldLayerResponseSchema],
   ["trainRoutesSample", TrainRoutesWorldIngestRequestSchema],

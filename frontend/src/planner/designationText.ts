@@ -1,10 +1,14 @@
-import { PLANNER_DESIGNATIONS_MAX_PER_SERVER, PlannerDesignationNameSchema } from "@satisfactory-dash/shared";
+import { PLANNER_DESIGNATION_MAX_DEPTH, PLANNER_DESIGNATIONS_MAX_PER_SERVER, PlannerDesignationNameSchema } from "@satisfactory-dash/shared";
 import { ApiError } from "../api/errors";
 import { isStaleDesignation } from "../api/plannerWrites";
 import { describeError } from "../components/ErrorNotice";
 
 /** ADR-0055 Decision 11: a replace found one of the designations changed meanwhile; the page re-reads and drops the selection. */
 export const STALE_TEXT = "Changed by someone else; select again.";
+/** ADR-0061 Decision 6: the tree's 409s (`designation_depth`, `_cycle`, `_shape`), also said before sending when the page can tell. */
+export const DEPTH_TEXT = `Factories nest at most ${PLANNER_DESIGNATION_MAX_DEPTH} levels.`;
+export const CYCLE_TEXT = "A factory cannot go inside itself or a factory inside it.";
+export const SHAPE_TEXT = "That would leave a factory with no machines and no factories in it.";
 /** ADR-0055 Decision 12: Merge stays disabled for a selection that is not one connected piece. */
 export const NOT_CONNECTED_TEXT = "These factories are not connected by any belt, pipe or transport";
 
@@ -15,8 +19,11 @@ export function canDesignate(role: string | undefined): boolean {
 
 const machines = (n: number) => `${n} ${n === 1 ? "machine" : "machines"}`;
 
-/** The two designation conflicts in the planner's own words; anything else reads like any other error. */
+/** The designation conflicts in the planner's own words; anything else reads like any other error. */
 export function designationErrorText(error: unknown): string {
+  if (error instanceof ApiError && error.code === "designation_depth") return DEPTH_TEXT;
+  if (error instanceof ApiError && error.code === "designation_cycle") return CYCLE_TEXT;
+  if (error instanceof ApiError && error.code === "designation_shape") return SHAPE_TEXT;
   if (error instanceof ApiError && error.code === "designation_overlap") {
     return error.other === undefined
       ? "Some of these machines already belong to another designated factory"

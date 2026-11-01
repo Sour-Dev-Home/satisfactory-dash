@@ -194,6 +194,12 @@ const CASES: StateCase[] = [
   { scenario: "map-power-lines-empty", path: "/app/map", shows: "No power lines built yet.", act: showPowerLines },
   { scenario: "map-power-lines-truncated", path: "/app/map", shows: /Showing part of the power lines/, act: showPowerLines },
   { scenario: "map-power-lines-error", path: "/app/map", shows: /Power lines couldn't load/, act: showPowerLines },
+  // The belts, lifts and pipes (#330) are off by default too: drawn (the captured sample), none reported yet, cut to the
+  // layer's cap, and the read failing.
+  { scenario: "default", name: "map-conveyors", path: "/app/map", shows: /^7 belts, 2 pipes, 2 lifts on the map, 30 m of belt/, act: showConveyors },
+  { scenario: "map-conveyors-empty", path: "/app/map", shows: "No belts, lifts or pipes reported yet.", act: showConveyors },
+  { scenario: "map-conveyors-truncated", path: "/app/map", shows: /Showing part of the belts and pipes/, act: showConveyors },
+  { scenario: "map-conveyors-error", path: "/app/map", shows: /Belts and pipes couldn't load/, act: showConveyors },
   // The live trains (ADR-0038 M6): none built yet, the game unreachable (last known positions), and the read failing.
   { scenario: "map-live-empty", path: "/app/map", shows: "No trains or stations built yet." },
   { scenario: "map-live-stale", path: "/app/map", shows: /last known train positions/ },
@@ -250,11 +256,15 @@ const CASES: StateCase[] = [
   // The modded item has no unit, so it alone falls back to "per min" (ADR-0015).
   { scenario: "unknown-units", path: "/app/factory", shows: /Modded Widget: .* per min/ },
   { scenario: "factory-states", path: "/app/factory", shows: "Unpowered" },
+  // ADR-0062 F.5: 60 machines, the table capped at its first 50 with "Show all" under it.
+  { scenario: "factory-many-machines", path: "/app/factory", shows: "Showing 50 of 60 machines." },
   // ADR-0048 (#349), the Factory page's Bottlenecks section (the default scenario shows findings with a belt cap).
   { scenario: "default", name: "bottlenecks-belt-cap", path: "/app/factory", shows: /Capped by: Conveyor Belt Mk.1/ },
   { scenario: "bottlenecks-old-frm", path: "/app/factory", shows: /Update FRM to 1.5.4/ },
   { scenario: "bottlenecks-too-large", path: "/app/factory", shows: /connection data is too large/ },
   { scenario: "bottlenecks-not-received", path: "/app/factory", shows: /agent hasn't sent belt data yet/ },
+  // ADR-0062 F.1, the summary above the table, the read failing (the default shows three causes, bottlenecks-empty none).
+  { scenario: "bottlenecks-error", path: "/app/factory", shows: /credentials for the game server were rejected/ },
   { scenario: "bottlenecks-empty", path: "/app/factory", shows: /No bottlenecks/ },
   { scenario: "bottlenecks-unknown-kind", path: "/app/factory", shows: /smart splitter upstream filters Limestone/ },
   // ADR-0050 task 5, the Planner page. The fixtures were observed at
@@ -306,8 +316,9 @@ const CASES: StateCase[] = [
       await page.keyboard.press("Enter");
     },
   },
-  // #728 step 2: a stalled group's card reads "Iron Plate · 0 of 160/min" with a muted "Backed up" line, and its side
-  // panel "0 of 160 items/min · backed up".
+  // #728 step 2: a stalled group's card reads "Iron Plate · 0 of 160/min" with a muted "Backed up" line (in marks mode,
+  // the default since ADR-0062 build PR 2, the backed-up mark on that row instead), and its side panel "0 of 160 items/min ·
+  // backed up".
   { scenario: "planner-stalled", name: "planner-stalled-graph", path: "/app/planner", shows: "Fit to view", clock: PLANNER_NOW, act: openIronGraph },
   {
     scenario: "planner-stalled",
@@ -320,6 +331,19 @@ const CASES: StateCase[] = [
       await openIronGraph(page);
       await page.getByRole("button", { name: /^8× Constructor, Iron Plate/ }).focus();
       await page.keyboard.press("Enter");
+    },
+  },
+  // #728 cause 11: a card built from conveyor data older than the factory read says so (muted, a clock glyph).
+  {
+    scenario: "planner-stale-end",
+    name: "planner-stale-end-graph",
+    path: "/app/planner",
+    shows: "Fit to view",
+    clock: FACTORIES_NOW,
+    act: async (page) => {
+      await pressButton(page, "Open factory: Iron Rod factory");
+      await page.getByRole("button", { name: "Graph" }).click();
+      await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory/ })).toBeVisible();
     },
   },
   // ADR-0055 PR 7: factories as the first level, an opened factory's tables, and the trees of a recipe in one bubble.
@@ -408,14 +432,6 @@ const CASES: StateCase[] = [
     shows: /1 machine no longer found/,
     clock: FACTORIES_NOW,
     act: (page) => page.getByRole("button", { name: "Tables" }).click(),
-  },
-  {
-    scenario: "planner-designations",
-    name: "planner-suggestions",
-    path: "/app/planner",
-    shows: "Suggestion",
-    clock: FACTORIES_NOW,
-    act: (page) => page.getByRole("button", { name: "Reason factories for me" }).click(),
   },
   {
     scenario: "planner-designations",
@@ -619,6 +635,9 @@ const CASES: StateCase[] = [
     act: (page) => page.getByRole("button", { name: "Revoke…" }).click(),
   },
   { scenario: "agent-silent-owner", path: "/app/settings", shows: /Hasn't reported yet/, clock: AGENT_NOW },
+  // #740 follow-up: the agent's own view of the game, with the same clock (its last read 9 s ago, or 12 m ago).
+  { scenario: "agent-game-reachable-owner", path: "/app/settings", shows: "last read 9 s ago", clock: AGENT_NOW },
+  { scenario: "agent-game-unreachable-owner", path: "/app/settings", shows: "Not reachable", clock: AGENT_NOW },
   // ADR-0057 Decision 7: the version banners in the shell (an update, an unsupported version, a security advisory from the
   // policy's range and from minSafe) and the line on the Servers page.
   { scenario: "update-agent", path: "/app/settings", shows: /Update available: the game PC agent is 0\.3\.5/, clock: AGENT_NOW },
@@ -745,6 +764,10 @@ async function filterTheMap(page: Page) {
 
 async function showPowerLines(page: Page) {
   await page.getByRole("checkbox", { name: "Power lines" }).check();
+}
+
+async function showConveyors(page: Page) {
+  await page.getByRole("checkbox", { name: "Belts and pipes" }).check();
 }
 
 async function openAddForm(page: Page) {

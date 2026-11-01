@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AgentFactorySchema, AgentPowerSchema, FactorySchema, PowerSchema } from "@satisfactory-dash/shared";
 import type { FactoryBuilding, PowerCircuit } from "../../gameserver/index.js";
-import { deriveFactory, derivePower, fuseByCircuit, fuseFromCircuits } from "./snapshotDerive.js";
+import { deriveFactory, deriveGenerators, derivePower, fuseByCircuit, fuseFromCircuits } from "./snapshotDerive.js";
 import { PowerService } from "./powerService.js";
 import { ProductionService } from "./productionService.js";
 import type { UnitResolver } from "./productionService.js";
@@ -160,5 +160,33 @@ describe("deriveFactory", () => {
   it("a building with no circuit id gets no state (nothing to join a fuse to), and is still served", () => {
     const input = AgentFactorySchema.parse({ buildings: [{ ...building("x"), isBackedUp: false, circuitGroupId: undefined }] });
     expect(deriveFactory(input, fuseFromCircuits(fuses), resolveUnit).buildings[0]).not.toHaveProperty("state");
+  });
+});
+
+describe("deriveGenerators (ADR-0058 S4-B)", () => {
+  const units: UnitResolver = (className) => (className === "Desc_Water_C" ? "m3/min" : className === "Desc_Coal_C" ? "items/min" : null);
+  const base = { id: "g", name: "Coal-Powered Generator", className: "Build_GeneratorCoal_C", currentMW: 75, capacityMW: 75, isProducing: true };
+
+  it("gives each slot item the catalog's amount unit (items, m3, or null when unknown) and keeps optional fields only when sent", () => {
+    const input = AgentPowerSchema.parse({
+      circuits: [],
+      generators: [
+        { ...base, location: { xM: 1, yM: 2, zM: 3, rotationDeg: 0 }, circuitGroupId: 2, clockSpeedPercent: 100, fuel: { className: "Desc_Coal_C", name: "Coal", amount: 40 }, supplement: { className: "Desc_Water_C", name: "Water", amount: 12.5 } },
+        { ...base, id: "h", fuel: { className: "Desc_Mystery_C", name: "?", amount: 1 } },
+        { ...base, id: "geo", fuel: null, supplement: null },
+      ],
+    });
+    const [coal, mystery, geo] = deriveGenerators(input.generators!, units);
+    expect(coal).toMatchObject({ circuitGroupId: 2, clockSpeedPercent: 100, fuel: { unit: "items" }, supplement: { unit: "m3", amount: 12.5 } });
+    expect(mystery?.fuel?.unit).toBeNull();
+    expect(mystery).not.toHaveProperty("supplement");
+    expect(mystery).not.toHaveProperty("location");
+    expect(geo).toMatchObject({ fuel: null, supplement: null });
+    expect(PowerSchema.parse({ circuits: [], hasOutage: false, generators: [coal, mystery, geo] }).generators).toEqual([coal, mystery, geo]);
+  });
+
+  it("derivePower never carries generators (the list is kept apart, in the store)", () => {
+    const input = AgentPowerSchema.parse({ circuits: [], generators: [{ ...base, fuel: null }] });
+    expect(derivePower(input)).not.toHaveProperty("generators");
   });
 });

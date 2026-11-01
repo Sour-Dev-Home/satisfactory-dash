@@ -32,7 +32,8 @@ import {
   type Arc,
   type Filter,
 } from "./connectionGraph.js";
-import { reduceFactories, type ReductionStats } from "./factoryReduction.js";
+import { reduceFactories, type DesignationRef, type ReductionStats } from "./factoryReduction.js";
+import { buildingName, classOfId } from "./buildingNames.js";
 import { buildLogisticsEdges } from "./logisticsEdges.js";
 import { DEPOT_CLASS, classifyDestinations, classifyFlows, sourceTrees, type FlowArc, type TreeGroup } from "./plannerFlows.js";
 import { itemOfExtractorClass, resourceLookup, type ResourceItem } from "./plannerItems.js";
@@ -110,6 +111,14 @@ const KIND_NAMES: ReadonlyMap<ConveyorNodeKind, string> = new Map([
   ["consumer", "consumer"],
 ]);
 const kindName = (k: ConveyorNodeKind): string => KIND_NAMES.get(k) ?? "other";
+/** The group kinds that take their building's class and name from their ids when no getFactory record names them. */
+const NAMED_BY_ID: ReadonlySet<string> = new Set(["storage", "station", "consumer"]);
+/** Such a group's name when its ids name no single building class: its kind in words. */
+const KIND_WORDS: ReadonlyMap<string, string> = new Map([
+  ["storage", "Storage"],
+  ["station", "Station"],
+  ["consumer", "Sink or generator"],
+]);
 
 /** Two decimals, and always a finite, non-negative number the contract accepts (a sum of huge rates can overflow). */
 const r2 = (n: number): number => {
@@ -190,7 +199,7 @@ interface Group {
   siteKey: string;
   loop: boolean;
   /** The designation every machine of this group belongs to (the group key includes it), or null. */
-  designation: { id: string; name: string } | null;
+  designation: DesignationRef | null;
 }
 
 /** A place flow passes between terminals: a pass-through component, or one conveyor joining two terminals directly. */
@@ -267,7 +276,7 @@ export function buildProductionGraphWithStats(
   resourceNodes: readonly ResourceNode[] = [],
   trainRoutes: readonly TrainRouteRecord[] | null = null,
   /** ADR-0055 Decision 5: building id -> the designation that holds it. Absent or empty = fully automatic (as before). */
-  designated: ReadonlyMap<string, { id: string; name: string }> = new Map(),
+  designated: ReadonlyMap<string, DesignationRef> = new Map(),
 ): ProductionGraphResult {
   if (edges === "unsupported") {
     return emptyGraph("unsupported", [{ code: "updateFrm", text: "No production graph; update FRM to 1.5.4 or newer for belt detail." }]);
@@ -407,6 +416,24 @@ export function buildProductionGraphWithStats(
     const seen = (keyCount.get(base) ?? 0) + 1;
     keyCount.set(base, seen);
     grp.key = seen === 1 ? base : `${base}#${seen}`;
+  }
+  // A group with no getFactory record (storage, a generator, the sink, a station) was named and classed by its conveyor
+  // kind above, and keyed so. Now that the keys are fixed (a saved key never changes), it takes the building class its
+  // ids carry ("Build_StorageContainerMk1_C_2147455285") when they all agree, and that building's name: the card then
+  // shows the building's icon and name instead of "storage" or "consumer".
+  // Only the kinds that make nothing: an extractor can seed a factory, whose key comes from its seed's class
+  // (factoryReduction's `productOf`), so its class stays as it was and no saved factory key moves.
+  for (const grp of groups) {
+    if (!NAMED_BY_ID.has(grp.kind) || grp.units.some((u) => u.building !== null)) continue;
+    const classes = new Set(grp.units.map((u) => classOfId(u.id)));
+    const only = classes.size === 1 ? [...classes][0] : null;
+    if (only === null || only === undefined) {
+      // Ids that do not agree (or are not FRM's): the kind stays the class, and the name is the kind in words.
+      grp.name = KIND_WORDS.get(grp.className) ?? grp.name;
+      continue;
+    }
+    grp.className = only;
+    grp.name = buildingName(only);
   }
 
   // ---- links ----
@@ -683,12 +710,14 @@ export function buildProductionGraphWithStats(
         } else {
           let total = 0;
           for (const o of sources) total += groups[o.s].prod.get(item)?.cur ?? 0;
-          const mine = groups[c.s].prod.get(item)?.cur ?? 0;
-          if (total > 0) {
-            ratePerMinute = (consumed.cur * mine) / total;
-            rate = "estimated";
-          } else if (consumed.cur === 0) {
+          // A source with no output data for the item (an extractor, which getFactory never lists) has no known share:
+          // its link stays unknown rather than reading 0. The planner's extractor cards sum these links.
+          const mine = groups[c.s].prod.get(item)?.cur;
+          if (consumed.cur === 0) {
             ratePerMinute = 0;
+            rate = "estimated";
+          } else if (mine !== undefined && total > 0) {
+            ratePerMinute = (consumed.cur * mine) / total;
             rate = "estimated";
           }
         }
@@ -727,6 +756,43 @@ export function buildProductionGraphWithStats(
     for (const j of sup) used += rates[j].ratePerMinute as number;
     rates[i] = { ratePerMinute: Math.max(0, out.cur - used), rate: "estimated" };
   });
+  // One-end estimate (owner, 2026-10-27): an edge with a known item and still no rate takes it from whichever end's recipe
+  // rate is known. First the source's output of the item, less what its other edges for the item already carry, shared
+  // evenly among its rate-less ones; then, for what is left, the destination's use less what its other incoming edges
+  // carry. Always estimated, never below zero, never over a rate already set; an overflowing belt is overstated.
+  // `nothingLeftIsUnknown` (the destination pass): when the destination uses some of the item but its other sources
+  // already carry all of it, the rest share nothing anyone knows, so they stay unknown rather than a guessed 0 (#777).
+  // A source that reports making 0 still says 0, as does a destination that uses none.
+  const oneEnd = (keyOf: (c: Cand) => string, total: (c: Cand) => number | undefined, nothingLeftIsUnknown = false): void => {
+    const byKey = new Map<string, number[]>();
+    candList.forEach((c, i) => {
+      if (c.item === null) return;
+      const k = keyOf(c);
+      const list = byKey.get(k);
+      if (list) list.push(i);
+      else byKey.set(k, [i]);
+    });
+    for (const list of byKey.values()) {
+      const open = list.filter((i) => rates[i].ratePerMinute === null);
+      if (open.length === 0) continue;
+      const whole = total(candList[open[0]]);
+      if (whole === undefined) continue;
+      let used = 0;
+      for (const i of list) used += rates[i].ratePerMinute ?? 0;
+      if (nothingLeftIsUnknown && whole > 0 && whole - used <= 0) continue;
+      const share = Math.max(0, whole - used) / open.length;
+      for (const i of open) rates[i] = { ratePerMinute: share, rate: "estimated" };
+    }
+  };
+  oneEnd(
+    (c) => `${c.s}|${c.item?.className}`,
+    (c) => groups[c.s].prod.get(c.item?.className ?? "")?.cur,
+  );
+  oneEnd(
+    (c) => `${c.d}|${c.item?.className}`,
+    (c) => groups[c.d].ing.get(c.item?.className ?? "")?.cur,
+    true,
+  );
 
   const outEdges: PlannerEdge[] = [];
   candList.forEach((c, i) => {
@@ -911,6 +977,8 @@ export function buildProductionGraphWithStats(
         loop: grp.loop,
         treeKey: treeKeys[grp.idx],
         ...(grp.kind === "extractor" ? { resource: res && { className: res.className.slice(0, 200), name: res.name.slice(0, 200) } } : {}),
+        // #728 cause 11: built only from the machine ends the staleConveyorEnds note counts (no factory building matched).
+        ...(grp.units.every((u) => u.building === null && g.kind[u.node] === "machine") ? { stale: true as const } : {}),
       };
     })
     .sort((a, b) => byString(a.key, b.key));
@@ -946,7 +1014,7 @@ export function buildProductionGraphWithStats(
 
   // ---- logical factories (ADR-0055 Decision 4, PR 6b): over the capped nodes, edges and transports; rules in factoryReduction.ts ----
   const reduceStarted = performance.now();
-  const designatedNodes = new Map<string, { id: string; name: string }>();
+  const designatedNodes = new Map<string, DesignationRef>();
   for (const grp of kept) if (grp.designation) designatedNodes.set(grp.key, grp.designation);
   const reduction = reduceFactories({ nodes, edges: keptEdges, transports, snap, ...(designatedNodes.size > 0 ? { designations: designatedNodes } : {}) });
   const reduceMs = Math.round((performance.now() - reduceStarted) * 100) / 100;

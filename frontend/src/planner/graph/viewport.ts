@@ -155,9 +155,6 @@ export function isInView(view: View, stage: Stage, box: { x: number; y: number; 
 
 export const isClipped =(c: Clipped) => c.left || c.right || c.top || c.bottom;
 
-/** The part of the stage left of a drawer of `panelWidth` px that overlays its right side (a drawer wider than the stage leaves none). */
-export const stageBesidePanel = (stage: Stage, panelWidth: number): Stage => ({ width: Math.max(1, stage.width - panelWidth), height: stage.height });
-
 /** The view moved the least that brings a layout rectangle fully into the stage (with a margin); unchanged if it is in. */
 export function revealRect(view: View, r: { x: number; y: number; width: number; height: number }, stage: Stage, margin = 24): View {
   const left = view.x + r.x * view.k;

@@ -106,6 +106,7 @@ test("the committed workspace.dsl gives every backend component a code mapping a
     "modules/gameserver",
     "modules/identity",
     "modules/map",
+    "modules/metrics",
     "modules/servers",
     "modules/settings",
     "modules/telemetry",

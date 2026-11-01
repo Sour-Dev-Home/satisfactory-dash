@@ -1,4 +1,4 @@
-import type { PlannerEdge, PlannerNode, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
+import { PLANNER_DESIGNATION_MAX_DEPTH, type PlannerEdge, type PlannerNode, type PlannerRate, type PlannerSite, type ProductionGraph } from "@satisfactory-dash/shared";
 import {
   aggregateRateText,
   bubbleTitle,
@@ -14,9 +14,14 @@ import {
   remoteText,
   shareText,
   siteNodes,
+  stalledOf,
+  stalledStateText,
   UNKNOWN_FLOW_NOTE,
+  type StalledKind,
 } from "../plannerText";
+import { levelOf, levelOwner, type FactoryTree, type TreeNode } from "../factoryTree";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
+import { sumCapRates, withCapStalled, type DestinationCap } from "./capModel";
 import {
   INFERRED_FROM_NODE,
   MAX_SUMMARY_CHARS,
@@ -25,11 +30,19 @@ import {
   extractorOutput,
   extractorOutputText,
   groupsExtractorOutput,
+  isStaleNode,
+  minedRates,
+  minedSummary,
   nameOr,
   nodeFacts,
+  type MinedRate,
   nodeSummary,
+  makesNothing,
+  NO_OUTPUT_DATA,
   nodeTitle,
   productSummary,
+  STALE_NODE_NOTE,
+  staleNodeLines,
   stalledNote,
   withName,
 } from "./graphModel";
@@ -76,6 +89,12 @@ export interface Card {
   lines: string[];
   /** Lines from this index on are a muted note (an extractor's "(inferred from the node)"); absent = none. */
   mutedFrom?: number;
+  /**
+   * The muted note is the machines' stalled state and it has a mark (`stalledOf`, ADR-0062 Decision 2): in marks mode the
+   * canvas draws that `StateMark` on the note's row instead of its word. The word stays in `lines` (the layout's size and
+   * the words mode) and in `description`. Absent = no mark.
+   */
+  stalled?: StalledKind | undefined;
   /** The "×N" machine count badge, when the card stands for machines. */
   count: number | undefined;
   /** The building class whose icon the card shows, when it stands for one class. */
@@ -95,14 +114,80 @@ export interface Card {
   upstream?: { count: number; collapsed: boolean } | undefined;
   /** Which bubble this card opens or collapses (a bubble card, or a group inside a frame). */
   bubbleKey: string | undefined;
+  /** A group of several machines whose ids the graph lists: it can open into a frame of one small card per machine. */
+  machines?: CardMachines | undefined;
+  /** ADR-0061 Decision 5, the overview with the `planner.nesting` flag: the card can blow up in place into its parts. */
+  blowUp?: CardBlowUp | undefined;
+  /**
+   * ADR-0062 Decision 1: where the card's flows end that no line is drawn to (a factory's ends, a group's folded storage),
+   * one cap per kind in the card's footer row. The words stay in `description` (`destinationChipText`). Absent = none.
+   */
+  caps?: DestinationCap[] | undefined;
+}
+
+/** What a closed card would show blown up (`overviewScene` with `expanded`). */
+export interface CardBlowUp {
+  /** How many cards its frame would hold: a parent's parts, or a factory's groups. */
+  parts: number;
+  noun: "factories" | "groups";
+  /** Whether that stays within `EXPAND_MAX_CARDS` visible cards; past it the control says to open the factory instead. */
+  fits: boolean;
+}
+
+/**
+ * ADR-0061 Decision 5's budget: at most this many cards are drawn after blowing up. A blow-up that would pass it is not
+ * offered ("Too large to expand here; open it"), so the layout stays within ADR-0050 Decision 3's 100 ms. The ADR said
+ * 120; build PR 4 measured frames as dagre's cost (115 cards two frames deep took about 180 ms, 61 about 95 ms), so by the
+ * ADR's rule the cap came down to 60 (see the ADR's note and `layoutScene.blowUp.test.ts`).
+ */
+export const EXPAND_MAX_CARDS = 60;
+/** Blow-up frames nest at most this deep in one scene; a card inside the second opens by navigating. */
+export const EXPAND_MAX_DEPTH = 2;
+/** The words of a blow-up that would pass `EXPAND_MAX_CARDS` (the drawn pill's tooltip and the hidden button). */
+export const TOO_LARGE_TO_EXPAND = "Too large to expand here; open it";
+
+/** An expandable group's machines (`groupMachines`). */
+export interface CardMachines {
+  /** Whether the card is opened into its machines now. */
+  open: boolean;
+  /** The machines it shows a card for: the group's distinct ids, at most `MACHINES_MAX`. */
+  ids: string[];
+  /** Machines past those (the cap, or ones the graph has no id for): one "+k more" card, which opens the side panel. */
+  more: number;
+}
+
+/** An opened group shows at most this many machine cards, then "+k more": the frame stays small enough to draw and to lay
+ *  out within ADR-0060 Decision 3's 100 ms (the frame is one card to dagre, its machines a grid inside it). */
+export const MACHINES_MAX = 48;
+
+/** What an opened group's frame adds to its words: the game reads belts per group, so the lines join the frame. */
+export const MACHINES_FRAME_NOTE = "The game reports belts per group, not per machine, so the lines join the frame, not a machine";
+
+/**
+ * Whether a group can open into its machines, and what it would show: more than one machine, and at least one id to show.
+ * Undefined otherwise.
+ */
+export function groupMachines(node: Pick<PlannerNode, "count" | "machineIds">, open: boolean): CardMachines | undefined {
+  const ids = [...new Set(node.machineIds)];
+  if (!(node.count > 1) || ids.length === 0) return undefined;
+  const shown = ids.slice(0, MACHINES_MAX);
+  return { open, ids: shown, more: Math.max(0, node.count - shown.length) };
 }
 
 export interface Frame {
-  /** `frame|<bubble key>`: distinct from every card key. */
+  /** `frame|<bubble key>` (or `frame|<card key>` for a blow-up): distinct from every card key. */
   key: string;
+  /** The bubble it opens (a blow-up's: the card key it stands for, so `data-frame` names it either way). */
   bubbleKey: string;
   title: string;
+  /** The cards directly inside it (a nested frame's are its own). */
   cardKeys: string[];
+  /** A blow-up (ADR-0061 Decision 5): the key of the card it replaced, which Collapse brings back. Absent = a bubble's. */
+  expands?: string | undefined;
+  /** The frame this one sits in (blow-ups nest up to `EXPAND_MAX_DEPTH`). Absent = the top level. */
+  parent?: string | undefined;
+  /** The frame's tooltip and accessible words ("Main base, blown up into 3 factories"); absent = the title. */
+  description?: string | undefined;
 }
 
 export interface CanvasFlow {
@@ -126,6 +211,12 @@ export interface CanvasFlow {
   quality: FlowQuality;
   /** A bundle (`bundleFlows`): the links it draws as one line, each with its own item and rate. Absent on a single link. */
   parts?: CanvasFlow[] | undefined;
+  /**
+   * The source card's stalled state (its `Card.stalled`, from `stalledOf`; ADR-0062 Decision 2): in marks mode a stalled line
+   * ends in a stop bar and never moves, and its item bubbles wear the state's ring. A link with a measured rate above 0 is
+   * never stalled (it is moving); a bundle is stalled only when every part is. Absent = not stalled.
+   */
+  stalled?: StalledKind | undefined;
 }
 
 export type SceneLevel = "overview" | "factory" | "site";
@@ -146,6 +237,8 @@ export interface Scene {
   openByDefault: boolean;
   /** The first card kind word for the accessible label: "factories", "groups" or "cards". */
   noun: string;
+  /** ADR-0061 Decision 3, the overview: the path to the parent whose parts it shows (empty, or absent, at the top level). */
+  path?: string[] | undefined;
 }
 
 export interface FactoryView {
@@ -156,9 +249,11 @@ export interface FactoryView {
   /** Cards whose upstream is hidden. */
   collapsed: ReadonlySet<string>;
   storageDetail: boolean;
+  /** Group cards opened into their machines (absent = none). */
+  machinesOpen?: ReadonlySet<string> | undefined;
 }
 
-export const EMPTY_VIEW: FactoryView = { flipped: new Set(), unfolded: new Set(), collapsed: new Set(), storageDetail: true };
+export const EMPTY_VIEW: FactoryView = { flipped: new Set(), unfolded: new Set(), collapsed: new Set(), storageDetail: true, machinesOpen: new Set() };
 
 const cutTo = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -280,21 +375,28 @@ function bundledFlow(parts: readonly CanvasFlow[]): CanvasFlow {
     unit,
     quality,
     parts: [...parts],
+    // One source card, so one kind: stalled only when no part was measured moving.
+    ...(parts.every((p) => p.stalled !== undefined) ? { stalled: head.stalled } : {}),
   };
 }
 
 /** How sure an edge's rate is, in the tables' words. */
 export const flowSureness = (flow: Pick<CanvasFlow, "rate">): string => (flow.rate === "measured" ? "measured" : flow.rate === "estimated" ? "estimated" : "rate unknown");
 
+/** A stalled line's words: "The source is backed up" (the state's word from `machineState.ts`, as on the card). */
+export const stalledSourceText = (kind: StalledKind): string => `The source is ${stalledStateText({ [kind]: 1 })}`;
+
 /**
- * A flow's tooltip and accessible words: "Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated)". A bundle
+ * A flow's tooltip and accessible words:"Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated)". A bundle
  * lists every link it draws, each with its own rate: "A to B, 2 links: Iron Ingot · 30 items/min (measured); Steel Pipe
  * (rate unknown)".
  */
 export function flowTitle(flow: CanvasFlow, from: string, to: string): string {
   const by = flow.carrier === "belt" || flow.carrier === "pipe" ? "" : `${carrierWord(flow.carrier)}${flow.routeName === undefined ? "" : `, route ${flow.routeName}`}: `;
   const bundle = flow.parts !== undefined && flow.parts.length > 1 ? flow.parts : null;
-  const why = (bundle ?? [flow]).some(hasUnknown) ? `. ${UNKNOWN_FLOW_NOTE}` : "";
+  const unknownWhy = (bundle ?? [flow]).some(hasUnknown) ? `. ${UNKNOWN_FLOW_NOTE}` : "";
+  // The stop bar's words (ADR-0062 Decision 2), in both state styles: a mark is never the only carrier.
+  const why = `${flow.stalled === undefined ? "" : `. ${stalledSourceText(flow.stalled)}`}${unknownWhy}`;
   if (bundle !== null) {
     return `${by}${from} to ${to}, ${bundle.length} links: ${bundle.map((p) => `${flow.routeName === undefined && p.routeName !== undefined ? `route ${p.routeName}, ` : ""}${p.label} (${flowSureness(p)})`).join("; ")}${why}`;
   }
@@ -317,26 +419,58 @@ const sentences = (parts: readonly string[]): string => parts.filter((p) => p !=
  * A card's lines, plus a muted note under them (#728): "(inferred from the node)" under an extractor's guessed resource,
  * or the machines' state under a product that reads 0. An extractor guesses only when it has no product, so never both.
  */
-const withMutedNote = (lines: string[], mined: { inferred: boolean } | null, stalled: string | null = null): Pick<Card, "lines" | "mutedFrom"> => {
-  const note = mined?.inferred === true ? INFERRED_FROM_NODE : stalled;
-  return note === null ? { lines } : { lines: [...lines, note], mutedFrom: lines.length };
+const withMutedNote = (lines: string[], mined: { inferred: boolean } | null, stalled: StalledLine | null = null): Pick<Card, "lines" | "mutedFrom" | "stalled"> => {
+  if (mined?.inferred === true) return { lines: [...lines, INFERRED_FROM_NODE], mutedFrom: lines.length };
+  if (stalled === null) return { lines };
+  return { lines: [...lines, stalled.note], mutedFrom: lines.length, ...(stalled.kind === undefined ? {} : { stalled: stalled.kind }) };
 };
+
+type StalledLine = { note: string; kind: StalledKind | undefined };
+
+/** The stalled note under a product that reads 0 (`stalledNote`) and its mark, when its state has one; null for a running card. */
+function stalledLine(rate: PlannerRate | undefined, stateCounts: Record<string, number>): StalledLine | null {
+  const note = stalledNote(rate, stateCounts);
+  return note === null ? null : { note, kind: stalledOf(stateCounts) };
+}
+
+/**
+ * The flows' `stalled`, from the cards they leave (ADR-0062 Decision 2): a line out of a stalled card is stalled, unless the
+ * game measured it moving (a rate above 0), which the line then shows instead.
+ */
+function withStalledFlows(cards: readonly Card[], flows: readonly CanvasFlow[]): CanvasFlow[] {
+  const kinds = new Map<string, StalledKind>();
+  for (const c of cards) if (c.stalled !== undefined) kinds.set(c.key, c.stalled);
+  return flows.map((f) => {
+    const kind = kinds.get(f.from);
+    const moving = f.quality === "measured" && f.ratePerMinute !== null && f.ratePerMinute > 0;
+    return kind === undefined || moving ? f : { ...f, stalled: kind };
+  });
+}
+
+/** The glyph of a card for several groups: the clock only when every group is stale, else the first group's own glyph. */
+const glyphOfGroups = (nodes: readonly PlannerNode[], first: PlannerNode): GlyphKind =>
+  glyphKindOf(nodes.every(isStaleNode) ? first : { kind: first.kind, ...(first.role === undefined ? {} : { role: first.role }) });
+
+/** A card built from stale conveyor data (#728 cause 11): only the muted note, wrapped to the card's line limits. */
+const staleCardLines = (): Pick<Card, "lines" | "mutedFrom"> => ({ lines: staleNodeLines(), mutedFrom: 0 });
 
 /**
  * A group as a card (icon-first): the building's icon, a "×N" machine count and one line, its main product and rate. The
  * recipe, the other outputs and the loop marker are in `description` (the tooltip and the keyboard name) and the side
  * panel; `facts` are the further words the factory view adds (the share split, where the group stands, storage chips).
+ * `rates` (`minedRates` of the graph's edges) gives an extractor's card its rate.
  */
-export function groupCard(node: PlannerNode, facts: string[] = []): Card {
+export function groupCard(node: PlannerNode, facts: string[] = [], rates?: ReadonlyMap<string, MinedRate | null>): Card {
   const shown = withName(node);
-  const { outputs, loop } = nodeFacts(node);
+  const { outputs, loop } = nodeFacts(node, rates);
+  const summary = nodeSummary(node, rates);
   return {
     ...blank,
     key: node.key,
     kind: "group",
     nodeKeys: [node.key],
     title: nodeTitle(shown),
-    ...withMutedNote([nodeSummary(node)], extractorOutput(node), stalledNote(node.products[0], node.stateCounts)),
+    ...(isStaleNode(node) ? staleCardLines() : withMutedNote(summary === null ? [] : [summary], extractorOutput(node), stalledLine(node.products[0], node.stateCounts))),
     count: countOf(node.count),
     className: node.className,
     glyph: glyphKindOf(node),
@@ -347,29 +481,40 @@ export function groupCard(node: PlannerNode, facts: string[] = []): Card {
   };
 }
 
-function bubbleCard(bubble: Bubble, chips: string[]): Card {
+function bubbleCard(bubble: Bubble, chips: string[], rates: ReadonlyMap<string, MinedRate | null>): Card {
   const first = withName(bubble.nodes[0]);
   const title = bubbleTitle({ ...bubble, nodes: [first, ...bubble.nodes.slice(1)] });
   const tree = bubble.of > 1 ? ` · tree ${bubble.ordinal} of ${bubble.of}` : "";
   const groups = plural(bubble.nodes.length, "group", "groups");
   const loop = bubble.nodes.some((n) => n.loop === true);
-  const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes) : null;
+  const mined = bubble.products.length === 0 ? groupsExtractorOutput(bubble.nodes, rates) : null;
   const states = mergeStateCounts(bubble.nodes.map((n) => n.stateCounts));
-  const outputs = mined !== null ? [extractorOutputText(mined)] : bubble.products.length === 0 ? ["No output data"] : bubble.products.map((r) => outputLine(r, states));
+  const stale = bubble.nodes.every(isStaleNode);
+  const outputs = stale
+    ? [STALE_NODE_NOTE]
+    : mined !== null
+      ? [extractorOutputText(mined)]
+      : bubble.products.length === 0
+        ? bubble.nodes.every(makesNothing)
+          ? []
+          : [NO_OUTPUT_DATA]
+        : bubble.products.map((r) => outputLine(r, states));
   return {
     ...blank,
     key: bubble.key,
     kind: "bubble",
     nodeKeys: bubble.nodes.map((n) => n.key),
     title: nodeTitle({ name: first.name, count: bubble.machineCount }),
-    ...withMutedNote(
-      [mined !== null ? cutTo(mined.name, MAX_SUMMARY_CHARS) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
-      mined,
-      stalledNote(bubble.products[0], states),
-    ),
+    ...(stale
+      ? staleCardLines()
+      : withMutedNote(
+          [mined !== null ? minedSummary(mined) : bubble.products.length === 0 ? groups : productSummary(bubble.products[0])],
+          mined,
+          stalledLine(bubble.products[0], states),
+        )),
     count: countOf(bubble.machineCount),
     className: first.className,
-    glyph: glyphKindOf(first),
+    glyph: glyphOfGroups(bubble.nodes, first),
     label: title,
     description: sentences([title, ...outputs, `${groups}${tree}`, ...(loop ? ["In a loop"] : []), ...chips]),
     facts: chips,
@@ -392,7 +537,7 @@ function foldCard(entry: { key: string; bubbles: Bubble[] }): Card {
     lines: [cutTo(text, MAX_SUMMARY_CHARS)],
     count: countOf(machines),
     className: first.className,
-    glyph: glyphKindOf(first),
+    glyph: glyphOfGroups(nodes, first),
     label: text,
     description: sentences([text, `${plural(machines, "machine", "machines")} in ${plural(nodes.length, "group", "groups")}`, "Click to show them"]),
     loop: false,
@@ -407,12 +552,14 @@ function foldCard(entry: { key: string; bubbles: Bubble[] }): Card {
 export function siteScene(site: PlannerSite, graph: ProductionGraph): Scene {
   const nodes = siteNodes(graph, site);
   const keys = new Set(nodes.map((n) => n.key));
+  const rates = minedRates(graph.edges);
+  const cards = nodes.map((n) => groupCard(n, [], rates));
   return {
     level: "site",
     name: site.name,
-    cards: nodes.map((n) => groupCard(n)),
+    cards,
     frames: [],
-    flows: graph.edges.filter((e) => keys.has(e.from) && keys.has(e.to)).map(edgeFlow),
+    flows: withStalledFlows(cards, graph.edges.filter((e) => keys.has(e.from) && keys.has(e.to)).map(edgeFlow)),
     bubbleKeys: [],
     foldKeys: [],
     hasStorage: false,
@@ -423,6 +570,7 @@ export function siteScene(site: PlannerSite, graph: ProductionGraph): Scene {
 
 function factoryCard(model: FactoryModel): Card {
   const { factory } = model;
+  const floor = (rate: PlannerRate | undefined) => rate !== undefined && model.atLeast?.has(rate.className) === true;
   const name = nameOr(factory.name, UNNAMED_FACTORY);
   const title = cutTo(nameOr(factoryTitle(factory), UNNAMED_FACTORY), MAX_FACTORY_TITLE_CHARS);
   // The icon is the factory's main machine: the biggest group that makes its first product, else the biggest machine
@@ -433,6 +581,15 @@ function factoryCard(model: FactoryModel): Card {
     biggest(product === undefined ? [] : model.nodes.filter((n) => n.products.some((p) => p.className === product))) ??
     biggest(model.nodes.filter((n) => n.kind === "machines")) ??
     biggest(model.nodes);
+  const text = withMutedNote(
+    [title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0], floor(factory.products[0]))],
+    null,
+    stalledLine(factory.products[0], model.stateCounts),
+  );
+  // ADR-0062 Decision 1: a cap per kind of end; a count that is not a positive whole number draws none (its words stay).
+  const caps = model.destinations
+    .filter((d) => Number.isSafeInteger(d.count) && d.count > 0)
+    .map((d): DestinationCap => ({ destination: d.destination, count: d.count, rates: d.rates ?? [] }));
   return {
     ...blank,
     key: factory.key,
@@ -440,16 +597,17 @@ function factoryCard(model: FactoryModel): Card {
     nodeKeys: model.nodes.map((n) => n.key),
     title,
     // The name and one product line; where it stands, the other outputs and the ends are in `description`.
-    ...withMutedNote([title, factory.products.length === 0 ? "No output data" : productSummary(factory.products[0])], null, stalledNote(factory.products[0], model.stateCounts)),
+    ...text,
+    ...(caps.length === 0 ? {} : { caps: withCapStalled(caps, text.stalled) }),
     count: countOf(factory.machineCount),
     className: main?.className,
-    glyph: main === undefined ? "unknown" : glyphKindOf(main),
+    glyph: main === undefined ? "unknown" : glyphOfGroups(model.nodes, main),
     label: name,
     description: sentences([
       name,
       factorySitesText(model),
       plural(factory.machineCount, "machine", "machines"),
-      ...(factory.products.length === 0 ? ["No output data"] : factory.products.map((r) => outputLine(r, model.stateCounts))),
+      ...(factory.products.length === 0 ? ["No output data"] : factory.products.map((r) => outputLine(r, model.stateCounts, floor(r)))),
       ...(factory.sharedNodeCount > 0 ? [plural(factory.sharedNodeCount, "shared group", "shared groups")] : []),
       ...model.destinations.map((d) => destinationChipText(d.destination, d.count)),
       ...(model.nodes.some((n) => n.loop === true) ? ["In a loop"] : []),
@@ -458,21 +616,145 @@ function factoryCard(model: FactoryModel): Card {
   };
 }
 
-/** The first level: a card per factory and the flows between them (ADR-0055 Decision 6). */
-export function overviewScene(graph: ProductionGraph, models: readonly FactoryModel[]): Scene {
-  const owner = factoryOfNode(graph);
+/**
+ * The first level: a card per factory and the flows between them (ADR-0055 Decision 6). With the factory tree (ADR-0061
+ * Decision 3) it shows the parts of the path's last element, or the top level for an empty path: each group belongs to
+ * its shown ancestor, so flows inside one card vanish and flows between cards are summed. Without a tree, every factory.
+ */
+export function overviewScene(
+  graph: ProductionGraph,
+  models: readonly FactoryModel[],
+  path: readonly string[] = [],
+  tree?: FactoryTree,
+  /** ADR-0061 Decision 5 (the `planner.nesting` flag): the cards blown up in place. Absent = no card can blow up. */
+  expanded?: ReadonlySet<string>,
+): Scene {
+  const level = tree === undefined ? undefined : levelOf(tree, path);
+  const shown = level === undefined ? models : level.entries.map((n) => n.card);
+  const blown = tree === undefined || level === undefined || expanded === undefined ? undefined : blowUp(graph, tree, level.entries, expanded);
+  const owner = blown?.owner ?? (tree === undefined ? factoryOfNode(graph) : levelOwner(graph, tree, level?.parent?.key ?? null));
+  const cards = blown?.cards ?? shown.map(factoryCard);
+  const factoriesOnly = cards.every((c) => c.kind === "factory");
   return {
     level: "overview",
-    name: "Factories",
-    cards: models.map(factoryCard),
-    frames: [],
-    flows: aggregateFlows(flowParts(graph), (key) => owner.get(key)).map(canvasFlow),
+    name: level?.parent === undefined ? "Factories" : `Factories in ${nameOr(level.parent.name, UNNAMED_FACTORY)}`,
+    path: level?.parent === undefined ? [] : [...path],
+    cards,
+    frames: blown?.frames ?? [],
+    flows: withStalledFlows(cards, aggregateFlows(flowParts(graph), (key) => owner.get(key)).map(canvasFlow)),
     bubbleKeys: [],
     foldKeys: [],
     hasStorage: false,
     openByDefault: true,
-    noun: models.length === 1 ? "factory" : "factories",
+    noun: !factoriesOnly ? "card" : cards.length === 1 ? "factory" : "factories",
   };
+}
+
+/**
+ * ADR-0061 Decision 5, blow up: each card of the level whose key is in `expanded` is replaced by a frame holding its parts,
+ * in scene order, depth first: a parent's child factories (its own machines among them), or a factory's groups (each a
+ * group card). A part can blow up again inside it, `EXPAND_MAX_DEPTH` frames deep at most. A blow-up that would take the
+ * scene past `EXPAND_MAX_CARDS` cards stays closed, whatever `expanded` says (a stale session entry, a poll that grew a
+ * factory), so the cap holds for any input. Every group belongs to the finest card drawn for it, so flows re-aggregate
+ * at that card: into a blown-up factory's groups, between a blown-up parent's children. Pure; never throws.
+ */
+function blowUp(graph: ProductionGraph, tree: FactoryTree, entries: readonly TreeNode[], expanded: ReadonlySet<string>) {
+  const factoryOf = factoryOfNode(graph);
+  // Each tree node's own groups (a leaf's, or a parent's own machines), in the graph's order: a group is drawn once.
+  const groupsOf = new Map<string, PlannerNode[]>();
+  const treeKeyOf = new Map<string, string>();
+  for (const n of graph.nodes) {
+    const f = factoryOf.get(n.key);
+    const t = f === undefined ? undefined : tree.ofFactory.get(f);
+    if (t === undefined) continue;
+    treeKeyOf.set(n.key, t);
+    const list = groupsOf.get(t);
+    if (list === undefined) groupsOf.set(t, [n]);
+    else list.push(n);
+  }
+  const childrenOf = (t: TreeNode): TreeNode[] => t.childKeys.flatMap((k) => tree.nodes.get(k) ?? []);
+  const partsOf = (t: TreeNode): number => (t.kind === "parent" ? childrenOf(t).length : (groupsOf.get(t.key)?.length ?? 0));
+  const rates = minedRates(graph.edges);
+  const cards: Card[] = [];
+  const frames: Frame[] = [];
+  const closed = new Set<string>();
+  const openedLeaves = new Set<string>();
+  const offered: { at: number; parts: number; noun: CardBlowUp["noun"] }[] = [];
+  let count = entries.length;
+  const inFrame = (card: Card, frame: Frame | undefined): Card => {
+    if (frame === undefined) return card;
+    frame.cardKeys.push(card.key);
+    return { ...card, frame: frame.key, description: sentences([card.description, `In ${frame.title}`]) };
+  };
+  const visit = (t: TreeNode, frame: Frame | undefined, depth: number) => {
+    const parts = partsOf(t);
+    const noun = t.kind === "parent" ? "factories" : "groups";
+    const blowable = depth < EXPAND_MAX_DEPTH && parts > 0;
+    if (blowable && expanded.has(t.key) && count - 1 + parts <= EXPAND_MAX_CARDS) {
+      count += parts - 1;
+      const title = nameOr(t.name, UNNAMED_FACTORY);
+      const f: Frame = {
+        key: `frame|${t.key}`,
+        bubbleKey: t.key,
+        expands: t.key,
+        title,
+        cardKeys: [],
+        description: `${title}, blown up into ${plural(parts, noun === "factories" ? "factory" : "group", noun)}${frame === undefined ? "" : `. In ${frame.title}`}`,
+        ...(frame === undefined ? {} : { parent: frame.key }),
+      };
+      frames.push(f);
+      if (t.kind === "parent") for (const c of childrenOf(t)) visit(c, f, depth + 1);
+      else {
+        openedLeaves.add(t.key);
+        for (const n of groupsOf.get(t.key) ?? []) cards.push(inFrame(groupCard(n, [], rates), f));
+      }
+      return;
+    }
+    closed.add(t.key);
+    if (blowable) offered.push({ at: cards.length, parts, noun });
+    cards.push(inFrame(factoryCard(t.card), frame));
+  };
+  for (const t of entries) visit(t, undefined, 0);
+  // Whether each closed card would fit is known once every blow-up is placed: the count only grows.
+  for (const o of offered) cards[o.at] = { ...cards[o.at], blowUp: { parts: o.parts, noun: o.noun, fits: count - 1 + o.parts <= EXPAND_MAX_CARDS } };
+  // Each group's card: its own when its factory is blown up, else the closed card above it (none outside the level).
+  const owner = new Map<string, string>();
+  for (const [nodeKey, start] of treeKeyOf) {
+    let at: string | null = start;
+    for (let guard = 0; at !== null && guard <= PLANNER_DESIGNATION_MAX_DEPTH + 1; guard++) {
+      if (openedLeaves.has(at)) {
+        owner.set(nodeKey, nodeKey);
+        break;
+      }
+      if (closed.has(at)) {
+        owner.set(nodeKey, at);
+        break;
+      }
+      at = tree.nodes.get(at)?.parentKey ?? null;
+    }
+  }
+  return { cards, frames, owner };
+}
+
+/**
+ * "Expand all" on the overview: blows up every card that fits, the level's cards first and then their parts, a round per
+ * frame depth, each kept only while the scene stays within `EXPAND_MAX_CARDS`. Returns `expanded` with those keys added.
+ */
+export function expandAllKeys(graph: ProductionGraph, models: readonly FactoryModel[], path: readonly string[], tree: FactoryTree, expanded: ReadonlySet<string>): Set<string> {
+  const next = new Set(expanded);
+  for (let round = 0; round < EXPAND_MAX_DEPTH; round++) {
+    const scene = overviewScene(graph, models, path, tree, next);
+    let count = scene.cards.length;
+    let added = false;
+    for (const c of scene.cards) {
+      if (c.blowUp === undefined || count - 1 + c.blowUp.parts > EXPAND_MAX_CARDS) continue;
+      next.add(c.key);
+      count += c.blowUp.parts - 1;
+      added = true;
+    }
+    if (!added) break;
+  }
+  return next;
 }
 
 // ---- storage -------------------------------------------------------------------------------------------------------
@@ -484,7 +766,8 @@ interface Folded {
   /** The storage nodes folded away. */
   removed: Set<string>;
   /** Flows that ended in a folded terminal storage, by the node they left. */
-  chips: Map<string, number>;
+  /** Each such flow too (its count is the chip's; their rates sum into the group's storage cap, ADR-0062 Decision 1). */
+  chips: Map<string, FlowPart[]>;
 }
 
 /**
@@ -496,14 +779,14 @@ interface Folded {
 export function foldStorage(nodes: readonly PlannerNode[], parts: readonly FlowPart[]): Folded {
   const foldable = new Set(nodes.filter(isFoldableStorage).map((n) => n.key));
   const removed = new Set<string>();
-  const chips = new Map<string, number>();
+  const chips = new Map<string, FlowPart[]>();
   let current = [...parts];
   const into = (list: readonly FlowPart[], key: string) => list.filter((p) => p.to === key && p.from !== key);
   const outOf = (list: readonly FlowPart[], key: string) => list.filter((p) => p.from === key && p.to !== key);
   // Terminal storage first: a container nothing leaves is a chip on whatever fills it.
   for (const key of [...foldable].sort()) {
     if (outOf(current, key).length > 0) continue;
-    for (const p of into(current, key)) if (!foldable.has(p.from)) chips.set(p.from, (chips.get(p.from) ?? 0) + 1);
+    for (const p of into(current, key)) if (!foldable.has(p.from)) chips.set(p.from, [...(chips.get(p.from) ?? []), p]);
     current = current.filter((p) => p.from !== key && p.to !== key);
     removed.add(key);
   }
@@ -610,9 +893,16 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
 
   const factoryNames = new Map((graph.factories ?? []).map((f) => [f.key, f.name]));
   const remote = remoteInfo(graph, model);
+  const rates = minedRates(graph.edges);
+  const chipParts = (keys: readonly string[]): FlowPart[] => keys.flatMap((k) => folded.chips.get(k) ?? []);
   const chipLines = (keys: readonly string[]): string[] => {
-    const n = keys.reduce((sum, k) => sum + (folded.chips.get(k) ?? 0), 0);
+    const n = chipParts(keys).length;
     return n === 0 ? [] : [destinationChipText("storage", n)];
+  };
+  // ADR-0062 Decision 1: the folded storage as the card's one cap (the chip's words stay in its facts and description).
+  const withStorageCap = (card: Card, keys: readonly string[]): Card => {
+    const parts = chipParts(keys);
+    return parts.length === 0 ? card : { ...card, caps: withCapStalled([{ destination: "storage", count: parts.length, rates: sumCapRates(parts) }], card.stalled) };
   };
   const groupWithFacts = (node: PlannerNode): Card => {
     const extra: string[] = [];
@@ -621,7 +911,11 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     const away = remote.get(node.key);
     if (away !== undefined) extra.push(remoteText(away));
     extra.push(...chipLines([node.key]));
-    return groupCard(node, extra);
+    const card = withStorageCap(groupCard(node, extra, rates), [node.key]);
+    const machines = groupMachines(node, view.machinesOpen?.has(node.key) === true);
+    if (machines === undefined) return card;
+    const opened = machines.open ? [`Opened into ${plural(machines.ids.length, "machine card", "machine cards")}${machines.more > 0 ? ` and ${machines.more} more` : ""}`, MACHINES_FRAME_NOTE] : [];
+    return { ...card, machines, description: sentences([card.description, ...opened]) };
   };
 
   const cards: Card[] = [];
@@ -636,7 +930,8 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     }
     bubbleKeys.push(bubble.key);
     if (!expanded(bubble.key)) {
-      cards.push(bubbleCard(bubble, chipLines(bubble.nodes.map((n) => n.key))));
+      const keys = bubble.nodes.map((n) => n.key);
+      cards.push(withStorageCap(bubbleCard(bubble, chipLines(keys), rates), keys));
       return;
     }
     const frame = `frame|${bubble.key}`;
@@ -672,7 +967,7 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
     return cardKeys.length === 0 ? [] : [{ ...f, cardKeys }];
   });
 
-  const flows = aggregateFlows(folded.parts, (key) => cardOf.get(key)).map(canvasFlow);
+  const flows = withStalledFlows(withUpstream, aggregateFlows(folded.parts, (key) => cardOf.get(key)).map(canvasFlow));
   const allGroups = withUpstream.every((c) => c.kind === "group");
   return {
     level: "factory",
@@ -693,7 +988,10 @@ export function sceneSummary(scene: Scene, loops: number): string {
   const n = scene.cards.length;
   const noun = scene.noun === "factories" || scene.noun === "factory" ? (n === 1 ? "factory" : "factories") : n === 1 ? scene.noun : `${scene.noun}s`;
   const c = `${scene.flows.length} ${scene.flows.length === 1 ? "connection" : "connections"}`;
-  return `Graph of ${scene.name}: ${n} ${noun}, ${c}${loops > 0 ? `, ${loops} in a loop` : ""}. The Tables view lists the same.`;
+  // Blow-ups (ADR-0061 Decision 5) are named, so the label says the picture is not the level's cards alone.
+  const blown = scene.frames.filter((f) => f.expands !== undefined).map((f) => f.title);
+  const where = blown.length === 0 ? " The Tables view lists the same." : ` Blown up in place: ${blown.join(", ")}. The Tables view lists this level's factories.`;
+  return `Graph of ${scene.name}: ${n} ${noun}, ${c}${loops > 0 ? `, ${loops} in a loop` : ""}.${where}`;
 }
 
 /** The scene the canvas shows for a view of the graph: one factory, the factory overview, or (an older backend) one site. */

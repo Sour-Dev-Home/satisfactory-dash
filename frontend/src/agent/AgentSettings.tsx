@@ -14,7 +14,8 @@ import { formatTime } from "../format";
 import { useNow } from "../lib/useNow";
 import { EnrolmentGuide } from "../selfServe/EnrolmentGuide";
 import { useSelectedServer } from "../servers/ServerContext";
-import { agentBackendUrl, canCreateCode, canRevoke, connectionText, lastSeenText, versionText } from "./agentText";
+import { cn } from "../lib/cn";
+import { agentBackendUrl, agentVersionLine, canCreateCode, canRevoke, connectionText, gameConnectionView, lastSeenText, type GameConnectionView } from "./agentText";
 import { useHashTarget } from "../lib/useHashTarget";
 
 const isAgentAnchor = (id: string) => id === "agent";
@@ -104,6 +105,60 @@ function AgentSkeleton() {
   );
 }
 
+/**
+ * "Game: ✓ Reachable · last read 8 s ago" (#740 follow-up): whether the agent could read the game in its last snapshot.
+ * The state is always in words; the icon and colour only repeat it. Nothing when the agent doesn't report it.
+ */
+const TONE_CLASS = new Map<GameConnectionView["tone"], string>([
+  ["ok", "text-ok"],
+  ["warn", "text-warn"],
+  ["unknown", "text-muted"],
+]);
+
+function GameConnectionRow({ agent, now }: { agent: AgentStatusResponse; now: number }) {
+  const view = gameConnectionView(agent, now);
+  if (view === null) return null;
+  return (
+    <>
+      <dt>Game</dt>
+      <dd>
+        <span className={cn("inline-flex items-center gap-1", TONE_CLASS.get(view.tone))}>
+          {view.tone !== "unknown" && <GameConnectionIcon tone={view.tone} />}
+          {view.label}
+        </span>
+        {view.lastRead !== null && (
+          <>
+            {" · "}
+            {agent.lastGameReadAt !== undefined ? (
+              <time dateTime={agent.lastGameReadAt} title={formatTime(agent.lastGameReadAt)}>
+                {view.lastRead}
+              </time>
+            ) : (
+              view.lastRead
+            )}
+          </>
+        )}
+      </dd>
+    </>
+  );
+}
+
+/** A check for reachable, a warning triangle for not: decorative, the label beside it says the same. */
+function GameConnectionIcon({ tone }: { tone: "ok" | "warn" }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="size-4 flex-none" data-icon={tone}>
+      {tone === "ok" ? (
+        <path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      ) : (
+        <>
+          <path d="M8 1.75 14.75 14H1.25z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+          <path d="M8 6v3.5M8 11.75v.25" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 /** Presentational: one server's agent, and the controls this user may use. */
 export function AgentPanel({
   agent,
@@ -176,10 +231,11 @@ export function AgentPanel({
             "None enrolled"
           )}
         </dd>
+        <GameConnectionRow agent={agent} now={now} />
         {agent.enrolled && (
           <>
             <dt>Agent version</dt>
-            <dd>{agent.agentVersion ? versionText(agent.agentVersion) : "Not reported yet"}</dd>
+            <dd>{agentVersionLine(agent.agentVersion, agent.modVersion)}</dd>
           </>
         )}
       </dl>

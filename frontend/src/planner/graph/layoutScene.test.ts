@@ -144,7 +144,8 @@ describe("layoutScene", () => {
     const scene = factoryScene(g, factoryModels(g)[0], EMPTY_VIEW);
     const a = layoutScene(scene, "x");
     clearLayoutMemo();
-    expect(layoutScene(scene, "x")).toEqual(a);
+    // The same picture; only how long dagre took (`placeMs`) differs between runs.
+    expect({ ...layoutScene(scene, "x"), placeMs: 0 }).toEqual({ ...a, placeMs: 0 });
     for (const p of a.nodes) for (const q of a.nodes) if (p !== q) expect(overlap(p, q)).toBe(false);
   });
 

@@ -14,34 +14,36 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
 
     model {
         owner = person "Server owner" "Runs a Satisfactory dedicated server and monitors it from the dashboard."
-        player = person "Player" "Any signed-in user; may own or be a member of several servers (ADR-0020)." "planned"
+        player = person "Player" "Any signed-in user; may own or be a member of several servers (ADR-0020)."
 
-        github = softwareSystem "GitHub" "Source, pull-request reviews, CI (lint, tests, e2e, CodeQL, PII scan)." "External"
-        google = softwareSystem "Google Sign-In" "OpenID Connect identity provider (ADR-0020)." "External,planned"
+        github = softwareSystem "GitHub" "Source, CI (lint, tests, e2e, CodeQL, PII scan) and the staged backend deploys (ADR-0049)." "External"
+        google = softwareSystem "Google Sign-In" "OpenID Connect identity provider (ADR-0020); used when its client id is configured." "External"
+        discord = softwareSystem "Discord" "Webhooks that receive alert notifications (ADR-0027)." "External"
+        pushServices = softwareSystem "Web Push services" "The browsers' push services (RFC 8030) that relay alert notifications to subscribed devices (ADR-0044)." "External"
 
         game = softwareSystem "Satisfactory dedicated server" "The game server: its HTTPS API (:7777, token enforced) and the Ficsit Remote Monitoring (FRM) mod's HTTP API (:8080, loopback only)." "External"
 
         satis = softwareSystem "Satis Manager" "Shows live status, power and factory data and toggles auto-pause." {
-            spa = container "Web app" "Login, status, power (with 5-minute history), factory and settings views." "React, TypeScript, Vite, TanStack Query" "Web Browser"
+            spa = container "Web app" "Sign-in, server management, status, power and factory history, production planner, world map, alerts, agent pairing and the operator metrics page." "React, TypeScript, Vite, TanStack Query" "Web Browser"
 
             api = container "Backend API" "Authenticated REST API; validates every response against the shared zod contract." "Node.js, Express, TypeScript" {
-                root = component "Composition root" "Wires modules, starts background workers, graceful shutdown." "app.ts, server.ts"
-                platform = component "platform" "Logger, error taxonomy, request ids, sendValidated, CSRF and JSON-only policy." "TypeScript" {
+                root = component "Composition root" "Wires modules, starts background workers (leader-only ones behind the advisory lock, ADR-0054), graceful shutdown." "app.ts, server.ts"
+                platform = component "platform" "Logger, error taxonomy, request ids, sendValidated, CSRF and JSON-only policy, database access, leader lock, secrets keyring." "TypeScript" {
                     properties {
                         "code" "platform"
                     }
                 }
-                identity = component "identity" "Login, signed sessions, logout denylist, login rate limits." "TypeScript" {
+                identity = component "identity" "Password and Google sign-in, sign-up, database sessions, account deletion and retention sweeps, the operator guard." "TypeScript" {
                     properties {
                         "code" "modules/identity"
                     }
                 }
-                servers = component "servers" "Server registry and request scoping (ServerDirectory)." "TypeScript" {
+                servers = component "servers" "Server registry, request scoping, self-serve add, members and server management (operator routes)." "TypeScript" {
                     properties {
                         "code" "modules/servers"
                     }
                 }
-                telemetry = component "telemetry" "Status, power, factory; power-history poller and ring buffer; item-unit catalog." "TypeScript" {
+                telemetry = component "telemetry" "Status, power, factory and players; power and factory history; production graph, planner flows and bottlenecks." "TypeScript" {
                     properties {
                         "code" "modules/telemetry"
                     }
@@ -51,17 +53,22 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                         "code" "modules/settings"
                     }
                 }
-                alerts = component "alerts" "Alert engine: rule state machines, suppression, grouping; records alert events (delivery comes later)." "TypeScript" {
+                alerts = component "alerts" "Alert engine (rule state machines, suppression, alert log) and delivery through an outbox to Discord and web push." "TypeScript" {
                     properties {
                         "code" "modules/alerts"
                     }
                 }
-                agents = component "agents" "Edge agent enrolment, credentials and snapshot ingest (ADR-0031 PR 5a); the owner's enrolment code, agent status and revoke." "TypeScript" {
+                agents = component "agents" "Edge agent pairing and enrolment, credentials, snapshot ingest, commands and the agent's game reachability report." "TypeScript" {
                     properties {
                         "code" "modules/agents"
                     }
                 }
-                map = component "map" "World map: live world store, local-server world poller and world ingest, with their routes and repository." "TypeScript" {
+                metrics = component "metrics" "Operator metrics page (ADR-0056): hourly series, alert quality and the delivery snapshot ingest." "TypeScript" {
+                    properties {
+                        "code" "modules/metrics"
+                    }
+                }
+                map = component "map" "World map layers (rails, resource nodes, conveyors, train and drone routes, markers, power lines), live trains and planner designations." "TypeScript" {
                     properties {
                         "code" "modules/map"
                     }
@@ -75,7 +82,7 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
 
             gameAdapter = container "game-adapter package" "packages/game-adapter (ADR-0031 PR 2): the vanilla HTTPS API and FRM clients, raw zod schemas and the adapter for ONE game server. Imports only shared, zod and node; the backend uses it through gameserver, and the edge agent uses it directly." "TypeScript"
             agent = container "Edge agent" "agent/ (ADR-0031 PR 6): runs beside a player's game server on Windows; reads it over loopback with the game-adapter package, pushes snapshots outbound and executes commands. Secrets stored with DPAPI; imports only shared, game-adapter, zod and node." "Node.js, TypeScript"
-            database = container "Database" "Users, sessions, servers, memberships, audit events (ADR-0025); latest snapshots and commands later (ADR-0020)." "PostgreSQL 18" "Database"
+            database = container "Database" "Users, sessions, servers, memberships, audit events (ADR-0025); agents, commands and latest snapshots (ADR-0020); history, world layers, alert log and metrics series." "PostgreSQL 18" "Database"
             provisioning = container "Provisioning service" "Creates and manages paid game servers as async jobs (ADR-0014)." "Node.js, TypeScript" "planned"
         }
 
@@ -85,11 +92,27 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         satis.api -> game "Reads server state; writes auto-pause" "Game HTTPS API :7777, application token" "direct-game-access"
         satis.api -> game "Reads factory, power and buildings" "FRM HTTP API :8080 (loopback), FRM token" "direct-game-access"
         github -> satis "Builds, tests and deploys" "GitHub Actions, Workers Builds"
+        satis.api -> discord "Delivers alerts" "HTTPS webhook"
+        satis.api -> pushServices "Delivers alerts" "Web Push (RFC 8030), VAPID"
 
         satis.spa -> satis.api.identity "Signs in / out" "HTTPS JSON"
-        satis.spa -> satis.api.telemetry "Reads status, power, history, factory" "HTTPS JSON"
+        satis.spa -> satis.api.telemetry "Reads status, power, history, factory, production graph" "HTTPS JSON"
         satis.spa -> satis.api.settings "Reads and toggles auto-pause" "HTTPS JSON"
-        satis.spa -> satis.api.servers "Discovers servers" "HTTPS JSON"
+        satis.spa -> satis.api.servers "Lists, adds and manages servers" "HTTPS JSON"
+        satis.spa -> satis.api.map "Reads world layers; edits designations" "HTTPS JSON"
+        satis.spa -> satis.api.alerts "Manages alert rules and push subscriptions" "HTTPS JSON"
+        satis.spa -> satis.api.agents "Pairs and revokes agents" "HTTPS JSON"
+        satis.spa -> satis.api.metrics "Reads the metrics page" "HTTPS JSON"
+        satis.api.alerts -> discord "Sends alert messages" "HTTPS webhook"
+        satis.api.alerts -> pushServices "Sends alert notifications" "Web Push (RFC 8030), VAPID"
+        satis.agent -> satis.api.agents "Enrols; pushes snapshots; polls commands" "HTTPS, outbound only"
+        satis.agent -> satis.api.map "Pushes world layers" "HTTPS, outbound only"
+        satis.api.root -> satis.api.metrics "Wires" "In-process call" "wiring"
+        satis.api.metrics -> satis.api.alerts "Reads the alert quality summary" "In-process call"
+        satis.api.metrics -> satis.api.identity "Guards routes to operators" "In-process call"
+        satis.api.metrics -> satis.api.platform "Uses" "In-process call" "platform-use"
+        satis.api.servers -> satis.api.identity "Guards management routes to operators" "In-process call"
+        satis.api.telemetry -> satis.api.map "Reads world layers and designations for the planner" "In-process call"
         satis.api.root -> satis.api.identity "Wires" "In-process call" "wiring"
         satis.api.root -> satis.api.servers "Wires" "In-process call" "wiring"
         satis.api.root -> satis.api.telemetry "Wires" "In-process call" "wiring"
@@ -121,12 +144,13 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         satis.agent -> satis.gameAdapter "Uses" "In-process call"
         satis.gameAdapter -> game "Calls the game and FRM APIs" "HTTPS :7777, HTTP :8080 (loopback)"
 
-        # Planned relationships (ADR-0014, ADR-0017, ADR-0020)
-        player -> satis.spa "Uses" "HTTPS" "planned"
-        satis.api -> google "Signs users in" "OpenID Connect" "planned"
+        player -> satis.spa "Uses" "HTTPS"
+        satis.api -> google "Signs users in" "OpenID Connect"
         satis.api -> satis.database "Reads and writes" "SQL over TCP"
-        satis.agent -> satis.api "Pushes snapshots; polls commands" "HTTPS, outbound only"
+        satis.agent -> satis.api "Pushes snapshots and world layers; polls commands" "HTTPS, outbound only"
         satis.agent -> game "Reads state and data; applies commands" "HTTPS and HTTP (loopback)"
+
+        # Planned relationships (ADR-0014, ADR-0017)
         satis.provisioning -> satis.database "Records provisioning jobs" "SQL" "planned"
         satis.provisioning -> game "Creates and starts managed servers" "AWS APIs" "planned"
 
@@ -140,7 +164,7 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
             }
             amazon = deploymentNode "AWS" "Owner's account on the Free plan, time-boxed with a rehearsed exit (ADR-0034). Terraform in infra/aws/." "Amazon Web Services" {
                 vpc = deploymentNode "VPC" "Public subnets only: no NAT gateway, no load balancer, no inbound security-group rules." "Amazon VPC" {
-                    task = deploymentNode "ECS Fargate task" "Service satis-prod: one ARM task (0.5 vCPU, 1 GB); a public IP for outbound traffic only." "AWS Fargate" {
+                    task = deploymentNode "ECS Fargate task" "Service satis-prod: one ARM task (0.5 vCPU, 1 GB); a public IP for outbound traffic only. Overlap rollout (100% / 200%): the new task starts and turns healthy before the old one stops; an advisory lock keeps background workers on one leader (ADR-0054)." "AWS Fargate" {
                         tunnel = infrastructureNode "cloudflared" "Sidecar; outbound-only tunnel to Cloudflare." "Cloudflare Tunnel"
                         apiInstance = containerInstance satis.api
                     }
@@ -148,10 +172,17 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                         dbInstance = containerInstance satis.database
                     }
                     ops = infrastructureNode "Ops tasks" "One-off ECS tasks on the ops image: db-init, db-migrate, restore, and the nightly backup (pg_dump, encrypted with age)." "AWS Fargate"
+                    staging = deploymentNode "Staging task" "Cluster satis-staging: a throwaway task each deploy starts, tests and stops (ADR-0049); its own PostgreSQL, tunnel and egress-only security group; no production data." "AWS Fargate" {
+                        stagingApiInstance = containerInstance satis.api
+                        stagingDbInstance = containerInstance satis.database
+                    }
                 }
                 scheduler = infrastructureNode "EventBridge Scheduler" "Starts the backup ops task nightly." "Amazon EventBridge Scheduler"
                 ssm = infrastructureNode "SSM Parameter Store" "/satis/prod/* SecureStrings, read by each task's execution role at start; no task holds AWS credentials." "AWS Systems Manager"
                 masterSecret = infrastructureNode "Secrets Manager" "The RDS master password, kept by RDS; only the db-init ops task reads it." "AWS Secrets Manager"
+            }
+            githubNode = deploymentNode "GitHub" "Actions on main, in the staging and production environments." "GitHub Actions" {
+                deploy = infrastructureNode "deploy.yml" "Assumes satis-staging-deploy and satis-prod-deploy through OIDC; no stored AWS keys (ADR-0049)." "GitHub Actions"
             }
             b2 = deploymentNode "Backblaze B2" "Off-site: a different provider from the hosting (ADR-0035)." "Backblaze" {
                 bucket = infrastructureNode "Backup bucket" "Private; Object Lock, 30 days; encrypted dumps kept up to 37 days." "Backblaze B2"
@@ -171,6 +202,9 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
             amazon.scheduler -> amazon.vpc.ops "Starts the backup nightly" "ECS RunTask"
             amazon.vpc.ops -> amazon.vpc.db.dbInstance "Migrates; dumps with the backup role; restores" "SQL"
             amazon.vpc.ops -> b2.bucket "Uploads encrypted backups" "HTTPS (S3-compatible), upload-only key"
+            githubNode.deploy -> amazon.vpc.staging "Runs, tests and stops the release first" "ECS RunTask"
+            githubNode.deploy -> amazon.vpc.ops "Migrates (expand-only) before the rollout" "ECS RunTask"
+            githubNode.deploy -> amazon.vpc.task "Rolls out the release if staging passed" "ECS UpdateService"
         }
 
         deploymentEnvironment "Target" {

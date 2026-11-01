@@ -106,6 +106,7 @@ export const QUERY_NAMES = [
   "agents.touchPairingPoll",
   "agents.revokeCredential",
   "agents.setAgentVersion",
+  "agents.setGameConnection",
   "agents.touchAgent",
   "agents.upsertCredential",
   // alerts
@@ -203,6 +204,7 @@ export const QUERY_NAMES = [
   "map.designations.list",
   "map.designations.lockServer",
   "map.designations.readAll",
+  "map.designations.reparentChildren",
   "map.designations.update",
   "map.upsertWorldLayerIfChanged",
   "map.world_layers",

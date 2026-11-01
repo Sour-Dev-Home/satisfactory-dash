@@ -154,7 +154,8 @@ export const endpoints = {
       path: scoped("planner/designations"),
       response: PlannerDesignationsResponseSchema,
     },
-    // 201. 409 designation_overlap (with `error.other`) or designation_cap.
+    // 201. 409 designation_overlap (with `error.other`) or designation_cap. ADR-0061, with `parentId`: 409 designation_cycle,
+    // designation_depth, designation_shape (no members; a new designation has no children) or designation_stale (no such parent).
     create: {
       method: "POST",
       route: "/api/servers/:serverId/planner/designations",
@@ -178,6 +179,8 @@ export const endpoints = {
     },
     // ADR-0055 Decision 11: merge, split, pop-out, dissolve and undo in one write. 200. 409 designation_stale,
     // designation_overlap (with `error.other`) or designation_cap; 400 bad_request (also a createdAt in the future).
+    // ADR-0061 (group, ungroup, move): 409 designation_cycle, designation_depth, designation_shape, or designation_stale for a
+    // `parentId` that names no designation after the replace.
     replace: {
       method: "POST",
       route: "/api/servers/:serverId/planner/designations/replace",
