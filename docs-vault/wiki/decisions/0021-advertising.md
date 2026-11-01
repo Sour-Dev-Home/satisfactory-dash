@@ -186,3 +186,12 @@ non-personalised ads (E1).
 ### Revisit when
 - An invite-only privacy-first network accepts the site: move back to amendment 1's privacy-first design.
 - AdSense rejects the site, limits its ad serving, or disables the account.
+
+### Note, 2026-11-01: the account exists; the site is verified by meta tag
+The owner created the AdSense account and gave its publisher id (`ca-pub-2932631210238768`, public by design: it is on
+every page that shows its ads). This confirms the account half of build step 1. The site is verified by AdSense's "Meta
+tag" method, not its code snippet: `frontend/index.html` carries `<meta name="google-adsense-account">`, and
+`public/ads.txt` names Google as a direct seller for the same publisher. Neither loads anything or sets a cookie, so the
+CSP and Decision 2 (no ad request before consent) are untouched. The snippet arrives with build step 2's consent gate and
+step 4's CSP change. `e2e/build-output.spec.ts` checks that the tag and ads.txt name the same publisher and that no
+AdSense script ships before then. The doc captures of build step 1 are still to come.

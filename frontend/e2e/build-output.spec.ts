@@ -66,6 +66,17 @@ test.describe("production build", () => {
     expect(allFiles(DIST)).toContain(join(DIST, image.pathname));
   });
 
+  // ADR-0021 amendment 2: AdSense verifies the site by its meta tag and ads.txt. Its script waits for the consent gate
+  // (build step 2) and the CSP change (step 4), so no AdSense script ships yet.
+  test("carries the AdSense verification tag and ads.txt for the same publisher, and no AdSense script", () => {
+    const html = readFileSync(join(DIST, "index.html"), "utf8");
+    const account = /<meta\s+name="google-adsense-account"\s+content="ca-(pub-\d{16})"/.exec(html)?.[1];
+    expect(account).toBeDefined();
+    const adsTxt = readFileSync(join(DIST, "ads.txt"), "utf8");
+    expect(adsTxt.trim()).toBe(`google.com, ${account}, DIRECT, f08c47fec0942fa0`);
+    expect(html).not.toMatch(/adsbygoogle|googlesyndication/);
+  });
+
   // The logo's icons (#444, `npm run assets:icons`) and the landing's Overview still (`npm run assets:preview`).
   test("links the favicon, touch icon and manifest, and ships every file they name", () => {
     const html = readFileSync(join(DIST, "index.html"), "utf8");
