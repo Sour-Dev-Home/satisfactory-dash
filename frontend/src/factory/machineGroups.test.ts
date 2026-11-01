@@ -3,7 +3,7 @@ import { isBackedUpState } from "@satisfactory-dash/shared";
 import { factoryMixed } from "@satisfactory-dash/shared/fixtures";
 import { DEMO_EPOCH, factory as demoFactory, plannerDesignations as demoDesignations, productionGraph as demoGraph } from "../demo/world";
 import { factoriesGraph, factoryForGraph, groupedFactoriesWorld } from "../test/factoryGroups";
-import { treeWorld } from "../test/plannerTree";
+import { treeWorld, withoutParents } from "../test/plannerTree";
 import { backedUpIn, groupMachines, narrowGrouping, startsOpen, type MachineFactory } from "./machineGroups";
 
 const names = (factories: readonly MachineFactory[]): unknown =>
@@ -12,7 +12,7 @@ const names = (factories: readonly MachineFactory[]): unknown =>
 describe("groupMachines (ADR-0062 F.2)", () => {
   it("groups the machines by the Planner's factories, then by group, in the graph's order, with counts", () => {
     const { graph, factory } = groupedFactoriesWorld();
-    const grouping = groupMachines(factory.data.buildings, graph, undefined, false)!;
+    const grouping = groupMachines(factory.data.buildings, graph, undefined)!;
     expect(grouping.factories.map((f) => [f.name, f.machineCount, f.groupCount])).toEqual([
       ["Iron Plate factory", 11, 5],
       ["Iron Rod factory", 3, 2],
@@ -31,7 +31,7 @@ describe("groupMachines (ADR-0062 F.2)", () => {
 
   it("lists the machines no group names under Other machines, every machine exactly once", () => {
     const { graph, factory } = groupedFactoriesWorld();
-    const grouping = groupMachines(factory.data.buildings, graph, undefined, false)!;
+    const grouping = groupMachines(factory.data.buildings, graph, undefined)!;
     expect(grouping.other.map((b) => b.className)).toEqual(["Build_OilRefinery_C"]);
     const listed = [...grouping.factories.flatMap((f) => f.groups.flatMap((g) => g.buildings)), ...grouping.other].map((b) => b.id);
     expect(listed.sort()).toEqual(factory.data.buildings.map((b) => b.id).sort());
@@ -41,39 +41,41 @@ describe("groupMachines (ADR-0062 F.2)", () => {
     const { graph, factory } = groupedFactoriesWorld();
     const smelter = graph.nodes.find((n) => n.recipe === "Iron Ingot")!;
     const shared = { ...graph, factories: graph.factories!.map((f) => (f.name === "Iron Rod factory" ? { ...f, nodeKeys: [smelter.key, ...f.nodeKeys] } : f)) };
-    const grouping = groupMachines(factory.data.buildings, shared, undefined, false)!;
+    const grouping = groupMachines(factory.data.buildings, shared, undefined)!;
     const smelters = grouping.factories.flatMap((f) => f.groups.filter((g) => g.label.includes("Smelter")).map(() => f.name));
     expect(smelters).toEqual(["Iron Plate factory"]);
   });
 
   it("is null (the flat table) without a graph, or when the graph names none of the machines", () => {
     const { graph } = groupedFactoriesWorld();
-    expect(groupMachines(factoryMixed.data.buildings, undefined, undefined, false)).toBeNull();
-    expect(groupMachines(factoryMixed.data.buildings, graph, undefined, false)).toBeNull();
+    expect(groupMachines(factoryMixed.data.buildings, undefined, undefined)).toBeNull();
+    expect(groupMachines(factoryMixed.data.buildings, graph, undefined)).toBeNull();
   });
 
   it("lists groups at the top level from a backend without factories", () => {
     const { graph, factory } = factoryForGraph({ ...factoriesGraph(), factories: undefined });
-    const grouping = groupMachines(factory.data.buildings, graph, undefined, false)!;
+    const grouping = groupMachines(factory.data.buildings, graph, undefined)!;
     expect(grouping.factories).toEqual([]);
     expect(grouping.groups).toHaveLength(7);
     expect(grouping.other).toEqual([]);
   });
 
-  it("nests factories with nesting on (parents, then their parts, own machines first) and lists them flat with it off", () => {
+  it("nests factories under their parents (parts, own machines first) and lists a world without parents flat", () => {
     const world = treeWorld();
     const { graph, factory } = factoryForGraph(world.graph);
-    const on = groupMachines(factory.data.buildings, graph, world.designations, true)!;
-    expect(names(on.factories)).toEqual([{ "Main base": [{ Smelters: ["Smelters (own machines)", "Plates", "Rods"] }] }, "Screws"]);
-    expect(on.factories[0]!.machineCount).toBe(5);
-    expect(on.factories[0]!.groupCount).toBe(3);
-    const off = groupMachines(factory.data.buildings, graph, world.designations, false)!;
-    expect(names(off.factories)).toEqual(["Smelters", "Plates", "Screws", "Rods"]);
+    const nested = groupMachines(factory.data.buildings, graph, world.designations)!;
+    expect(names(nested.factories)).toEqual([{ "Main base": [{ Smelters: ["Smelters (own machines)", "Plates", "Rods"] }] }, "Screws"]);
+    expect(nested.factories[0]!.machineCount).toBe(5);
+    expect(nested.factories[0]!.groupCount).toBe(3);
+    const flatWorld = withoutParents(world);
+    const flat = factoryForGraph(flatWorld.graph);
+    const top = groupMachines(flat.factory.data.buildings, flat.graph, flatWorld.designations)!;
+    expect(names(top.factories)).toEqual(["Smelters", "Plates", "Screws", "Rods"]);
   });
 
   it("narrows to the filter's machines, dropping empty groups and factories but keeping each total", () => {
     const { graph, factory } = groupedFactoriesWorld();
-    const grouping = groupMachines(factory.data.buildings, graph, undefined, false)!;
+    const grouping = groupMachines(factory.data.buildings, graph, undefined)!;
     expect(narrowGrouping(grouping, null)).toBe(grouping);
     const backed = narrowGrouping(grouping, isBackedUpState);
     expect(backed.factories.map((f) => [f.name, f.machineCount, f.total, f.groupCount])).toEqual([["Iron Plate factory", 1, 11, 5]]);
@@ -84,7 +86,7 @@ describe("groupMachines (ADR-0062 F.2)", () => {
   it("groups the demo world's machines (the demo shows grouped sections)", () => {
     const now = DEMO_EPOCH + 60_000;
     const buildings = demoFactory(now).data.buildings;
-    const grouping = groupMachines(buildings, demoGraph(now).data, demoDesignations().designations, true)!;
+    const grouping = groupMachines(buildings, demoGraph(now).data, demoDesignations().designations)!;
     expect(grouping.factories.length).toBeGreaterThan(1);
     expect(grouping.other.length).toBeLessThan(buildings.length / 10);
   });

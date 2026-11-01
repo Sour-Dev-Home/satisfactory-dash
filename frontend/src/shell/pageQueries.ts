@@ -2,7 +2,6 @@ import type { QueryClient } from "@tanstack/react-query";
 import { queries } from "../api/queries";
 import { sinceYesterdayQueries } from "../factory/FactoryHistory";
 import { DEFAULT_METRICS_WINDOW } from "../metrics/metricsText";
-import { readNesting } from "../planner/graph/plannerPrefs";
 import { asPageQuery, type PageQuery } from "../ui/usePageReveal";
 
 /**
@@ -20,8 +19,8 @@ export function pageQueries(path: string, serverId: string): PageQuery[] {
     case "/app/factory": {
       const since = sinceYesterdayQueries(serverId);
       // ADR-0062 F.2: the machine table is grouped by the Planner's factories and groups, so the reveal waits for the graph
-      // (and, with nesting, the designations that name a parent), and the table first paints grouped. Same cache as the Planner.
-      const groups = [queries.productionGraph(serverId), ...(readNesting() ? [queries.plannerDesignations(serverId)] : [])];
+      // and the designations that name the parents (ADR-0061), so the table first paints grouped. Same cache as the Planner.
+      const groups = [queries.productionGraph(serverId), queries.plannerDesignations(serverId)];
       return [queries.factory(serverId), since.history, since.transitions, ...groups].map(asPageQuery);
     }
     case "/app/planner":

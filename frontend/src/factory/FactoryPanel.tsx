@@ -49,7 +49,7 @@ const FILTERS: { id: Filter; label: string; match: (b: FactoryBuilding) => boole
  * `refetchFailed`: the last refresh failed, so this snapshot is what the cache kept.
  * `search`/`onSearch`: the view keeps the search in the URL (?q=, #351); without them it's local.
  * `nav`: the page's in-page nav (ADR-0062 F.4), shown in the filter bar so the two stick as one.
- * `graph`, `designations`, `nesting`: the Planner's reads (ADR-0062 F.2), which group the table by factory and group;
+ * `graph`, `designations`: the Planner's reads (ADR-0062 F.2), which group the table by factory and group;
  * without the graph the table is flat. `groupsUnavailable`: the graph read failed, so the table says why it is flat.
  */
 export function FactoryPanel({
@@ -60,7 +60,6 @@ export function FactoryPanel({
   nav,
   graph,
   designations,
-  nesting = false,
   groupsUnavailable = false,
 }: {
   snapshot: FactoryResponse;
@@ -70,7 +69,6 @@ export function FactoryPanel({
   nav?: ReactNode;
   graph?: ProductionGraph | undefined;
   designations?: readonly PlannerDesignation[] | undefined;
-  nesting?: boolean;
   groupsUnavailable?: boolean;
 }) {
   useHashTarget(isMachinesAnchor);
@@ -89,7 +87,7 @@ export function FactoryPanel({
   const shown = buildings.filter(match);
   // ADR-0062 F.2: grouped by the Planner's factories and groups; null (no graph yet, or one naming none of these machines)
   // shows the table flat, as one group.
-  const grouping = useMemo(() => groupMachines(buildings, graph, designations, nesting), [buildings, graph, designations, nesting]);
+  const grouping = useMemo(() => groupMachines(buildings, graph, designations), [buildings, graph, designations]);
   const narrowed = grouping === null ? null : narrowGrouping(grouping, filtering ? match : null);
   // ADR-0062 F.5: the cap applies per group, after the filter and search, so a search reaches a machine past it. A new filter
   // or search caps every group again.
