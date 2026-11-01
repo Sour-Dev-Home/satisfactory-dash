@@ -15,6 +15,16 @@ npm run delivery-metrics -- --out <dir>         # writes delivery-metrics.json a
 Needs `gh` signed in (read access to pull requests, actions and contents). A 30-day run makes a few hundred `gh` calls and
 takes a couple of minutes. The markdown is rendered from the JSON alone.
 
+## The daily push (ADR-0056 PR 6d)
+
+`.github/workflows/delivery-metrics.yml` runs the script once a day (06:41 UTC) and on dispatch, on `main` only, and
+POSTs the JSON to the backend's ingest. It needs the owner-created environment `metrics-ingest` (deployment branches:
+`main` only) holding the secret `METRICS_INGEST_SECRET` and the variable `METRICS_INGEST_URL`
+(`https://api.satis-manager.com/api/internal/metrics/delivery`), and the backend's `METRICS_INGEST_SECRET_SHA256` set
+to the secret's SHA-256 hex (`infra/aws`, PR 6c). With no secret the run builds the snapshot, prints a notice and stays
+green. An unreachable backend, a 5xx or a 429 warns and stays green; a 400, 401, 404 or 413 fails the run (wrong
+payload, secret, URL or an unset hash). To rotate: new secret in the environment and its hash in SSM, then redeploy.
+
 ## The JSON shape (`schemaVersion` 2)
 
 | Key | Meaning |
