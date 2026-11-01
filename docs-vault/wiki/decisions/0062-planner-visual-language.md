@@ -259,6 +259,16 @@ per group.
 - **Old tables.** `PlannerTables.tsx` and `FactoryParts.tsx`'s `FactoryFlows` are no longer rendered or imported; they
   stay until the owner reviews the outline (build PR 5 deletes them). The tests that read their cells read the outline.
 
+### Build PR 5: the old tables removed, 2026-11-01
+
+- **Owner review (2026-11-01).** The owner reviewed the outline on the demo and said "Looks fine on the demo", which is
+  build row 5's gate.
+- `PlannerTables.tsx` (`GroupsTable`, `ConnectionsTable`, `GroupSelection`, `FactoryColumns`) and `FactoryParts.tsx`'s
+  `FactoryFlows` are deleted. Every helper they imported is still used by the outline, the canvas or the group panel, so
+  none went with them, and no `index.css` rule was theirs alone (the table rules also serve the Factory, Map and metrics
+  tables and the outline's "All connections"). No test imported them. Comments that still said "the tables" or "the
+  Tables view" now say the outline. No behaviour or visible change.
+
 ## Consequences
 
 - The canvas reads at a glance by shape and motion, and the words are never lost for a screen reader or a phone.

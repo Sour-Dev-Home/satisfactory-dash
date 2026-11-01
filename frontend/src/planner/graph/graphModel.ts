@@ -14,7 +14,7 @@ const cut = (text: string, max = MAX_LINE_CHARS) => (text.length > max ? `${text
 
 /**
  * `text` as at most `maxLines` lines of at most `max` characters, broken at spaces (a word longer than a line is cut). What
- * does not fit the last line ends in an ellipsis (the full text stays in the node's tooltip and the tables). Pure.
+ * does not fit the last line ends in an ellipsis (the full text stays in the node's tooltip and the outline). Pure.
  */
 export function wrapText(text: string, max = MAX_LINE_CHARS, maxLines = MAX_WRAP_LINES): string[] {
   const lines: string[] = [];
@@ -90,7 +90,7 @@ export const INFERRED_FROM_NODE = "(inferred from the node)";
  */
 export const STALE_NODE_NOTE = "Conveyor data older than the factory read · refreshes within 10 minutes";
 export const isStaleNode = (node: Pick<PlannerNode, "stale">): boolean => node.stale === true;
-/** The card's muted lines for such a node, within the card's line limits (the full words are in the tooltip and tables). */
+/** The card's muted lines for such a node, within the card's line limits (the full words are in the tooltip and the outline). */
 export const staleNodeLines = (): string[] => wrapText(STALE_NODE_NOTE);
 
 /**
@@ -229,7 +229,7 @@ export function nodeFacts(node: PlannerNode, rates?: ReadonlyMap<string, MinedRa
 }
 
 /**
- * An edge's label on the canvas (ADR-0050 Decision 2): the item, then the rate in the table's words ("about" for an
+ * An edge's label on the canvas (ADR-0050 Decision 2): the item, then the rate in the outline's words ("about" for an
  * estimate), and no number at all for an unknown one; a mixed belt says so.
  */
 export function edgeLabel(edge: PlannerEdge): string {
@@ -319,7 +319,7 @@ export function reachFor(itemClassName: string, edges: readonly Pick<PlannerEdge
   return { nodes: new Set([...down, ...up]), edges: lit };
 }
 
-/** The canvas's accessible name: counts only, since the tables carry the detail. */
+/** The canvas's accessible name: counts only, since the outline carries the detail. */
 export function graphSummary(nodes: readonly PlannerNode[], edges: readonly PlannerEdge[], siteName: string): string {
   const loops = nodes.filter((n) => n.loop).length;
   const g = `${nodes.length} ${nodes.length === 1 ? "group" : "groups"}`;

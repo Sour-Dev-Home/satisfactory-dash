@@ -306,7 +306,7 @@ function edgeFlow(edge: PlannerEdge): CanvasFlow {
   };
 }
 
-/** A bundle's label names this many items; the rest are "+k more" (the tooltip and the Tables view list them all). */
+/** A bundle's label names this many items; the rest are "+k more" (the tooltip and the outline list them all). */
 export const BUNDLE_NAMES = 2;
 
 /** Whether a link's rate counts in a sum: a finite number the backend did not call unknown. */
@@ -318,8 +318,8 @@ const known = (f: Pick<CanvasFlow, "quality" | "ratePerMinute">): boolean => f.q
  * (supply or excess), become one line with one label, so they no longer run as near-parallel lines with stacked labels.
  * The label names the items (up to `BUNDLE_NAMES`, then "+k more"), folds links of no known item into "+u unknown", and
  * sums the rate by ADR-0053 Decision 3's rule (weakest quality wins, "at least" when a part has no number). Nothing is
- * dropped: `parts` keeps every link, the tooltip (`flowTitle`) lists each with its own rate, and the Tables view is
- * unchanged. Returns the drawn flows in first-seen order, each with the indexes of the links it stands for.
+ * dropped: `parts` keeps every link, the tooltip (`flowTitle`) lists each with its own rate, and the outline lists
+ * every link. Returns the drawn flows in first-seen order, each with the indexes of the links it stands for.
  */
 export function bundleFlows(flows: readonly CanvasFlow[]): { flow: CanvasFlow; members: number[] }[] {
   const groups = new Map<string, number[]>();
@@ -380,7 +380,7 @@ function bundledFlow(parts: readonly CanvasFlow[]): CanvasFlow {
   };
 }
 
-/** How sure an edge's rate is, in the tables' words. */
+/** How sure an edge's rate is, in the outline's words. */
 export const flowSureness = (flow: Pick<CanvasFlow, "rate">): string => (flow.rate === "measured" ? "measured" : flow.rate === "estimated" ? "estimated" : "rate unknown");
 
 /** A stalled line's words: "The source is backed up" (the state's word from `machineState.ts`, as on the card). */

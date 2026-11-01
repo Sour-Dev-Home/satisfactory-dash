@@ -119,7 +119,7 @@ describe("item filter", () => {
 });
 
 describe("graphSummary", () => {
-  it("is counts only, names the site, and points at the tables", () => {
+  it("is counts only, names the site, and points at the outline", () => {
     const { nodes, edges } = ProductionGraphSchema.parse(productionGraphTwoSites.data);
     expect(graphSummary(nodes.slice(0, 5), edges, "Iron Plate site")).toBe(
       "Graph of Iron Plate site: 5 groups, 6 connections, 2 in a loop. The Outline view lists the same.",

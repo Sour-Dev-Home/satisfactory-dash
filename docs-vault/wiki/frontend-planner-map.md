@@ -16,8 +16,9 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   behind a disclosure; Capacity and Flow in each row's Details). Row actions are buttons (Show in graph, Select with
   `aria-pressed`, Pop out, Open factory, the designation controls). One selection with the canvas: `SiteGraph`'s
   `current` prop reports the card that takes the keyboard or opens its panel, and gives a card the keyboard when the
-  graph opens from "Show in graph"; the outline marks that row `aria-current` and focuses it. `PlannerTables.tsx` and
-  `FactoryFlows` are no longer rendered (build PR 5 deletes them after the owner's review).
+  graph opens from "Show in graph"; the outline marks that row `aria-current` and focuses it. The old groups and connections
+  tables (`PlannerTables.tsx`) and the "Flows between factories" table (`FactoryFlows`) are gone (build PR 5, after the
+  owner reviewed the outline on the demo); the outline is the only text form.
 - The hierarchy is pure in `src/planner/graph/hierarchy.ts` (bubbles from `treeKey`, the fold cap, flows summed between
   cards, factory models); its words are in `plannerText.ts`.
 - What the canvas draws is data first: `canvasScene.ts` turns a graph and the viewer's choices into cards (a factory, a

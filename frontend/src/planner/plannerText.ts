@@ -102,7 +102,7 @@ export function outputLine(
 }
 
 /**
- * The step 5 sentence (#728): why a flow's item or rate can be unknown. The legend, the Tables view and an unknown
+ * The step 5 sentence (#728): why a flow's item or rate can be unknown. The legend, the outline and an unknown
  * flow's tooltip say it in these words.
  */
 export const UNKNOWN_FLOW_NOTE = "The game doesn't report what's on a belt or how fast it moves; items and rates are inferred where possible.";

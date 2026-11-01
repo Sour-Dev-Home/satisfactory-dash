@@ -1,17 +1,7 @@
-import { useMemo } from "react";
-import type { Bottleneck, ProductionGraph } from "@satisfactory-dash/shared";
+import type { Bottleneck } from "@satisfactory-dash/shared";
 import { BottleneckBadge, BottleneckLine } from "./BottleneckBadge";
-import { aggregateFlows, flowParts, factoryOfNode, type FactoryModel } from "./graph/hierarchy";
-import {
-  aggregateRateText,
-  carrierWord,
-  destinationChipText,
-  factorySitesText,
-  flowText,
-  outputLine,
-  siteFindings,
-  stateCountsText,
-} from "./plannerText";
+import type { FactoryModel } from "./graph/hierarchy";
+import { destinationChipText, factorySitesText, outputLine, siteFindings, stateCountsText } from "./plannerText";
 
 /**
  * What a factory card and an opened factory both say (ADR-0055 Decision 6): machines and states, where it stands, what it
@@ -69,67 +59,5 @@ export function FactoryFacts({
       )}
       {!detail && <BottleneckLine count={findings === undefined ? undefined : siteFindings(model.nodes, findings).length} what={factory.name} />}
     </>
-  );
-}
-
-/**
- * The flows from one factory to another (ADR-0055 Decision 6, "Edges between factories"): the belts, pipes and
- * transports between their groups summed by item and carrier, quality kept as the weakest part. Nothing is drawn when
- * the factories stand alone. Not rendered since ADR-0062 build PR 4 (the outline's "All connections" holds these flows);
- * build PR 5 deletes it with `PlannerTables.tsx`.
- */
-export function FactoryFlows({
-  graph,
-  models,
-  owner,
-}: {
-  graph: ProductionGraph;
-  models: readonly FactoryModel[];
-  /** ADR-0061 Decision 3: each group's card at the shown level of the tree (default: its own factory). */
-  owner?: ReadonlyMap<string, string> | undefined;
-}) {
-  const flows = useMemo(() => {
-    const cardOf = owner ?? factoryOfNode(graph);
-    return aggregateFlows(flowParts(graph), (key) => cardOf.get(key));
-  }, [graph, owner]);
-  const names = useMemo(() => new Map(models.map((m) => [m.factory.key, m.factory.name])), [models]);
-  if (flows.length === 0) return null;
-  return (
-    <section aria-labelledby="planner-flows-heading" className="grid gap-2">
-      <h4 id="planner-flows-heading" className="m-0">
-        Flows between factories
-      </h4>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">From</th>
-            <th scope="col">To</th>
-            <th scope="col">Item</th>
-            <th scope="col">Rate per minute</th>
-            <th scope="col">Carrier</th>
-            <th scope="col">Flow</th>
-          </tr>
-        </thead>
-        <tbody>
-          {flows.map((f, i) => (
-            <tr key={`${i}|${f.from}|${f.to}|${f.itemClassName ?? ""}|${f.carrier}|${f.flow}`}>
-              <th scope="row" className="break-words">
-                {names.get(f.from) ?? "Factory not listed"}
-              </th>
-              <td data-label="To" className="break-words">
-                {names.get(f.to) ?? "Factory not listed"}
-              </td>
-              <td data-label="Item" className="break-words">
-                {f.itemName ?? f.itemClassName ?? "Item not inferred"}
-                {f.mixed ? " (mixed belt)" : ""}
-              </td>
-              <td data-label="Rate">{aggregateRateText(f)}</td>
-              <td data-label="Carrier">{carrierWord(f.carrier)}</td>
-              <td data-label="Flow">{flowText(f.flow, undefined)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
   );
 }

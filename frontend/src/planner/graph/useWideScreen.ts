@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-/** Where the graph is the default view (ADR-0050 Decision 4): from the `sm` breakpoint up; a phone defaults to the tables. */
+/** Where the graph is the default view (ADR-0050 Decision 4): from the `sm` breakpoint up; a phone defaults to the outline. */
 const WIDE_QUERY = "(min-width: 640px)";
 /** Tailwind's `lg` (64rem): from here the canvas's floating card stands beside the clicked card, below it lies across the bottom. */
 const LARGE_QUERY = "(min-width: 64rem)";
@@ -22,7 +22,7 @@ function useMedia(query: string): boolean {
   );
 }
 
-/** Whether the screen is wide enough for the graph to be the default. Without matchMedia (jsdom) it is not: tables first. */
+/** Whether the screen is wide enough for the graph to be the default. Without matchMedia (jsdom) it is not: outline first. */
 export function useWideScreen(): boolean {
   return useMedia(WIDE_QUERY);
 }
