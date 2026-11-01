@@ -279,8 +279,9 @@ describe("one selection with the graph (Decision 3, graph sync)", () => {
   });
 });
 
-describe("cost (Decision 3: virtualise only past 50 ms)", () => {
-  it("renders the 160 groups of planner-large in one pass, and records the time", () => {
+describe("cost (Decision 3: virtualised, since a measured render passed 50 ms)", () => {
+  // act() flushes the transition that mounts the rows past the first screen, so this is the whole outline's time.
+  it("renders all 160 groups of planner-large, and records the time", () => {
     const large = ProductionGraphResponseSchema.parse(plannerLarge);
     const site = large.data.sites[0]!.key;
     const times: number[] = [];

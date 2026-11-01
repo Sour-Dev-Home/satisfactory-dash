@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { FALLBACK_STAGE } from "../src/planner/graph/viewport";
 import type { ScenarioName } from "../src/test/scenarios";
-import { expect, expectNoAxeViolations, settleAnimations, test } from "./fixtures";
+import { expect, expectNoAxeViolations, paintLazyRows, settleAnimations, test } from "./fixtures";
 
 // Every UI state from ADR-0016 item 5, at 1440 and 390 px (the two projects): wait until the
 // state is actually on screen, fail on any axe violation, then compare a full-page screenshot.
@@ -880,6 +880,7 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
     await expect(page.getByRole("contentinfo").getByRole("link", { name: "Source code (AGPL-3.0)" })).toBeVisible();
 
     await expectNoAxeViolations(page, testInfo);
+    await paintLazyRows(page);
     await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
   });
 }

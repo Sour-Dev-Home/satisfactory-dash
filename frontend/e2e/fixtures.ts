@@ -77,6 +77,18 @@ export const test = base.extend<Fixtures & { unmocked: string[] }>({
 export { expect };
 
 /**
+ * Before a full-page screenshot: the Planner outline's rows (`outline-row-lazy`, `content-visibility: auto`) skip their
+ * paint while off screen, and a full-page capture does not count as on screen, so rows below the fold would show as empty
+ * boxes. This paints every row as it looks once scrolled to. Set through the CSSOM, which the CSP allows (an injected
+ * stylesheet, `toHaveScreenshot`'s `stylePath`, is a CSP violation here).
+ */
+export async function paintLazyRows(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const row of document.querySelectorAll<HTMLElement>(".outline-row-lazy")) row.style.contentVisibility = "visible";
+  });
+}
+
+/**
  * Waits for running CSS animations (a page's reveal, a dropdown's pop) to end. Clicking inside
  * something still moving fails Playwright's hit check, and its retry scrolls the element into
  * view, which scrolls the dropdown; axe counts opacity in contrast. Infinite animations (the

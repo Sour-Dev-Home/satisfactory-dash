@@ -1,4 +1,4 @@
-import { createContext, Fragment, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, Fragment, startTransition, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Bottleneck, PlannerNode, PlannerRate, ProductionGraph } from "@satisfactory-dash/shared";
 import { cn } from "../lib/cn";
 import { Chevron, DisclosureHeading, TreeHeading as Heading } from "../ui/Disclosure";
@@ -23,6 +23,7 @@ import {
 import { bubblesOf, foldBubbles, type Bubble } from "./graph/hierarchy";
 import {
   attentionItems,
+  mountsFirst,
   neighboursOf,
   OUTLINE_OPEN_MAX,
   outlineSummaryText,
@@ -55,7 +56,9 @@ import {
  * with "Show in graph"; the tree (the level's factories, parents with their parts, then each factory's groups) where each
  * group is a sentence whose neighbours are buttons that move to their rows; and "All connections", one 5-column table
  * behind a disclosure. The row matching the graph's selection is `aria-current`, and it takes the focus when the outline
- * opens. DOM only: a factory of more than `OUTLINE_OPEN_MAX` groups starts closed.
+ * opens. DOM only: a factory of more than `OUTLINE_OPEN_MAX` groups starts closed. Virtualised without removing rows: the
+ * first render mounts the rows in reach (`mountsFirst`), a transition mounts the rest, and each group row is
+ * `outline-row-lazy` (`content-visibility: auto`), so the browser lays out and paints only the rows near the screen.
  */
 
 type Level = 4 | 5 | 6;
@@ -68,6 +71,8 @@ interface OutlineState {
   goTo: (key: string) => boolean;
   register: (key: string) => (el: HTMLElement | null) => void;
   hasRow: (key: string) => boolean;
+  /** Whether a group row is mounted yet: every row is, one transition after the first render (`mountsFirst`). */
+  isMounted: (key: string) => boolean;
   labelOf: (key: string) => string;
   neighbours: Neighbours;
   findings: readonly Bottleneck[] | undefined;
@@ -92,17 +97,24 @@ interface Shape {
   ancestors: Map<string, string[]>;
   /** Each disclosure's starting state. */
   defaults: Map<string, boolean>;
+  /** Each row's place in document order (factories and groups), for `mountsFirst`. */
+  order: Map<string, number>;
 }
 
 const foldKeyOf = (scope: string, fold: string) => `${scope}\u0001${fold}`;
 
+function placeRow(key: string, chain: readonly string[], shape: Shape): void {
+  shape.ancestors.set(key, [...chain]);
+  if (!shape.order.has(key)) shape.order.set(key, shape.order.size);
+}
+
 function shapeGroups(nodes: readonly PlannerNode[], scope: string, chain: readonly string[], shape: Shape): void {
   for (const entry of foldBubbles(bubblesOf(nodes))) {
-    if (entry.type === "bubble") for (const n of entry.bubble.nodes) shape.ancestors.set(n.key, [...chain]);
+    if (entry.type === "bubble") for (const n of entry.bubble.nodes) placeRow(n.key, chain, shape);
     else {
       const key = foldKeyOf(scope, entry.key);
       shape.defaults.set(key, false);
-      for (const b of entry.bubbles) for (const n of b.nodes) shape.ancestors.set(n.key, [...chain, key]);
+      for (const b of entry.bubbles) for (const n of b.nodes) placeRow(n.key, [...chain, key], shape);
     }
   }
 }
@@ -113,7 +125,7 @@ function shapeFactories(keys: readonly string[], tree: FactoryTree, chain: reado
   for (const key of keys) {
     const entry = tree.nodes.get(key);
     if (entry === undefined) continue;
-    shape.ancestors.set(key, [...chain]);
+    placeRow(key, chain, shape);
     shape.defaults.set(key, entry.card.nodes.length <= OUTLINE_OPEN_MAX);
     if (entry.kind === "parent") shapeFactories(entry.childKeys, tree, [...chain, key], shape);
     else shapeGroups(groupsOf(entry), key, [...chain, key], shape);
@@ -174,7 +186,7 @@ export function PlannerOutline({
 }: PlannerOutlineProps) {
   const ids = useId();
   const shape = useMemo(() => {
-    const s: Shape = { ancestors: new Map(), defaults: new Map() };
+    const s: Shape = { ancestors: new Map(), defaults: new Map(), order: new Map() };
     if (factories === undefined) shapeGroups(nodes, "", [], s);
     else
       shapeFactories(
@@ -239,6 +251,18 @@ export function PlannerOutline({
     },
     [],
   );
+  // Virtualised (Decision 3, cost): the first render mounts the rows a screen can show (`mountsFirst`), and a transition
+  // right after mounts the rest, so the switch paints before all the rows are built. Every row is then in the DOM for good
+  // (keyboard, find-in-page, screen readers), and `outline-row-lazy` lets the browser skip laying out the ones off screen.
+  const [allMounted, setAllMounted] = useState(false);
+  useEffect(() => {
+    if (!allMounted) startTransition(() => setAllMounted(true));
+  }, [allMounted]);
+  const currentIndex = current === null ? undefined : shape.order.get(current);
+  const isMounted = useCallback(
+    (key: string) => allMounted || mountsFirst(shape.order.get(key), currentIndex),
+    [allMounted, shape, currentIndex],
+  );
   const neighbours = useMemo(() => neighboursOf(graph), [graph]);
   const hasRow = useCallback((key: string) => shape.ancestors.has(key), [shape]);
   const state: OutlineState = {
@@ -248,6 +272,7 @@ export function PlannerOutline({
     goTo,
     register,
     hasRow,
+    isMounted,
     labelOf,
     neighbours,
     findings,
@@ -528,6 +553,8 @@ function NeighbourList({ list, word }: { list: readonly Neighbour[]; word: "from
 
 function GroupItem({ node, tree }: { node: PlannerNode; tree: string | null }) {
   const outline = useOutline();
+  // Not mounted yet (one transition away): an empty row of the estimated height, off screen, hidden from assistive tech.
+  if (!outline.isMounted(node.key)) return <li aria-hidden data-outline-row="pending" className="outline-row-lazy" />;
   const current = outline.current === node.key;
   const gets = outline.neighbours.gets.get(node.key) ?? [];
   const sends = outline.neighbours.sends.get(node.key) ?? [];
@@ -545,7 +572,13 @@ function GroupItem({ node, tree }: { node: PlannerNode; tree: string | null }) {
   const label = groupLabel(node);
   const hits = nodeFindings(node, outline.findings).length;
   return (
-    <li ref={outline.register(node.key)} tabIndex={-1} aria-current={current ? "true" : undefined} data-outline-row="group" className={rowClass(current)}>
+    <li
+      ref={outline.register(node.key)}
+      tabIndex={-1}
+      aria-current={current ? "true" : undefined}
+      data-outline-row="group"
+      className={cn(rowClass(current), "outline-row-lazy")}
+    >
       <p className="m-0 break-words">
         <Sentence node={node} />
       </p>

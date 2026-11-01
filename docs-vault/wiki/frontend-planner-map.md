@@ -18,7 +18,10 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   `current` prop reports the card that takes the keyboard or opens its panel, and gives a card the keyboard when the
   graph opens from "Show in graph"; the outline marks that row `aria-current` and focuses it. The old groups and connections
   tables (`PlannerTables.tsx`) and the "Flows between factories" table (`FactoryFlows`) are gone (build PR 5, after the
-  owner reviewed the outline on the demo); the outline is the only text form.
+  owner reviewed the outline on the demo); the outline is the only text form. Virtualised (2026-11-01; the ADR's
+  "Virtualised" note) without ever removing a row: each group row is `outline-row-lazy` (`content-visibility: auto`), and
+  the first render mounts only `mountsFirst`'s rows (the first 24 and those around the current row), the rest one
+  `startTransition` later. Full-page e2e screenshots call `paintLazyRows` first.
 - The hierarchy is pure in `src/planner/graph/hierarchy.ts` (bubbles from `treeKey`, the fold cap, flows summed between
   cards, factory models); its words are in `plannerText.ts`.
 - What the canvas draws is data first: `canvasScene.ts` turns a graph and the viewer's choices into cards (a factory, a
