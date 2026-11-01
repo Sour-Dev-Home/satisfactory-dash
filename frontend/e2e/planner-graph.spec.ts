@@ -684,12 +684,12 @@ test("the keyboard reaches a destination cap from the cards, moves between caps,
   await cards.last().focus();
   await page.keyboard.press("Tab");
   await expect(caps.first()).toBeFocused();
-  await expect(caps.first()).toHaveAccessibleName("Iron Plate factory sends 48 items/min to storage");
+  await expect(caps.first()).toHaveAccessibleName("Iron Plate factory sends 48 items/min to storage, slow");
   // The focused cap is ringed in the picture.
   await expect(svg.locator('[data-cap="storage"] circle.stroke-accent')).toHaveCount(1);
   await page.keyboard.press("ArrowRight");
   await expect(caps.nth(1)).toBeFocused();
-  await expect(caps.nth(1)).toHaveAccessibleName("Iron Rod factory sends about 6 items/min to the Sink");
+  await expect(caps.nth(1)).toHaveAccessibleName("Iron Rod factory sends about 6 items/min to the Sink, slow");
   await expect(svg.locator('[data-cap="sink"] circle.stroke-accent')).toHaveCount(1);
   await expectNoAxeViolations(page, testInfo);
   await page.keyboard.press("Enter");

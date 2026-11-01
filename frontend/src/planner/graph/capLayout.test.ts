@@ -88,7 +88,7 @@ describe("capStops: the keyboard's stops", () => {
   it("is one stop per drawn slot in the cards' order, named by the card and the cap's words", () => {
     const stops = capStops([node("a", [cap("storage", [items(48)]), cap("sink", [items(6, "estimated")])]), node("b", undefined), node("c", [cap("power", [])])]);
     expect(stops.map((s) => s.id)).toEqual(["0|a", "1|a", "0|c"]);
-    expect(stops.map((s) => s.name)).toEqual(["Card a sends 48 items/min to storage", "Card a sends about 6 items/min to the Sink", "Card c sends 1 flow to power, rate unknown"]);
+    expect(stops.map((s) => s.name)).toEqual(["Card a sends 48 items/min to storage, slow", "Card a sends about 6 items/min to the Sink, slow", "Card c sends 1 flow to power, rate unknown"]);
     const five = capStops([node("d", ["storage", "depot", "sink", "power", "export"].map((d) => cap(d, [items(60)])))]);
     expect(five).toHaveLength(4);
     expect(five[3].name).toMatch(/^Card d sends 2 more destinations \(1 flow to power, 1 flow leaving by station\), 2 flows$/);

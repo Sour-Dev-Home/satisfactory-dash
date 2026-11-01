@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -88,6 +88,27 @@ describe("stalled marks (the default)", () => {
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(stalledLine(svg)).not.toBeNull();
+  });
+});
+
+describe("the legend's stop bar and the stalled line's words (amendment build PR 5)", () => {
+  const legendItems = () => within(screen.getByRole("list", { name: "Line styles" })).getAllByRole("listitem").map((li) => li.textContent);
+
+  it("shows the stop bar's row while a stalled line is drawn in marks mode, and not in words mode", async () => {
+    await openGraph();
+    expect(legendItems()).toContain("stalled");
+    const row = within(screen.getByRole("list", { name: "Line styles" })).getByText("stalled").closest("li")!;
+    expect(row.querySelector('svg[aria-hidden="true"] [data-stop-bar="backedUp"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "State marks" }));
+    expect(legendItems()).not.toContain("stalled");
+  });
+
+  it("gives a stalled line no step word, only its stalled words, while a moving line names its step", async () => {
+    const svg = await openGraph();
+    const stalled = stalledLine(svg)!.querySelector(":scope > title")!.textContent!;
+    expect(stalled).toContain("The source is backed up");
+    expect(stalled).not.toMatch(/, (slow|medium|fast)\b/);
+    expect(lineTitles(svg).filter((t) => !t.includes("backed up")).some((t) => /\), (slow|medium|fast)/.test(t))).toBe(true);
   });
 });
 

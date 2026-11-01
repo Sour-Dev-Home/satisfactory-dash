@@ -96,24 +96,28 @@ describe("sumCapRates and withCapStalled", () => {
 
 describe("capText: the rate and its quality in words (the cap's <title> and button)", () => {
   it("says the rate, its quality and the destination, and the count past one", () => {
-    expect(capText(cap("storage", [items(120, "estimated")], 3))).toBe("about 120 items/min to storage, 3 flows");
-    expect(capText(cap("sink", [items(48)]))).toBe("48 items/min to the Sink");
-    expect(capText(cap("depot", [items(48, "atLeast")], 2))).toBe("at least 48 items/min to the Depot, 2 flows");
-    expect(capText(cap("export", [items(10)]))).toBe("10 items/min leaving by station");
+    expect(capText(cap("storage", [items(120, "estimated")], 3))).toBe("about 120 items/min to storage, 3 flows, medium");
+    expect(capText(cap("sink", [items(48)]))).toBe("48 items/min to the Sink, slow");
+    expect(capText(cap("depot", [items(48, "atLeast")], 2))).toBe("at least 48 items/min to the Depot, 2 flows, slow");
+    expect(capText(cap("export", [items(10)]))).toBe("10 items/min leaving by station, slow");
+    expect(capText(cap("sink", [items(480)]))).toBe("480 items/min to the Sink, fast");
   });
 
   it("says when the rate is unknown, and makes the known units 'at least' when another has no number", () => {
     expect(capText(cap("power", [items(null, "unknown")], 2))).toBe("2 flows to power, rate unknown");
     expect(capText(cap("power", []))).toBe("1 flow to power, rate unknown");
-    expect(capText(cap("storage", [items(100), fluid(null, "unknown")], 2))).toBe("at least 100 items/min to storage, 2 flows");
-    expect(capText(cap("storage", [items(100), fluid(300, "estimated")], 2))).toBe("100 items/min and about 300 m³/min to storage, 2 flows");
+    expect(capText(cap("storage", [items(100), fluid(null, "unknown")], 2))).toBe("at least 100 items/min to storage, 2 flows, slow");
+    // Items and fluid: the faster unit's own step (100 items/min is slow, 300 m³/min is medium), as the cap moves.
+    expect(capText(cap("storage", [items(100), fluid(300, "estimated")], 2))).toBe("100 items/min and about 300 m³/min to storage, 2 flows, medium");
   });
 
   it("says a stalled cap's state, and a destination this build does not know as the backend's word", () => {
     expect(capText(cap("storage", [items(0)], 1, { stalled: "backedUp" }))).toBe("0 items/min to storage, not moving: backed up");
-    expect(capText(cap("teleporter", [items(5)]))).toBe("5 items/min to teleporter");
+    // A stalled cap names no step whatever its rate: it does not move.
+    expect(capText(cap("storage", [items(200, "estimated")], 1, { stalled: "underfed" }))).toBe("about 200 items/min to storage, not moving: underfed");
+    expect(capText(cap("teleporter", [items(5)]))).toBe("5 items/min to teleporter, slow");
     // Keys that are not own properties of the words table are plain strings.
-    expect(capText(cap("__proto__", [items(5)]))).toBe("5 items/min to __proto__");
+    expect(capText(cap("__proto__", [items(5)]))).toBe("5 items/min to __proto__, slow");
     expect(capText(cap("toString", [], 2))).toBe("2 flows to toString, rate unknown");
   });
 

@@ -2,7 +2,21 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseCssTime } from "../../ui/loadTiming";
-import { FLUID_FAST_FROM, FLUID_MID_FROM, ITEMS_FAST_FROM, ITEMS_MID_FROM, rateStep } from "./rateStep";
+import { FLUID_FAST_FROM, FLUID_MID_FROM, ITEMS_FAST_FROM, ITEMS_MID_FROM, RATE_STEPS, rateStep, stepWord, withStepWord } from "./rateStep";
+
+describe("the step word (amendment Decision 7)", () => {
+  it("names each step, slowest first, the step mid as medium", () => {
+    expect(RATE_STEPS.map(stepWord)).toEqual(["slow", "medium", "fast"]);
+    expect(stepWord(null)).toBeNull();
+  });
+
+  it("follows a rate's words, and no step adds nothing", () => {
+    expect(withStepWord("about 120 items/min", rateStep(120, "items/min"))).toBe("about 120 items/min, medium");
+    expect(withStepWord("600 m³/min", rateStep(600, "m3/min"))).toBe("600 m³/min, fast");
+    expect(withStepWord("0 items/min", rateStep(0, "items/min"))).toBe("0 items/min");
+    expect(withStepWord("unknown", null)).toBe("unknown");
+  });
+});
 
 describe("rateStep", () => {
   it("steps a belt's items/min at a full Mk.2 and a full Mk.4", () => {

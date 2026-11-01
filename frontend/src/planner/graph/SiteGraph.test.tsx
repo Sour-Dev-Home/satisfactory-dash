@@ -309,6 +309,23 @@ describe("the graph's readable chrome", () => {
     expect(legend.textContent).not.toMatch(/drag|scroll/i);
   });
 
+  it("explains the rate steps under the samples: the speed in words, the three widths, and nothing in it moves (amendment build PR 5)", async () => {
+    await openGraph();
+    const steps = screen.getByRole("list", { name: "Rate steps" });
+    const [speed, width] = within(steps).getAllByRole("listitem");
+    expect(speed.textContent).toBe("Speed: slow, medium, fast. The speed is the rate, not the belt.");
+    expect(width.textContent).toBe("Width:slowmediumfast");
+    const samples = [...width.querySelectorAll("[data-legend-width]")];
+    expect(samples.map((s) => s.getAttribute("data-legend-width"))).toEqual(["slow", "mid", "fast"]);
+    expect(samples.map((s) => s.querySelector("line")!.getAttribute("stroke-width"))).toEqual(["2", "3", "4"]);
+    for (const svg of steps.querySelectorAll("svg")) expect(svg).toHaveAttribute("aria-hidden", "true");
+    // Still samples: no march class, no march attribute, no SMIL, in either list.
+    const legend = steps.parentElement!;
+    expect(legend.querySelector('[class*="animate-"], [data-march], animate, animateMotion')).toBeNull();
+    // No transport and no stalled line on this site: no double line's or stop bar's row.
+    expect(within(screen.getByRole("list", { name: "Line styles" })).queryByText(/^(transport|stalled)$/)).toBeNull();
+  });
+
   it("draws every line before every label, so no line runs over another edge's label (2026-10-27)", async () => {
     const svg = await openGraph();
     const paths = [...svg.querySelectorAll('[data-edge-layer="lines"] path[marker-end]')];
@@ -328,7 +345,7 @@ describe("the graph's readable chrome", () => {
     expect([...label.querySelectorAll("[data-bubble]")].map((b) => b.getAttribute("data-bubble"))).toEqual(["Desc_OreIron_C", "Desc_Stone_C"]);
     expect(label.querySelector(":scope > text")?.textContent).toBe("150 items/min");
     const title = label.querySelector("title")!.textContent!;
-    expect(title).toContain("2 links: Iron Ore · 120 items/min (measured); Limestone · 30 items/min (measured)");
+    expect(title).toContain("2 links, medium: Iron Ore · 120 items/min (measured); Limestone · 30 items/min (measured)");
     // The summary still counts every link; the lines layer draws one line fewer.
     expect(svg.getAttribute("aria-label")).toMatch(/6 connections/);
     expect(svg.querySelectorAll('[data-edge-layer="lines"] path[marker-end]')).toHaveLength(5);

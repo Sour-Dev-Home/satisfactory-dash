@@ -121,7 +121,7 @@ describe("factoryScene on the fixture", () => {
     expect(scene.cards).toHaveLength(5);
     const train = scene.flows.find((f) => f.carrier === "train")!;
     expect(train.routeName).toBe("Ore Run");
-    expect(flowTitle(train, "Miner", "Main Depot")).toBe("Train, route Ore Run: Miner to Main Depot: Iron Ore · about 120 items/min (estimated)");
+    expect(flowTitle(train, "Miner", "Main Depot")).toBe("Train, route Ore Run: Miner to Main Depot: Iron Ore · about 120 items/min (estimated), medium");
     expect(scene.noun).toBe("group");
     expect(scene.hasStorage).toBe(true);
   });
@@ -343,7 +343,15 @@ describe("flows as the canvas words them", () => {
   });
 
   it("names a carrier the build does not know with the backend's own word", () => {
-    expect(flowTitle(canvasFlow(flow({ carrier: "hyperloop" })), "A", "B")).toBe("hyperloop: A to B: X · 100 items/min (measured)");
+    expect(flowTitle(canvasFlow(flow({ carrier: "hyperloop" })), "A", "B")).toBe("hyperloop: A to B: X · 100 items/min (measured), slow");
+  });
+
+  it("names the step its width shows, none for an unknown rate, and a stalled line keeps only its stalled words (amendment Decision 7)", () => {
+    expect(flowTitle(canvasFlow(flow({ ratePerMinute: 480 })), "A", "B")).toBe("A to B: X · 480 items/min (measured), fast");
+    expect(flowTitle(canvasFlow(flow({ quality: "atLeast", ratePerMinute: 120 })), "A", "B")).toBe("A to B: X · at least 120 items/min (estimated), medium");
+    expect(flowTitle(canvasFlow(flow({ quality: "unknown", ratePerMinute: null })), "A", "B")).toMatch(/^A to B: X \(rate unknown\)\. The game /);
+    const stalled = { ...canvasFlow(flow({ quality: "estimated", ratePerMinute: 200 })), stalled: "backedUp" as const };
+    expect(flowTitle(stalled, "A", "B")).toBe("A to B: X · about 200 items/min (estimated). The source is backed up");
   });
 });
 
@@ -424,11 +432,11 @@ describe("bundleFlows: one line per pair of cards and carrier (2026-10-27)", () 
 
   it("keeps every link in the tooltip, each with its own rate and sureness", () => {
     const [b] = bundleFlows([link("Iron Ingot"), link(null, { quality: "unknown", ratePerMinute: null })]);
-    // An unknown link adds why (#728 step 5).
+    // An unknown link adds why (#728 step 5); the step word is the bundle's summed rate's (an "at least" 30: slow).
     expect(flowTitle(b.flow, "A", "B")).toBe(
-      "A to B, 2 links: Iron Ingot · 30 items/min (measured); Item unknown (rate unknown). The game doesn't report what's on a belt or how fast it moves; items and rates are inferred where possible.",
+      "A to B, 2 links, slow: Iron Ingot · 30 items/min (measured); Item unknown (rate unknown). The game doesn't report what's on a belt or how fast it moves; items and rates are inferred where possible.",
     );
     const trains = bundleFlows([link("Ore", { carrier: "train", routeName: "North" }), link("Coal", { carrier: "train", routeName: "South" })])[0].flow;
-    expect(flowTitle(trains, "A", "B")).toBe("Train: A to B, 2 links: route North, Ore · 30 items/min (measured); route South, Coal · 30 items/min (measured)");
+    expect(flowTitle(trains, "A", "B")).toBe("Train: A to B, 2 links, slow: route North, Ore · 30 items/min (measured); route South, Coal · 30 items/min (measured)");
   });
 });

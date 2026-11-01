@@ -52,7 +52,12 @@ async function mergeBothFactories(page: Page) {
 
 /** A visually hidden button (the canvas's keyboard way into a card), reached as a keyboard user does. */
 async function pressButton(page: Page, name: string | RegExp) {
-  await page.getByRole("button", { name }).focus();
+  // Visible first: the page reveals at once (PageReveal), and focus() on a control still under `invisible` lands nowhere,
+  // so Enter went to the body (planner-nested-level on a phone). A visually hidden button still has a 1px box.
+  const button = page.getByRole("button", { name });
+  await expect(button).toBeVisible();
+  await button.focus();
+  await expect(button).toBeFocused();
   await page.keyboard.press("Enter");
 }
 
