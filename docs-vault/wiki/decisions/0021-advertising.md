@@ -235,3 +235,63 @@ Contradictions and new constraints (for the owner):
 Still [NEEDS VERIFICATION]: frame/img/connect hosts (not documented, and unsupported by E1); the CMP script's origin; a
 hash-based strict CSP; whether Google's CMP holds ad requests until a choice by itself; Google's processor or controller
 role; which CMP option the owner picked when requesting the review.
+
+## Amendment 3, 2026-11-01: Google's strict CSP in the app and on public pages; limited ads on
+
+The build step 1 captures ([`adsense-csp-and-cmp-2026-11-01.md`](../../raw-sources/adsense-csp-and-cmp-2026-11-01.md))
+contradicted amendment 2's Decisions 2 and 3 (see the note above). The owner chose in this session, 2026-11-01:
+
+### Owner's decisions, verbatim picks
+- "Public pages and the app": ads on the public pages and in the app as amendment 2 planned, with the app's script policy
+  loosened to the one Google supports (eval allowed, any https script, a per-response nonce via a Cloudflare Worker), over
+  "public pages first" and "hold ads for now".
+- "Keep them on": limited ads stay on, so visitors who decline still see limited ads, over turning them off.
+- On which consent option was picked at the AdSense review request: "Not sure". The owner checks Privacy & messaging.
+
+### Decision (replaces amendment 2 where they differ)
+1. **CSP (replaces amendment 2 Decision 3's domain list).** Wherever the ad script can load, the page's `script-src` is
+   Google's supported strict policy: `'nonce-{random}' 'unsafe-inline' 'unsafe-eval' 'strict-dynamic' https: http:`, with
+   `object-src 'none'` and `base-uri 'none'` (E1, E2). Browsers that support `'strict-dynamic'` ignore the host and
+   `'unsafe-inline'` parts, so in them only nonced scripts and the scripts those load run. **This is a security posture
+   change, made by the owner:** a third-party script with `eval` runs in the same page as users' server data (amendment 2
+   Decision 4 already said it can read the page). The other directives (`connect-src`, `img-src`, `frame-src`, ...) are set
+   in build step 4. They start from today's `_headers` plus what the ads need, are proven in e2e and staging, and are
+   reviewed by `security-reviewer`. Google warns that policies tighter than its own "may break without notice" (E1), so
+   one that breaks is loosened, not worked around.
+2. **A Worker sets the nonce.** `_headers` is static and cannot carry a per-response nonce, so a Cloudflare Worker runs
+   first for HTML responses. It makes a nonce, writes it into every `<script>` tag (HTMLRewriter) and sends the CSP.
+   Assets stay static. The Worker is part of the frontend deploy (ADR-0013 amendment) and lives in the repo, with tests.
+3. **The off switch restores the strict policy.** With ads off, the Worker sends today's `script-src 'self'` policy and
+   no ad script, CMP or slot is served. Off is the default until build step 4 ships.
+4. **Limited ads on (replaces amendment 2 Decision 2).** Where consent is required, no *personalised* ad and no
+   non-essential cookie is used before consent. Limited ads, which use invalid-traffic cookies and local storage, may
+   serve without it, as Google designs them (E8, E13). The legal judgement Google leaves to the publisher (E13) is the
+   owner's, and the privacy page says plainly that limited ads load before a choice. AdSense's tag deploys the consent
+   message itself (E5-E7), so the script loads before the choice; the code does not hold ad requests back.
+5. **Consent messages are configured in AdSense, not built.** The owner publishes Google's European regulations message
+   and, if wanted, the US state regulations message (E12) in Privacy & messaging. The site adds a "Privacy and cookie
+   settings" link that opens the revocation message (`googlefc.showRevocationMessage`, E10), on the public pages and in the
+   app's footer.
+6. **The demo site (demo.satis-manager.com) is out of scope.** It is not the verified AdSense site and keeps its CSP.
+
+### Build plan (replaces amendment 2's steps 2-6; each PR from `main`, no stacking)
+| # | PR | Proof |
+|---|---|---|
+| 2 | Worker in front of HTML: nonce on every script, CSP per response, off switch (off), today's policy unchanged while off | Worker unit tests; e2e and `build-output.spec` still pass with no CSP change while off; `security-reviewer` |
+| 3 | Crawler account and demo-data server; secret in SSM (unchanged; E15's cookie-login form is checked here) | `security-reviewer`; the account sees no real server |
+| 4 | AdSense script and CMP behind the switch, the "Privacy and cookie settings" link, slots per Decision 6, the ads-on CSP | `security-reviewer`; e2e with ads on (script mocked): no CSP violation, no layout shift, axe; `ui-reviewer` |
+| 5 | Public pages' slots | e2e on `/` |
+| 6 | Privacy page, terms, NOTICE and LEGAL.md wording, including limited ads before a choice | Owner reviews the text |
+| - | Owner: publish the consent message(s) in Privacy & messaging; turn the switch on after step 6 | AdSense shows the message live |
+
+### Consequences of amendment 3
+- With ads on, the app's script policy is far weaker than today's `'self'`. Any XSS in the app would also be easier to
+  exploit, because `'strict-dynamic'` trusts whatever a nonced script loads.
+- The frontend gains a Worker: one more moving part in every page load, and one more thing to test.
+- Visitors who decline still get limited ads and their invalid-traffic cookies.
+
+### Revisit when
+- Google documents a hash-based or allowlist CSP: drop the Worker's nonce and tighten.
+- An XSS finding or a `security-reviewer` objection lands on the ads-on policy.
+- The owner's legal view on limited ads before consent changes: turn limited ads off (Brand Safety > Blocking controls >
+  Ad serving, E13).
