@@ -15,7 +15,7 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
   // 390 px opens on the tables and 1440 px on the graph (Decision 4): one press either way.
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site: 5 groups, 5 connections/ });
   await expect(svg).toBeVisible();
   // dagre has laid out the cards, and the edge labels are drawn: the item as its icon bubble over the rate (ADR-0060;
@@ -83,7 +83,7 @@ test("a two-finger pinch zooms the graph and a two-finger drag pans it", async (
   await mockApi("planner-group-panel");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
   await expect(svg).toBeVisible();
   const box = (await svg.boundingBox())!;
@@ -121,7 +121,7 @@ test("an item filter dims the groups it does not reach", async ({ page, mockApi 
   await mockApi("planner-filter-dimmed");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
   await expect(svg.locator("g.opacity-graph-dim")).toHaveCount(0);
   await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ingot" });
@@ -136,7 +136,7 @@ test.describe("the factory canvas", () => {
   const openPlate = async (page: Page) => {
     await page.getByRole("button", { name: "Open factory: Iron Plate factory" }).focus();
     await page.keyboard.press("Enter");
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     const svg = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
     await expect(svg).toBeVisible();
     return svg;
@@ -145,13 +145,13 @@ test.describe("the factory canvas", () => {
   test("the overview draws a card per factory with the flow between them, and a card opens its factory", async ({ page, mockApi }) => {
     await mockApi("planner-factories");
     await page.goto("/app/planner");
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     const overview = page.getByRole("img", { name: /^Graph of Factories: 2 factories, 1 connection/ });
     await expect(overview).toBeVisible();
     await expect(overview.getByText("Iron Rod factory (+ Iron Rod)", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Open factory: Iron Rod factory" }).focus();
     await page.keyboard.press("Enter");
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory: 2 groups, 1 connection/ })).toBeVisible();
     await page.getByRole("button", { name: "All factories" }).click();
     await expect(overview).toBeVisible();
@@ -182,7 +182,7 @@ test.describe("the factory canvas", () => {
     // The opened factory is in the address (?open=), so a reload comes back to it.
     await page.reload();
     await expect(page).toHaveURL(/[?&]open=/);
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     const again = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
     await expect(again).toBeVisible();
     await expect(page.getByLabel("Motion")).toHaveValue("off");
@@ -240,7 +240,7 @@ test.describe("the factory canvas", () => {
     await page.addInitScript(() => window.localStorage.setItem("planner.nesting", "on"));
     await mockApi("planner-factories");
     await page.goto("/app/planner");
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     // Named loosely: blowing up changes the counts in the name.
     const overview = page.getByRole("img", { name: /^Graph of Factories/ });
     await expect(overview).toHaveAccessibleName(/^Graph of Factories: 2 factories/);
@@ -272,7 +272,8 @@ test("an owner designates a factory's groups from the keyboard", async ({ page, 
     await expect(control).toBeFocused();
     await page.keyboard.press(key);
   };
-  await press("Open factory: Iron Plate factory");
+  // A prefix: the canvas card's name goes on with the card's facts after the factory's name; the outline row's stops there.
+  await press(/^Open factory: Iron Plate factory/);
   // The overview has its own Outline button: wait until the factory is open, or "Outline" can land on the overview's
   // (it did on a slow desktop run, and the Smelter's Select never appeared).
   // The back button exists only inside an opened factory, at every width (a phone may not open on the graph).
@@ -390,14 +391,14 @@ test("with the nesting flag on, an owner groups two factories and undoes it from
 test("an owner lassos a factory's cards on the canvas and designates them", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-designations");
   await page.goto("/app/planner");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const overview = page.getByRole("img", { name: /^Graph of Factories/ });
   await expect(overview).toBeVisible();
 
   // On the canvas, a factory's button is the keyboard's (visually hidden): focus it and press Enter.
   await page.getByRole("button", { name: /^Open factory: Iron Plate factory/ }).focus();
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
   await expect(svg).toBeVisible();
   await page.getByRole("button", { name: "Select" }).click();
@@ -435,7 +436,7 @@ test("with the item-focus flag on, the keyboard focuses a link's item and Escape
   await mockApi("planner-group-panel");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
   await expect(svg).toBeVisible();
   // One tab stop for every bubble; the arrow keys move between them, not the view.
@@ -504,7 +505,7 @@ test("marching dashes stay in view under the cap, stop with Motion Off, and reco
   await mockApi("planner-large");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Large site" }).click();
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Large site/ });
   await expect(svg).toBeVisible({ timeout: 15_000 });
   const lines = svg.locator('[data-edge-layer="lines"] [data-edge]');
@@ -565,7 +566,7 @@ test("destination caps move in the march layer under their cap, stop with Motion
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await mockApi("planner-caps-large");
   await page.goto("/app/planner");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Factories: 48 factories/ });
   await expect(svg).toBeVisible({ timeout: 15_000 });
   const caps = svg.locator("[data-cap], [data-cap-more]");
@@ -620,7 +621,7 @@ test("transport glyphs move in the march layer under their cap, stop with Motion
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await mockApi("planner-transports-large");
   await page.goto("/app/planner");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Factories: 48 factories/ });
   await expect(svg).toBeVisible({ timeout: 15_000 });
   const doubles = svg.locator('[data-edge-layer="lines"] [data-edge][data-double]');
@@ -672,7 +673,7 @@ test("transport glyphs move in the march layer under their cap, stop with Motion
 test("the keyboard reaches a destination cap from the cards, moves between caps, and opens the factory (ADR-0062 Decision 1)", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-factories");
   await page.goto("/app/planner");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Factories/ });
   await expect(svg).toBeVisible();
   // One tab stop for every cap, right after the cards' buttons.
@@ -692,7 +693,7 @@ test("the keyboard reaches a destination cap from the cards, moves between caps,
   await expect(svg.locator('[data-cap="sink"] circle.stroke-accent')).toHaveCount(1);
   await expectNoAxeViolations(page, testInfo);
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory/ })).toBeVisible();
   await expect(page.getByRole("list", { name: "Where Iron Rod factory sends its output" })).toContainText("1 flow to the Sink");
 });
@@ -750,7 +751,7 @@ test("the outline of 160 groups records its render time (planner-large)", async 
   await expect(page.getByRole("button", { name: "All sites" })).toBeVisible();
   const runs: { rendered: number; painted: number; rows: number }[] = [];
   for (let i = 0; i < 3; i++) {
-    await page.getByRole("button", { name: "Graph" }).click();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     await expect(page.getByRole("img", { name: /^Graph of Large site/ })).toBeVisible();
     runs.push(
       await page.evaluate(async () => {

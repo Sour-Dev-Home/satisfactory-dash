@@ -59,7 +59,7 @@ async function pressButton(page: Page, name: string | RegExp) {
 /** The Iron Plate factory (ADR-0055 PR 8) on its canvas, whichever view the screen opens on. */
 async function openPlateFactoryGraph(page: Page) {
   await pressButton(page, "Open factory: Iron Plate factory");
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   await expect(page.getByRole("img", { name: /^Graph of Iron Plate factory/ })).toBeVisible();
 }
 
@@ -76,7 +76,7 @@ async function canvasMeasured(svg: Locator) {
 
 async function openIronGraph(page: Page) {
   await openIronSite(page);
-  await page.getByRole("button", { name: "Graph" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
   await canvasMeasured(page.getByRole("img", { name: /^Graph of Iron Plate site/ }));
 }
 
@@ -356,7 +356,7 @@ const CASES: StateCase[] = [
     clock: FACTORIES_NOW,
     act: async (page) => {
       await pressButton(page, "Open factory: Iron Rod factory");
-      await page.getByRole("button", { name: "Graph" }).click();
+      await page.getByRole("button", { name: "Graph", exact: true }).click();
       await expect(page.getByRole("img", { name: /^Graph of Iron Rod factory/ })).toBeVisible();
     },
   },
