@@ -1215,19 +1215,48 @@ export function historyTransitions(now: number, range: TransitionRange, limit: n
   };
 }
 
-/** The demo's one designated factory (ADR-0055 PR 10a): the plastic line, named by the player and held by its machines. */
+/** The demo's first designated factory (ADR-0055 PR 10a): the plastic line, named by the player and held by its machines. */
 export const DEMO_DESIGNATION_ID = "6f1c2a4e-3b5d-4c7a-9e1f-0a2b3c4d5e6f";
 const DEMO_DESIGNATION_NAME = "Plastic line";
 
-/** The designations list: the plastic line's machines as the Factory read places them, all found. */
-export function plannerDesignations(): PlannerDesignationsResponse {
-  const ids = new Set(Object.values(N).filter((n) => n.factoryKey === PLASTIC_FACTORY).flatMap((n) => n.machineIds));
-  const members = buildings.flatMap((b) =>
+/**
+ * ADR-0061: the player has also organised the iron works into a tree, three levels deep. "Main base" holds the final
+ * assembly itself (the frame manufacturer and the rotor assembler, its own machines) and two areas: "Smelting" and
+ * "Components", which owns no machines and holds "Reinforced plates" and "Rods and screws". The plastic line, at the oil
+ * outpost, stays top level. Only placed buildings can be members; the miners, platforms, sink and depot follow their
+ * neighbours (`withDemoDesignations`).
+ */
+const MAIN_BASE_ID = "6f1c2a4e-3b5d-4c7a-9e1f-0a2b3c4d5e70";
+const COMPONENTS_ID = "6f1c2a4e-3b5d-4c7a-9e1f-0a2b3c4d5e72";
+export const DEMO_TREE = {
+  mainBase: { id: MAIN_BASE_ID, name: "Main base", parentId: null, machines: ["demo-7", "demo-8"] },
+  smelting: { id: "6f1c2a4e-3b5d-4c7a-9e1f-0a2b3c4d5e71", name: "Smelting", parentId: MAIN_BASE_ID, machines: ["demo-1", "demo-2"] },
+  components: { id: COMPONENTS_ID, name: "Components", parentId: MAIN_BASE_ID, machines: [] },
+  plates: { id: "6f1c2a4e-3b5d-4c7a-9e1f-0a2b3c4d5e73", name: "Reinforced plates", parentId: COMPONENTS_ID, machines: ["demo-3", "demo-6", "demo-10"] },
+  rods: { id: "6f1c2a4e-3b5d-4c7a-9e1f-0a2b3c4d5e74", name: "Rods and screws", parentId: COMPONENTS_ID, machines: ["demo-4", "demo-5"] },
+} as const satisfies Record<string, { id: string; name: string; parentId: string | null; machines: readonly string[] }>;
+
+/** A member for each placed building of `ids`, as the Factory read places it. */
+const membersOf = (ids: ReadonlySet<string>) =>
+  buildings.flatMap((b) =>
     ids.has(b.id) && b.location !== undefined ? [{ id: b.id, c: b.className, x: Math.round(b.location.xM), y: Math.round(b.location.yM) }] : [],
   );
+
+/** The designations list, parents before their children: every member found. */
+export function plannerDesignations(): PlannerDesignationsResponse {
+  const plastic = membersOf(new Set(Object.values(N).filter((n) => n.factoryKey === PLASTIC_FACTORY).flatMap((n) => n.machineIds)));
   const stamp = new Date(DEMO_EPOCH).toISOString();
-  return {
-    designations: [{ id: DEMO_DESIGNATION_ID, name: DEMO_DESIGNATION_NAME, mode: "core", members, createdAt: stamp, updatedAt: stamp }],
-    matches: [{ designationId: DEMO_DESIGNATION_ID, matched: members.length, missing: 0 }],
-  };
+  const designations = [
+    { id: DEMO_DESIGNATION_ID, name: DEMO_DESIGNATION_NAME, mode: "core" as const, parentId: null, members: plastic, createdAt: stamp, updatedAt: stamp },
+    ...Object.values(DEMO_TREE).map((d) => ({
+      id: d.id,
+      name: d.name,
+      mode: "core" as const,
+      parentId: d.parentId,
+      members: membersOf(new Set<string>(d.machines)),
+      createdAt: stamp,
+      updatedAt: stamp,
+    })),
+  ];
+  return { designations, matches: designations.map((d) => ({ designationId: d.id, matched: d.members.length, missing: 0 })) };
 }
