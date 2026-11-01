@@ -526,8 +526,10 @@ const CASES: StateCase[] = [
     clock: FACTORIES_NOW,
     storage: NESTING_ON,
     act: async (page) => {
-      await pressButton(page, "Open factory: Main base");
-      await pressButton(page, "Open factory: Smelters");
+      // Anchored and without the parent's own-machines card: a string name matches as a substring, so "Smelters" would
+      // also match "Smelters (own machines)" (and the canvas card's name goes on past the factory's).
+      await pressButton(page, /^Open factory: Main base(?! \(own)/);
+      await pressButton(page, /^Open factory: Smelters(?! \(own)/);
       await expect(page.getByRole("navigation", { name: "Factory path" }).locator('[aria-current="page"]')).toHaveText("Smelters");
     },
   },
@@ -539,7 +541,7 @@ const CASES: StateCase[] = [
     clock: FACTORIES_NOW,
     storage: NESTING_ON,
     act: async (page) => {
-      await page.getByRole("button", { name: "Graph" }).click();
+      await page.getByRole("button", { name: "Graph", exact: true }).click();
       const overview = page.getByRole("img", { name: /^Graph of Factories/ });
       await canvasMeasured(overview);
       await pressButton(page, /^Expand Main base in place into its/);
