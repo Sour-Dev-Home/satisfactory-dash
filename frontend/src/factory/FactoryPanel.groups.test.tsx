@@ -20,7 +20,7 @@ const sections = () => screen.getByRole("list", { name: "Machines by factory" })
 const toggle = (name: string) => screen.getByRole("button", { name });
 const rowNames = (table: HTMLElement) => within(table).getAllByRole("rowheader").map((th) => th.textContent);
 const pick = (label: string) =>
-  fireEvent.click(within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: label }));
+  fireEvent.click(within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: new RegExp(`^${label} \\d+$`) }));
 const search = (value: string) => fireEvent.change(screen.getByRole("searchbox", { name: "Search machines" }), { target: { value } });
 /** The section a disclosure button heads (its `li`). */
 const sectionOf = (name: string) => toggle(name).closest("li")!;

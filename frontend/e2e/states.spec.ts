@@ -263,6 +263,26 @@ const CASES: StateCase[] = [
   // The modded item has no unit, so it alone falls back to "per min" (ADR-0015).
   { scenario: "unknown-units", path: "/app/factory", shows: /Modded Widget: .* per min/ },
   { scenario: "factory-states", path: "/app/factory", shows: "Unpowered" },
+  // ADR-0062 F.3: a ?state= deep link opens with those toggles pressed and the rows (with their marks) filtered; a keyboard
+  // user turns one more on and off again (Enter, then Space), so the screenshot is the link's own state.
+  {
+    scenario: "factory-states",
+    name: "factory-state-filter",
+    path: "/app/factory?state=backedUp,paused",
+    shows: /^Backed up \d+$/,
+    act: async (page) => {
+      const filters = page.getByRole("group", { name: "Filter machines" });
+      await expect(filters.getByRole("button", { name: /^Backed up \d+$/ })).toHaveAttribute("aria-pressed", "true");
+      await expect(filters.getByRole("button", { name: /^Paused \d+$/ })).toHaveAttribute("aria-pressed", "true");
+      await expect(filters.getByRole("button", { name: /^All \d+$/ })).toHaveAttribute("aria-pressed", "false");
+      await pressButton(page, /^No recipe \d+$/);
+      await expect(filters.getByRole("button", { name: /^No recipe \d+$/ })).toHaveAttribute("aria-pressed", "true");
+      await expect(page).toHaveURL(/state=backedUp%2Cpaused%2CnoRecipe/);
+      await page.keyboard.press("Space");
+      await expect(filters.getByRole("button", { name: /^No recipe \d+$/ })).toHaveAttribute("aria-pressed", "false");
+      await expect(page).toHaveURL(/state=backedUp%2Cpaused$/);
+    },
+  },
   // ADR-0062 F.5 per group (F.2): a group of 55 constructors capped at its first 50 with "Show all" under it.
   { scenario: "factory-many-machines", path: "/app/factory", shows: "Showing 50 of 55 machines." },
   // ADR-0062 F.2: the table grouped by the Planner's factories and groups, then "Other machines"; the flat fallback.

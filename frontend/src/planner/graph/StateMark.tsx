@@ -18,8 +18,12 @@ const SHAPES = new Map<StalledKind, ReactNode>([
   ["idle", <path key="idle" d="M-7 0h14" />],
 ]);
 
-/** The mark for a kind inside the canvas's SVG, centred on the origin; nothing for a kind this build doesn't draw. */
-export function StateMarkGlyph({ kind }: { kind: StalledKind }) {
+/**
+ * The mark for a kind inside the canvas's SVG, centred on the origin; nothing for a kind this build doesn't draw.
+ * `toned={false}` draws it in the surrounding text colour instead of the state's tone: on a pressed toggle (ADR-0062 F.3),
+ * whose accent fill the tone would not stand out from.
+ */
+export function StateMarkGlyph({ kind, toned = true }: { kind: StalledKind; toned?: boolean }) {
   const shape = SHAPES.get(kind);
   if (shape === undefined) return null;
   return (
@@ -30,7 +34,7 @@ export function StateMarkGlyph({ kind }: { kind: StalledKind }) {
       strokeWidth={2.5}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={cn("stroke-current", machineState(kind)?.tone ?? "text-muted")}
+      className={cn("stroke-current", toned && (machineState(kind)?.tone ?? "text-muted"))}
     >
       {shape}
     </g>
@@ -38,12 +42,12 @@ export function StateMarkGlyph({ kind }: { kind: StalledKind }) {
 }
 
 /** The same mark as an inline icon for the DOM (the outline, the Factory page), sized by the caller's class. */
-export function StateMark({ kind, className }: { kind: StalledKind; className?: string }) {
+export function StateMark({ kind, className, toned = true }: { kind: StalledKind; className?: string; toned?: boolean }) {
   if (!SHAPES.has(kind)) return null;
   const half = GLYPH_BOX / 2;
   return (
     <svg viewBox={`${-half} ${-half} ${GLYPH_BOX} ${GLYPH_BOX}`} aria-hidden="true" focusable="false" className={cn("inline-block size-4 shrink-0", className)}>
-      <StateMarkGlyph kind={kind} />
+      <StateMarkGlyph kind={kind} toned={toned} />
     </svg>
   );
 }

@@ -85,7 +85,8 @@ describe("the machine table's filter bar (ADR-0062 F.4)", () => {
     expect(inBar.getByRole("navigation", { name: "Factory sections" })).toBeInTheDocument();
     expect(inBar.getByRole("searchbox", { name: "Search machines" })).toBeInTheDocument();
     const filters = inBar.getByRole("group", { name: "Filter machines" });
-    expect(within(filters).getAllByRole("button").map((b) => b.textContent)).toEqual(["All", "Backed up", "Paused", "No recipe"]);
+    // Each filter's text ends in its count (ADR-0062 F.3).
+    expect(within(filters).getAllByRole("button").map((b) => b.textContent?.replace(/ \d+$/, ""))).toEqual(["All", "Backed up", "Paused", "No recipe"]);
     // On a phone only the nav and the search stick: the outer box is `contents` there, and the inner row sticks alone.
     expect(bar).toHaveClass("contents");
     const phoneRow = inBar.getByRole("navigation", { name: "Factory sections" }).parentElement!;

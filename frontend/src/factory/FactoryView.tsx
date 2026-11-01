@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useNavigationType, useSearchParams } from "react-router";
-import { FACTORY_ITEM_PARAM, FACTORY_SEARCH_PARAM, readItem, readSearch } from "../lib/deepLinks";
+import {
+  FACTORY_ITEM_PARAM,
+  FACTORY_SEARCH_PARAM,
+  FACTORY_STATE_PARAM,
+  readItem,
+  readSearch,
+  readStates,
+  writeStates,
+} from "../lib/deepLinks";
 import { queries } from "../api/queries";
 import { useSettledQuery } from "../api/settled";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -41,6 +49,8 @@ export function FactoryView() {
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const item = readItem(params);
+  // ADR-0062 F.3: the state filters (?state=), read straight from the URL: they're buttons, so nothing lags as the search box did.
+  const states = readStates(params);
   // The search box keeps its own value while you type; the URL only mirrors it. Reading it back
   // from the URL made the box lag a render behind the router (the cursor jumped to the end and fast
   // keystrokes were dropped: the ui review). A new ?q= is taken from the URL only when a navigation
@@ -89,6 +99,8 @@ export function FactoryView() {
             setSearch(value);
             setParam(FACTORY_SEARCH_PARAM, value === "" ? undefined : value);
           }}
+          states={states}
+          onStates={(value) => setParam(FACTORY_STATE_PARAM, writeStates(value))}
         />
       )}
       <ErrorBoundary label="Production history">

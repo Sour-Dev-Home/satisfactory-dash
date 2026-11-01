@@ -30,7 +30,7 @@ describe("state backedUp vs isBackedUp (issue 201)", () => {
 
   it("the Backed up filter shows a machine whose state is backedUp", () => {
     render(<FactoryPanel snapshot={snap(2, 1)} />);
-    fireEvent.click(within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: "Backed up" }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: /^Backed up \d+$/ }));
     expect(within(screen.getByRole("table")).getByRole("cell", { name: "R0" })).toBeInTheDocument();
   });
 

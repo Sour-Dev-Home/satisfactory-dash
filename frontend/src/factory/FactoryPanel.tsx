@@ -10,8 +10,10 @@ import {
 import { formatPercent, formatRate, formatTime } from "../format";
 import { DataAge } from "../components/DataAge";
 import { cn } from "../lib/cn";
-import { MACHINES_ANCHOR } from "../lib/deepLinks";
+import { MACHINES_ANCHOR, type FactoryStateFilter } from "../lib/deepLinks";
 import { useHashTarget } from "../lib/useHashTarget";
+import { StateMark } from "../planner/graph/StateMark";
+import { isStalledKind, type StalledKind } from "../planner/plannerText";
 import { DisclosureHeading } from "../ui/Disclosure";
 import { useDisclosures } from "../ui/useDisclosures";
 import {
@@ -26,6 +28,7 @@ import {
 } from "./machineGroups";
 import { machineState } from "./machineState";
 import { ShowAllRows } from "./ShowAllRows";
+import { matchesStates, STATE_FILTERS, toggleState } from "./stateFilters";
 import { useRowCap } from "./useRowCap";
 
 const isMachinesAnchor = (id: string) => id === MACHINES_ANCHOR;
@@ -33,14 +36,6 @@ const isMachinesAnchor = (id: string) => id === MACHINES_ANCHOR;
 /** ADR-0062 F.5: the table's first render shows this many machines, then "Show all", so the page height is bounded. */
 export const FACTORY_ROW_CAP = 50;
 
-type Filter = "all" | "backedUp" | "paused" | "noRecipe";
-
-const FILTERS: { id: Filter; label: string; match: (b: FactoryBuilding) => boolean }[] = [
-  { id: "all", label: "All", match: () => true },
-  { id: "backedUp", label: "Backed up", match: isBackedUpState },
-  { id: "paused", label: "Paused", match: (b) => b.isPaused },
-  { id: "noRecipe", label: "No recipe", match: (b) => b.recipe === null },
-];
 
 /**
  * Presentational: one factory snapshot, with in-memory filter and search. Backed-up is
@@ -48,6 +43,8 @@ const FILTERS: { id: Filter; label: string; match: (b: FactoryBuilding) => boole
  * normal steady-state play, so it's a count and a filter, never a red banner.
  * `refetchFailed`: the last refresh failed, so this snapshot is what the cache kept.
  * `search`/`onSearch`: the view keeps the search in the URL (?q=, #351); without them it's local.
+ * `states`/`onStates`: the state filters that are on (ADR-0062 F.3), which the view keeps in the URL (?state=); without them
+ * they're local.
  * `nav`: the page's in-page nav (ADR-0062 F.4), shown in the filter bar so the two stick as one.
  * `graph`, `designations`: the Planner's reads (ADR-0062 F.2), which group the table by factory and group;
  * without the graph the table is flat. `groupsUnavailable`: the graph read failed, so the table says why it is flat.
@@ -57,6 +54,8 @@ export function FactoryPanel({
   refetchFailed = false,
   search: searchProp,
   onSearch,
+  states: statesProp,
+  onStates,
   nav,
   graph,
   designations,
@@ -66,6 +65,8 @@ export function FactoryPanel({
   refetchFailed?: boolean;
   search?: string;
   onSearch?: (search: string) => void;
+  states?: readonly FactoryStateFilter[];
+  onStates?: (states: FactoryStateFilter[]) => void;
   nav?: ReactNode;
   graph?: ProductionGraph | undefined;
   designations?: readonly PlannerDesignation[] | undefined;
@@ -74,16 +75,17 @@ export function FactoryPanel({
   useHashTarget(isMachinesAnchor);
   const { buildings } = snapshot.data;
   const backedUpCount = buildings.filter(isBackedUpState).length;
-  const [filter, setFilter] = useState<Filter>("all");
+  const [localStates, setLocalStates] = useState<FactoryStateFilter[]>([]);
+  const states = statesProp ?? localStates;
+  const setStates = onStates ?? setLocalStates;
   const [localSearch, setLocalSearch] = useState("");
   const search = searchProp ?? localSearch;
   const setSearch = onSearch ?? setLocalSearch;
 
-  const active = FILTERS.find((f) => f.id === filter) ?? FILTERS[0];
   const needle = search.trim().toLowerCase();
-  const filtering = filter !== "all" || needle !== "";
+  const filtering = states.length > 0 || needle !== "";
   const match = (b: FactoryBuilding) =>
-    active.match(b) && (!needle || b.name.toLowerCase().includes(needle) || (b.recipe ?? "").toLowerCase().includes(needle));
+    matchesStates(b, states) && (!needle || b.name.toLowerCase().includes(needle) || (b.recipe ?? "").toLowerCase().includes(needle));
   const shown = buildings.filter(match);
   // ADR-0062 F.2: grouped by the Planner's factories and groups; null (no graph yet, or one naming none of these machines)
   // shows the table flat, as one group.
@@ -91,9 +93,14 @@ export function FactoryPanel({
   const narrowed = grouping === null ? null : narrowGrouping(grouping, filtering ? match : null);
   // ADR-0062 F.5: the cap applies per group, after the filter and search, so a search reaches a machine past it. A new filter
   // or search caps every group again.
-  const resetKey = `${filter}\n${needle}`;
+  const resetKey = `${states.join(",")}\n${needle}`;
   const paused = buildings.filter((b) => b.isPaused).length;
   const noRecipe = buildings.filter((b) => b.recipe === null).length;
+  const counts = new Map<FactoryStateFilter, number>([
+    ["backedUp", backedUpCount],
+    ["paused", paused],
+    ["noRecipe", noRecipe],
+  ]);
   // An older backend sends no ingredients at all: no Inputs column rather than an empty one.
   const showInputs = buildings.some((b) => b.ingredients !== undefined);
 
@@ -129,11 +136,19 @@ export function FactoryPanel({
                 </label>
               }
               filters={
+                // ADR-0062 F.3: the summary's counts as toggles. "All" turns every filter off; each state turns on and off on
+                // its own, and with several on the table shows a machine matching any of them.
                 <div role="group" aria-label="Filter machines">
-                  {FILTERS.map((f) => (
-                    <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
-                      {f.label}
-                    </button>
+                  <FilterToggle label="All" count={buildings.length} pressed={states.length === 0} onClick={() => setStates([])} />
+                  {[...STATE_FILTERS].map(([id, f]) => (
+                    <FilterToggle
+                      key={id}
+                      label={f.label}
+                      mark={f.mark}
+                      count={counts.get(id) ?? 0}
+                      pressed={states.includes(id)}
+                      onClick={() => setStates(toggleState(states, id))}
+                    />
                   ))}
                 </div>
               }
@@ -191,7 +206,32 @@ function FilterBar({ nav, search, filters }: { nav?: ReactNode; search?: ReactNo
   );
 }
 
-const GROUPS_UNAVAILABLE = "The Planner's factories could not be read, so the machines are listed in one table.";
+/**
+ * One state filter (ADR-0062 F.3): a toggle button (`aria-pressed`) with the Planner's mark for its state and its count, so
+ * its name reads "Backed up 24". Pressed, the button is the accent fill, so the mark takes the button's text colour there.
+ */
+function FilterToggle({
+  label,
+  mark,
+  count,
+  pressed,
+  onClick,
+}: {
+  label: string;
+  mark?: StalledKind;
+  count: number;
+  pressed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" aria-pressed={pressed} onClick={onClick} className="inline-flex items-center gap-1.5">
+      {mark !== undefined && <StateMark kind={mark} toned={!pressed} />}
+      {label} <span className="font-normal tabular-nums">{count}</span>
+    </button>
+  );
+}
+
+const GROUPS_UNAVAILABLE ="The Planner's factories could not be read, so the machines are listed in one table.";
 
 const machines = (n: number) => `${n} ${n === 1 ? "machine" : "machines"}`;
 
@@ -480,18 +520,26 @@ function Rates({ rates, label }: { rates: ProductionRate[]; label: "Inputs" | "O
 
 /**
  * The backend's state as a label, plus any flag the state doesn't already say. From an older
- * backend without `state`, or with one this frontend doesn't know, just the flags.
+ * backend without `state`, or with one this frontend doesn't know, just the flags. A state the
+ * Planner marks (ADR-0062 F.3) wears the same `StateMark` before its word, in the same tone;
+ * the word stays, so the mark only repeats it (it is `aria-hidden`).
  */
 function StateTags({ building }: { building: FactoryBuilding }) {
   const tags = [
-    machineState(building.state),
-    building.isBackedUp && building.state !== "backedUp" ? machineState("backedUp") : null,
-    building.isPaused && building.state !== "paused" ? machineState("paused") : null,
-  ].filter((tag) => tag !== null);
-  return tags.map((tag, i) => (
-    <Fragment key={tag.label}>
+    building.state,
+    building.isBackedUp && building.state !== "backedUp" ? "backedUp" : undefined,
+    building.isPaused && building.state !== "paused" ? "paused" : undefined,
+  ].flatMap((state) => {
+    const view = machineState(state);
+    return state === undefined || view === null ? [] : [{ state, view }];
+  });
+  return tags.map(({ state, view }, i) => (
+    <Fragment key={view.label}>
       {i > 0 && " "}
-      <span className={cn("whitespace-nowrap text-sm font-medium", tag.tone)}>{tag.label}</span>
+      <span className={cn("inline-flex items-center gap-1 whitespace-nowrap text-sm font-medium", view.tone)}>
+        {isStalledKind(state) && <StateMark kind={state} />}
+        {view.label}
+      </span>
     </Fragment>
   ));
 }

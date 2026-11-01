@@ -70,7 +70,8 @@ export type StalledKind = "backedUp" | "underfed" | "paused" | "idle";
 
 const STALLED_KINDS: ReadonlySet<string> = new Set<StalledKind>(["backedUp", "underfed", "paused", "idle"]);
 
-const isStalledKind = (state: string): state is StalledKind => STALLED_KINDS.has(state);
+/** A state that has a `StateMark` (the Factory page's rows ask per machine, ADR-0062 F.3). */
+export const isStalledKind = (state: string): state is StalledKind => STALLED_KINDS.has(state);
 
 /**
  * The mark for a group whose rate reads 0 (the caller checks the rate, as for `stalledStateText`): the state all its machines
