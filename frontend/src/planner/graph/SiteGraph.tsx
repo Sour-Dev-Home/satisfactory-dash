@@ -612,6 +612,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const wide = useLargeScreen();
   const [overlayH, setOverlayH] = useState(0);
   const overlayHRef = useRef(0);
+  const wideRef = useRef(wide);
+  useEffect(() => {
+    wideRef.current = wide;
+  });
   const onOverlayHeight = useCallback((h: number) => {
     overlayHRef.current = h;
     setOverlayH(h);
@@ -622,17 +626,19 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
 
   // When it opens over what was clicked (no side had room, or below lg the card is in the bottom half), the view moves the
   // least that brings that clear of it. Once, when it opens: a later layout (a refetch of any read the page shows) must not
-  // move a view the user may have panned.
+  // move a view the user may have panned, and nor must crossing the lg breakpoint while it is open: the breakpoint is read,
+  // not watched (a moment's flip to narrow re-ran this and moved the view by the narrow rule: the e2e group-panel flake).
   useEffect(() => {
+    const large = wideRef.current;
     const laid = layoutRef.current;
     const n = openKey === null ? undefined : laid.nodes.find((node) => node.key === openKey);
     const e = n !== undefined || listKey === null ? undefined : laid.edges.find((edge) => edgeKeyOf(edge.flow) === listKey);
     const box = n ?? (e === undefined ? undefined : labelBox(e));
     if (box === undefined) return;
     const s = stageRef.current;
-    const place = placeOverlay(screenRect(viewRef.current, box), overlayHRef.current, s, wide);
-    if (place.covers) setView((v) => revealRect(v, box, stageBesideOverlay(place, s, wide)));
-  }, [openKey, listKey, wide]);
+    const place = placeOverlay(screenRect(viewRef.current, box), overlayHRef.current, s, large);
+    if (place.covers) setView((v) => revealRect(v, box, stageBesideOverlay(place, s, large)));
+  }, [openKey, listKey]);
 
   // A bubble that just opened: if the user has moved the view, bring its frame into sight.
   const revealFrame = useRef<string | null>(null);

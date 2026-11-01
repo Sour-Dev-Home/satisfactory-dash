@@ -10,6 +10,7 @@ import { factoryModels } from "../planner/graph/hierarchy";
 import { membersOf, placesOf } from "../planner/designationMatch";
 import { dissolveRequest, mergeRequest, undoRequest } from "../planner/designationOps";
 import { factoriesConnected } from "../planner/connectivity";
+import { demoDesignations, setDemoDesignations } from "./designations";
 import { resetDemoState } from "./handlers";
 import { transport } from "./transport";
 import * as world from "./world";
@@ -31,14 +32,25 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the demo's designations", () => {
-  it("lists the plastic line with a revision and every member found", async () => {
+  it("lists the plastic line and the nested iron works with a revision and every member found", async () => {
     const { designations, matches } = await list();
-    expect(designations.map((d) => [d.name, d.revision])).toEqual([["Plastic line", 1]]);
-    expect(matches[0]!.missing).toBe(0);
-    expect(matches[0]!.memberBuildingIds).toEqual(designations[0]!.members.map((m) => m.id));
+    expect(designations.map((d) => [d.name, d.revision])).toEqual([
+      ["Plastic line", 1],
+      ["Main base", 1],
+      ["Smelting", 1],
+      ["Components", 1],
+      ["Reinforced plates", 1],
+      ["Rods and screws", 1],
+    ]);
+    for (const [i, m] of matches.entries()) {
+      expect(m.missing).toBe(0);
+      expect(m.memberBuildingIds).toEqual(designations[i]!.members.map((x) => x.id));
+    }
   });
 
   it("merges the two connected iron factories into one designated factory, and Split back restores the graph", async () => {
+    // From the world before the player nested the iron works (ADR-0061): its two automatic factories.
+    setDemoDesignations(demoDesignations().filter((d) => d.id === world.DEMO_DESIGNATION_ID));
     const before = await graph();
     const models = factoryModels(before);
     const iron = models.filter((m) => m.factory.designationId === null);

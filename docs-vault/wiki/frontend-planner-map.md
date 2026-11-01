@@ -63,7 +63,8 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   (the read pre-image, never the matcher's ids) `UndoToast.tsx` offers for `UNDO_MS`, holding while focused or hovered.
   `designation_stale` re-reads and drops the selection. The demo keeps designations in memory (`demo/designations.ts`).
 - Nested factories (ADR-0061 build PR 3), behind `planner.nesting` in `plannerPrefs.ts` (off by default, no control; set
-  it to `on` in localStorage; build PR 6 removes it). `factoryTree.ts` (pure) builds the tree from the designations'
+  it to `on` in localStorage; the demo build has it on unless `off`, and its world nests three levels deep, `DEMO_TREE`;
+  the flag goes after the owner's review on the demo). `factoryTree.ts` (pure) builds the tree from the designations'
   `parentId` (the graph's `parentDesignationId` while the list has not answered). A parent with no machines of its own
   has no graph factory, so it is keyed `factory|designation|<id>` and named from the list. A parent's card is a roll-up
   (`FactoryModel` with `atLeast`): machine and state counts summed, products its parts' minus the flows between them,

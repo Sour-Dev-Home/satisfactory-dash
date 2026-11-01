@@ -140,6 +140,7 @@ import {
   listSelfServeOn,
 } from "./selfServeMocks";
 import { compatPolicy, compatQuiet, reporting } from "./updateMocks";
+import { treeGraphResponse, treeWorld } from "./plannerTree";
 import { approved, errorPairingForbidden, errorPairingNotFound, errorPairingRateLimited, lookedUp } from "./pairingMocks";
 
 // Named UI states, built only from the shared fixtures. One source for both consumers:
@@ -478,6 +479,15 @@ const plannerDesignated = (() => {
       ],
       matches: [{ designationId: id, matched: live.length, missing: 1 }],
     }),
+  } satisfies Partial<Record<RouteKey, MockResponse>>;
+})();
+
+/** ADR-0061: `plannerTree.ts`' three-level world (built on the factories fixture) and its designations list, all found. */
+const plannerNested = (() => {
+  const { graph, designations } = treeWorld();
+  return {
+    productionGraph: ok(treeGraphResponse(graph)),
+    plannerDesignations: ok({ designations, matches: designations.map((d) => ({ designationId: d.id, matched: d.members.length, missing: 0 })) }),
   } satisfies Partial<Record<RouteKey, MockResponse>>;
 })();
 
@@ -953,6 +963,9 @@ export const SCENARIOS = {
   "planner-merge-split": plannerMergeSplit,
   "planner-merge-apart": plannerMergeApart,
   "planner-merge-stale": { ...plannerMergeSplit, plannerDesignationReplace: fail(409, plannerDesignationStaleError) },
+  // ADR-0061 build PR 6: nested factories (with `planner.nesting` on): Main base > Smelters (own machines) > Plates and Rods,
+  // beside the automatic Screws, for a parent's breadcrumb level and a card blown up in place.
+  "planner-nested": plannerNested,
   // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of
   // 5 groups) dims it and shows what the filter does.
   "planner-filter-dimmed": {
