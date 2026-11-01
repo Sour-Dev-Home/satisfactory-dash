@@ -531,6 +531,9 @@ const CASES: StateCase[] = [
       await pressButton(page, /^Expand Main base in place into its/);
       await pressButton(page, /^Expand Smelters in place into its/);
       await expect(overview.locator("[data-blow-up-frame]")).toHaveCount(2);
+      // Focus may have panned the small 390 px canvas to the last card: fit the view so the screenshot is the same every run.
+      await page.getByRole("button", { name: "Fit to view" }).click();
+      for (const frame of await overview.locator("[data-blow-up-frame]").all()) await expect(frame).toBeVisible();
     },
   },
   { scenario: "planner-bottlenecks", path: "/app/planner", shows: /1 bottleneck/, clock: PLANNER_NOW },
