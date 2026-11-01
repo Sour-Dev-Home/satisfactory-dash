@@ -201,11 +201,22 @@ const machines = (n: number) => `${n} ${n === 1 ? "machine" : "machines"}`;
  * One list of machines (a group, "Other machines", or the whole table while there is nothing to group by), capped at
  * `FACTORY_ROW_CAP` rows (ADR-0062 F.5) by its own `useRowCap`, so every group has its own "Show all".
  */
-function MachineTable({ rows, showInputs, resetKey }: { rows: readonly FactoryBuilding[]; showInputs: boolean; resetKey: string }) {
+function MachineTable({
+  rows,
+  showInputs,
+  resetKey,
+  labelledBy,
+}: {
+  rows: readonly FactoryBuilding[];
+  showInputs: boolean;
+  resetKey: string;
+  /** The group's heading: each of the page's many tables is named by its group (`ui-reviewer`). */
+  labelledBy?: string;
+}) {
   const rowCap = useRowCap(rows, FACTORY_ROW_CAP, resetKey);
   return (
     <>
-      <table>
+      <table aria-labelledby={labelledBy}>
         <thead>
           <tr>
             <th scope="col">Machine</th>
@@ -298,7 +309,7 @@ function Counts({ shown, total, backedUp, filtering, counted = false }: { shown:
   const count = narrowed ? `${shown} of ${machines(total)}` : counted ? null : machines(total);
   if (count === null && backedUp === 0) return null;
   return (
-    <span className="text-sm font-normal normal-case tracking-normal text-muted">
+    <span className="text-xs font-normal normal-case tracking-normal text-muted">
       {count !== null && ` · ${count}`}
       {backedUp > 0 && ` · ${backedUp} backed up`}
     </span>
@@ -309,7 +320,8 @@ function FactorySection({ factory, level, state }: { factory: MachineFactory; le
   const ids = useId();
   const open = state.isOpen(factory.key);
   return (
-    <li className="grid gap-3" data-machine-factory="">
+    // A rule above each factory sets it apart from its groups, whose headings are nearly its size (`ui-reviewer`).
+    <li className="grid gap-3 border-t border-line pt-3" data-machine-factory="">
       <DisclosureHeading
         level={level}
         open={open}
@@ -321,7 +333,7 @@ function FactorySection({ factory, level, state }: { factory: MachineFactory; le
       </DisclosureHeading>
       <div id={`${ids}-body`} hidden={!open}>
         {open && (
-          <ul aria-label={`${factory.parts.length > 0 ? "Parts" : "Groups"} of ${factory.name}`} className="m-0 grid list-none gap-4 p-0 ps-4">
+          <ul aria-label={`${factory.parts.length > 0 ? "Parts" : "Groups"} of ${factory.name}`} className="m-0 grid list-none gap-4 p-0 sm:ps-4">
             {factory.parts.map((p) => (
               <FactorySection key={p.key} factory={p} level={level + 1} state={state} />
             ))}
@@ -371,12 +383,13 @@ function ListSection({
         open={open}
         onToggle={() => state.toggle(sectionKey)}
         controls={`${ids}-body`}
+        id={`${ids}-heading`}
         after={<Counts shown={rows.length} total={total} backedUp={rows.filter(isBackedUpState).length} filtering={state.filtering} counted={counted} />}
       >
         {title}
       </DisclosureHeading>
       <div id={`${ids}-body`} hidden={!open} className="grid gap-3">
-        {open && <MachineTable rows={rows} showInputs={state.showInputs} resetKey={state.resetKey} />}
+        {open && <MachineTable rows={rows} showInputs={state.showInputs} resetKey={state.resetKey} labelledBy={`${ids}-heading`} />}
       </div>
     </li>
   );

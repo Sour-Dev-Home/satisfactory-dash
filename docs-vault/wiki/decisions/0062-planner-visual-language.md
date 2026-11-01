@@ -161,6 +161,12 @@ per group.
 - **Scenarios.** `factory-grouped` (the factories fixture with one id per machine and a building for each, plus a refinery under
   "Other machines"), `factory-grouped-nested` (ADR-0061's three-level world, nesting on), `factory-groups-error` (the graph's 503),
   and `factory-many-machines` now one group of 55 constructors past the cap. The demo world groups by its own graph.
+- **Review.** `ui-reviewer` (from the diff, no live check): each group's table is named by its heading (`aria-labelledby`); the
+  counts are `text-xs`, so they read below an h6 title; a factory carries a rule above it (`border-t border-line`), since its
+  heading is nearly a group's size; nested lists indent from `sm` only, keeping the phone's width. Not taken: the literal " · "
+  separators (a screen reader may say "middle dot"; the Planner's text uses them too). `test-hunter`: no bugs; a repeated
+  building id (never expected) now lists its copy under "Other machines", as the flat table would, and tests for choices kept
+  across a poll and a closed section staying closed while filtering.
 
 ## Build plan (each PR from `main`, no stacking)
 

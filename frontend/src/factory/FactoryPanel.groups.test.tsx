@@ -41,6 +41,8 @@ describe("FactoryPanel grouped by Planner factory and group (ADR-0062 F.2)", () 
     expect(heads).toEqual(["Miner Mk.2", "Main Depot", "4× Smelter, Iron Ingot", "4× Constructor, Iron Plate · 1 backed up", "Storage Container"]);
     const constructors = within(sectionOf("4× Constructor, Iron Plate")).getByRole("table");
     expect(rowNames(constructors)).toEqual(["Constructor", "Constructor", "Constructor", "Constructor"]);
+    // Each group's table is named by its heading, so a screen reader tells the page's many tables apart.
+    expect(constructors).toHaveAccessibleName("4× Constructor, Iron Plate · 1 backed up");
     // The summary above still counts the whole factory read.
     expect(screen.getByText(/^15 machines · 1 backed up/)).toBeInTheDocument();
   });

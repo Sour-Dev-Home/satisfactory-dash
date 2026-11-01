@@ -58,10 +58,12 @@ export function groupMachines(
   nesting: boolean,
 ): MachineGrouping | null {
   if (graph === undefined) return null;
-  // Ids come from the game server: a Map. A repeated id (never expected) keeps its first building.
+  // Ids come from the game server: a Map. A repeated id (never expected) groups its first building; the others go under
+  // "Other machines", so every row the flat table would show is still listed (`test-hunter`).
   const byId = new Map<string, FactoryBuilding>();
   for (const b of buildings) if (!byId.has(b.id)) byId.set(b.id, b);
   const claimed = new Set<string>();
+  const grouped = new Set<FactoryBuilding>();
   const visited = new Set<string>();
   const groupOf = (node: PlannerNode): MachineGroup[] => {
     if (visited.has(node.key)) return [];
@@ -71,6 +73,7 @@ export function groupMachines(
       const b = byId.get(id);
       if (b === undefined || claimed.has(id)) continue;
       claimed.add(id);
+      grouped.add(b);
       list.push(b);
     }
     if (list.length === 0) return [];
@@ -98,7 +101,7 @@ export function groupMachines(
   });
   const groups = graph.nodes.flatMap(groupOf);
   if (claimed.size === 0) return null;
-  const other = buildings.filter((b) => !claimed.has(b.id));
+  const other = buildings.filter((b) => !grouped.has(b));
   return { factories, groups, other, otherTotal: other.length };
 }
 
