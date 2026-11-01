@@ -4,7 +4,9 @@ Status: accepted (project owner), 2026-09-24: no ads now; the path for later is 
 (owner): ads at release, privacy-first and isolated, on public pages and in fixed slots in the app; see "Amendment,
 2026-10-27" at the end, which overrides the Decision below where they differ.** **Amended again 2026-10-27 (owner):
 AdSense with a consent banner, in the app via a crawler account; see "Amendment 2" at the end, which overrides
-amendment 1 where they differ (its network pick, Decision 2 and Decision 5).**
+amendment 1 where they differ (its network pick, Decision 2 and Decision 5).** **Amended a third time 2026-11-01
+(owner): Google's strict CSP via a Worker nonce, in the app and on public pages, and limited ads on; see "Amendment 3"
+at the end, which overrides amendment 2's Decisions 2 and 3 and its build plan.**
 
 ## Context
 The owner asked whether the site can run ads. Relevant facts:
