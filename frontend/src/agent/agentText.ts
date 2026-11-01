@@ -1,4 +1,4 @@
-import type { ServerSummary } from "@satisfactory-dash/shared";
+import type { AgentStatusResponse, ServerSummary } from "@satisfactory-dash/shared";
 import { formatDuration } from "../format";
 
 /**
@@ -11,6 +11,48 @@ export function lastSeenText(lastSeenAt: string | null, now: number): string {
   if (Number.isNaN(seen)) return "Last seen at an unknown time";
   const seconds = Math.floor(Math.max(0, now - seen) / 1000);
   return seconds < 1 ? "Last seen just now" : `Last seen ${formatDuration(seconds)} ago`;
+}
+
+/**
+ * The agent's own view of its game connection (#740 follow-up), from the status's optional `gameReachable` and
+ * `lastGameReadAt`. Null when there is nothing to show (no agent, or one that doesn't report it, or an older backend).
+ * While the agent is offline its last word may be stale, so reachability reads as unknown; the last read still shows.
+ */
+export interface GameConnectionView {
+  /** `ok` and `warn` take the status tokens and an icon; `unknown` is muted. */
+  tone: "ok" | "warn" | "unknown";
+  label: string;
+  /** "last read 8 s ago", "not read since the agent started", or null when not reported. */
+  lastRead: string | null;
+}
+
+export function gameConnectionView(
+  agent: Pick<AgentStatusResponse, "enrolled" | "online" | "gameReachable" | "lastGameReadAt">,
+  now: number,
+): GameConnectionView | null {
+  if (!agent.enrolled || (agent.gameReachable === undefined && agent.lastGameReadAt === undefined)) return null;
+  const lastRead = agent.lastGameReadAt !== undefined ? lastReadText(agent.lastGameReadAt, now) : agent.gameReachable === false ? "not read since the agent started" : null;
+  if (agent.online === false) return { tone: "unknown", label: "Unknown while the agent is offline", lastRead };
+  if (agent.gameReachable === true) return { tone: "ok", label: "Reachable", lastRead };
+  if (agent.gameReachable === false) return { tone: "warn", label: "Not reachable", lastRead };
+  return { tone: "unknown", label: "Reachability not reported", lastRead };
+}
+
+/** "last read 8 s ago"; a time "from the future" counts as now (the backend already drops one far ahead). */
+function lastReadText(at: string, now: number): string {
+  const read = Date.parse(at);
+  if (Number.isNaN(read)) return "last read at an unknown time";
+  const seconds = Math.floor(Math.max(0, now - read) / 1000);
+  return seconds < 1 ? "last read just now" : `last read ${formatDuration(seconds)} ago`;
+}
+
+/**
+ * The agent's version line: `agentVersion`, plus the sender's `modVersion` when it says something else (a mod sending for
+ * the agent). The dash agent sends the same string twice, so it shows once.
+ */
+export function agentVersionLine(agentVersion: string | null, modVersion: string | undefined): string {
+  if (agentVersion === null) return modVersion === undefined ? "Not reported yet" : versionText(modVersion);
+  return modVersion === undefined || modVersion === agentVersion ? versionText(agentVersion) : `${versionText(agentVersion)} · sender ${versionText(modVersion)}`;
 }
 
 /** How the backend reaches the server, in words. An unknown kind is shown as it came. */

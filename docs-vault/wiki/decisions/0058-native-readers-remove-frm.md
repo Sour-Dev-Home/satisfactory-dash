@@ -339,6 +339,32 @@ are unchanged; only the runs and the overhead are shared.
 
 The first public mod release (answer 3) follows S2, plus R4 from S1.
 
+## S4-B: generators once per read (owner, 2026-10-28)
+The owner chose option (a), "once per read", for the S4-B generators list (`power.generators`, contract added in #784).
+Re-sending about 1,000 generators with every 5 s power part would spend the whole snapshot byte budget
+(`SNAPSHOT_BYTE_BUDGET`, 4 MiB a minute), so the mod reads and sends them only at the factory cadence (`factorySeconds`,
+today 30 s). The contract (`packages/shared/src/agent.ts` `AgentPowerSchema`, `packages/shared/src/power.ts` `PowerSchema`):
+
+1. **Agent input.** `generators` sits on the power part of the snapshot in which the sender read them. Present means a read,
+   and the list replaces the last one; `[]` means read, none found. Absent means no read in this snapshot: keep the last
+   list. The FRM agent never sends generators (unchanged).
+2. **Read time.** The read time is the snapshot's own `observedAt`, as the backend already normalises it for every part
+   (clamped to the receive time within the clock tolerance). No input field is added, because the list is read in the
+   same cycle as the snapshot that carries it.
+3. **Backend.** It keeps the last list per server with that time and serves it with later power responses until the read
+   is older than 3 × `factorySeconds` (today 90 s, the same three-interval rule as a stale part, ADR-0022). After that,
+   and after a new session or power reset, the response leaves `generators` out ("not read"). The list is held apart from
+   the stored power part (each power part replaces that part whole, so a part without `generators` must not erase it). A
+   late or retried snapshot replaces the list only when its read is newer than the kept one's. An unreachable snapshot
+   keeps the list, which still ages by the same rule. The list is **not persisted** (ADR-0052): after a backend restart
+   the response omits it until the next read, at most one factory interval, so a restore can never serve an old list
+   under a fresh time.
+4. **Response.** `PowerSchema.generatorsReadAt` (optional, ISO 8601 UTC, like the envelope's `observedAt`) is the time of
+   the read the list came from, so the UI says "read 40 s ago" and never shows an old list as current. It is present
+   exactly when `generators` is, and absent from older backends. It is response-only (ADR-0031): a sender's is dropped.
+
+Additive and optional (ADR-0007): old payloads still parse.
+
 ## Build tasks (after approval; all in the mod repo unless noted, one PR each, no stacking)
 
 1. Dash repo: commit this ADR, README row, log fragment. This change.

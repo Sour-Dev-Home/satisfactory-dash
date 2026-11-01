@@ -12,6 +12,7 @@ import { sectionNotes } from "../factory/bottlenecks";
 import { machineState } from "../factory/machineState";
 import { formatAmount, formatPerMinute, formatRate, unitLabel } from "../format";
 import type { AggregateFlow, Bubble, BubbleEntry, ConnectionRow, FactoryModel, Remote, ShareSplit } from "./graph/hierarchy";
+import type { DestinationCap } from "./graph/capModel";
 
 /** The Factory page's Bottlenecks section: a finding has no anchor of its own, so the link goes to the section. */
 export const BOTTLENECKS_LINK = "/app/factory#bottlenecks-heading";
@@ -51,10 +52,33 @@ export function mergeStateCounts(list: readonly Record<string, number>[]): Recor
  * up", "underfed", "paused", a state this build doesn't know as the backend's word), else "not producing".
  */
 export function stalledStateText(counts: Record<string, number>): string {
-  const present = Object.entries(counts).filter(([, n]) => n > 0);
-  if (present.length !== 1 || present[0][0] === "producing") return NOT_PRODUCING;
-  const [state] = present[0];
+  const state = soleStalledState(counts);
+  if (state === undefined) return NOT_PRODUCING;
   return machineState(state)?.label.toLowerCase() ?? state;
+}
+
+/** The one state all of a group's machines are in, unless that is "producing"; undefined when they differ or none is counted. */
+function soleStalledState(counts: Record<string, number>): string | undefined {
+  const present = Object.entries(counts).filter(([, n]) => n > 0);
+  if (present.length !== 1 || present[0][0] === "producing") return undefined;
+  return present[0][0];
+}
+
+/** The stalled states the canvas draws a `StateMark` for (ADR-0062 Decision 2): machine states (`machineState.ts`) by key. */
+export type StalledKind = "backedUp" | "underfed" | "paused" | "idle";
+
+const STALLED_KINDS: ReadonlySet<string> = new Set<StalledKind>(["backedUp", "underfed", "paused", "idle"]);
+
+const isStalledKind = (state: string): state is StalledKind => STALLED_KINDS.has(state);
+
+/**
+ * The mark for a group whose rate reads 0 (the caller checks the rate, as for `stalledStateText`): the state all its machines
+ * share when it has a mark, else undefined. Undefined is exactly where the words have no mark: "not producing" (mixed, none
+ * counted or all producing), "unpowered", and a state this build doesn't know; the word is drawn as before there.
+ */
+export function stalledOf(counts: Record<string, number>): StalledKind | undefined {
+  const state = soleStalledState(counts);
+  return state !== undefined && isStalledKind(state) ? state : undefined;
 }
 
 /** A rate that reads 0 as "0 of 30 items/min", or "0 items/min" when the max is 0 too. */
@@ -66,8 +90,13 @@ const zeroRateText = (rate: Pick<PlannerRate, "maxPerMinute" | "unit">): string 
  * "Iron Ingot: 0 of 30 items/min · backed up": the state from `stateCounts` when given (a single machine's line, whose
  * state is printed beside it, passes none).
  */
-export function outputLine(rate: Pick<PlannerRate, "name" | "currentPerMinute" | "maxPerMinute" | "unit">, stateCounts?: Record<string, number>): string {
-  if (!isZeroRate(rate)) return `${rate.name}: ${formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit)}`;
+export function outputLine(
+  rate: Pick<PlannerRate, "name" | "currentPerMinute" | "maxPerMinute" | "unit">,
+  stateCounts?: Record<string, number>,
+  /** ADR-0061 Decision 2: a parent's net rate whose internal flows were estimated or unknown is a floor. */
+  atLeast = false,
+): string {
+  if (!isZeroRate(rate)) return `${rate.name}: ${atLeast ? "at least " : ""}${formatRate(rate.currentPerMinute, rate.maxPerMinute, rate.unit)}`;
   const state = stateCounts === undefined ? "" : ` · ${stalledStateText(stateCounts)}`;
   return `${rate.name}: ${zeroRateText(rate)}${state}`;
 }
@@ -141,10 +170,8 @@ export function siteFindings(nodes: PlannerNode[], findings: readonly Bottleneck
   );
 }
 
-/** "2 bottlenecks" / "1 bottleneck" / "No bottlenecks". */
-export function bottleneckCountText(count: number): string {
-  return count === 0 ? "No bottlenecks" : `${count} ${count === 1 ? "bottleneck" : "bottlenecks"}`;
-}
+/** "2 bottlenecks" / "1 bottleneck" / "No bottlenecks": the Factory page's own words, so its summary and the cards agree. */
+export { bottleneckCountText } from "../factory/bottlenecks";
 
 /** "3 machines are on no conveyor the last read knew of, so they are in no group." */
 export function unconnectedText(count: number): string | null {
@@ -273,6 +300,26 @@ const CHIP_WORD: Record<string, string> = {
 /** A chip for where a factory's flows end: "3 flows to storage", "1 flow to the Depot". */
 export const destinationChipText = (destination: string, count: number): string =>
   `${count} ${count === 1 ? "flow" : "flows"} ${ownValue(CHIP_WORD, destination) ?? `to ${destination}`}`;
+
+/**
+ * A destination cap's words (ADR-0062 Decision 1), its `<title>` and button name, so its speed is never the only carrier
+ * of the rate: "about 120 items/min to storage, 3 flows", "48 items/min to the Sink", "2 flows to power, rate unknown". A
+ * unit with no number makes the others "at least"; a stalled cap says its machines' state.
+ */
+export function capText(cap: Pick<DestinationCap, "destination" | "count" | "rates" | "stalled">): string {
+  const words = ownValue(CHIP_WORD, cap.destination) ?? `to ${cap.destination}`;
+  const known = cap.rates.filter((r) => r.quality !== "unknown" && r.ratePerMinute !== null);
+  const partial = known.length < cap.rates.length;
+  const rate = known.map((r) => aggregateRateText(partial && r.quality !== "atLeast" ? { ...r, quality: "atLeast" } : r)).join(" and ");
+  const head = known.length === 0 ? `${destinationChipText(cap.destination, cap.count)}, rate unknown` : `${rate} ${words}${cap.count === 1 ? "" : `, ${cap.count} flows`}`;
+  return cap.stalled === undefined ? head : `${head}, not moving: ${machineState(cap.stalled)?.label.toLowerCase() ?? cap.stalled}`;
+}
+
+/** A "+k" cap's words: how many more kinds, and where (each kind's own words are in its cap and the detail). */
+export function moreCapsText(more: readonly Pick<DestinationCap, "destination" | "count">[]): string {
+  const total = more.reduce((sum, c) => sum + c.count, 0);
+  return `${more.length} more destinations (${more.map((c) => destinationChipText(c.destination, c.count)).join(", ")}), ${total} ${total === 1 ? "flow" : "flows"}`;
+}
 
 /** "850 m" under a kilometre, else "1.8 km". */
 export function distanceText(metres: number): string {

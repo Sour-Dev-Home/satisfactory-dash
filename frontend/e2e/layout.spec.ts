@@ -115,3 +115,27 @@ test.describe("on a phone", () => {
     });
   }
 });
+
+// ADR-0062 F.4: the Factory page's filter bar sticks while the machine table scrolls under it. jsdom can't lay out sticky
+// and a screenshot is taken unscrolled, so only a real browser shows it holds (an ancestor's `overflow`, or a grid row
+// exactly the bar's height, turns it off silently). The table's top is scrolled just past the window's top, with the
+// rest of the table still below, so a bar that doesn't stick would sit above the window.
+test.describe("the Factory page's filter bar", () => {
+  for (const { name, viewport, bar } of [
+    { name: "desktop", viewport: { width: 1440, height: 500 }, bar: "[data-filter-bar]" },
+    // Below `sm` only the nav and search row sticks; the state filters scroll away.
+    { name: "phone", viewport: { width: 390, height: 844 }, bar: "[data-filter-bar] > div:has(nav)" },
+  ] as const) {
+    test(`sticks to the top while the machine table scrolls (${name})`, async ({ page, mockApi }) => {
+      await page.setViewportSize(viewport);
+      await mockApi("default");
+      await page.goto("/app/factory");
+      const table = page.locator("#machines table");
+      await table.waitFor();
+      const sticky = page.locator(bar);
+      await expect(sticky).toBeVisible();
+      await table.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top + 40));
+      await expect.poll(async () => Math.round((await sticky.boundingBox())?.y ?? -999)).toBe(0);
+    });
+  }
+});

@@ -1,0 +1,6 @@
+- 2026-10-26 — ADR-0058 Sprint S2 header survey (`raw-sources/mod-native-readers-s2-headers-2026-10-26.md`). It covers R2a (factory machines), R2b (production rates), R3 (trains, stations and train routes) and the R4 `className` follow-up. It gives names and `file:line` only, written under the clean-room rules: FRM source not opened, no web search.
+  - **R2a.** Machines are enumerated through the buildable subsystem and filtered on `AFGBuildableManufacturer`. Recipe, state, potential, power, circuit group and inventories all have declarations. No building display-name accessor was found.
+  - **R2b.** `maxPerMinute` can be derived deterministically. FRM's averaged rate looks like the game's own productivity average, but that is an inference, not a header fact.
+  - **R3.** Trains and stations come from the railroad subsystem without a world scan. The status strings (the game says "Self Driving", FRM "Self-Driving") and a train's position source are open.
+  - **R4.** `className` is the resource descriptor class name.
+  - **Main risks:** the rate semantics, the cost of enumerating every buildable (sliced reads are needed), and fluid units.

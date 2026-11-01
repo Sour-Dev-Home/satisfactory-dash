@@ -122,3 +122,7 @@ added or removed.
 - [`legal/privacy-terms-outline.md`](./legal/privacy-terms-outline.md) — an outline (not the
   published policy, not legal advice) for the privacy policy and terms, with `[OWNER]`, `[LEGAL]`
   and `[BUILD]` markers; roadmap 2b, needed before ADR-0025 gate B.
+- [`ad-network-comparison.md`](./ad-network-comparison.md) — ADR-0021 amendment build step 1: EthicalAds and Carbon Ads
+  (with AdSense and Venatus as contrasts) on acceptance, cookies, iframe and login rules, payout and CSP hosts, each cell
+  cited to a `raw-sources/ad-network-*` capture; recommends EthicalAds, with acceptance (50k pageviews, developer sites)
+  as the main risk.

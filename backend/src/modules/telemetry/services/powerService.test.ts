@@ -181,6 +181,9 @@ describe("PowerService", () => {
       status: "ok",
     });
     expect(PowerSchema.parse(overview)).toEqual(overview);
+    // ADR-0058 S4-B: the polled path never reads generators, so neither field appears.
+    expect(overview).not.toHaveProperty("generators");
+    expect(overview).not.toHaveProperty("generatorsReadAt");
   });
 
   it("maps circuits and flags hasOutage when any circuit is in outage", async () => {

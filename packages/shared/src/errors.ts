@@ -80,6 +80,11 @@ export const KnownErrorCode = z.enum([
   // ADR-0055 amendment 2026-10-27, Decision 11 (additive): a replace whose `expect` names a designation that is gone or at
   // another revision (409): someone else changed it meanwhile; the client refetches and asks to select again.
   "designation_stale",
+  // ADR-0061 (additive): nested designations (409 each). A parent that would make a designation its own ancestor; a
+  // nesting deeper than PLANNER_DESIGNATION_MAX_DEPTH; a designation left with neither members nor children.
+  "designation_cycle",
+  "designation_depth",
+  "designation_shape",
   "internal",
 ]);
 export type KnownErrorCode = z.infer<typeof KnownErrorCode>;

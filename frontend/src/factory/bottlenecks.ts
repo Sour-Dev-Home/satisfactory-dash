@@ -58,6 +58,17 @@ export function detailSegments(finding: Bottleneck): [string, string, string] | 
 
 export const stateLabel =(state: "underfed" | "backedUp") => (state === "underfed" ? "Underfed" : "Backed up");
 
+/** "2 bottlenecks" / "1 bottleneck" / "No bottlenecks". */
+export function bottleneckCountText(count: number): string {
+  return count === 0 ? "No bottlenecks" : `${count} ${count === 1 ? "bottleneck" : "bottlenecks"}`;
+}
+
+/** The summary's count: "10+ bottlenecks" when the backend cut the list at its limit, so the count never undersells. */
+export function bottleneckSummaryCount(data: Pick<Bottlenecks, "findings" | "truncated">): string {
+  const n = data.findings.length;
+  return data.truncated && n > 0 ? `${n}+ bottlenecks` : bottleneckCountText(n);
+}
+
 /**
  * The section's notes, as plain sentences. The backend builds each note's text and the client shows it as is; a note
  * a mode needs but the backend left out is filled from the mode (so an older FRM never loses its "update FRM" line,

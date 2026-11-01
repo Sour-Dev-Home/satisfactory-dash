@@ -43,7 +43,10 @@ export const SETUP = [
  * select their dependents.
  */
 export const INPUTS = [
-  [/^docs-vault\/raw-sources\//, ["packages/game-adapter", "backend"]], // captured responses the tests replay
+  // captured responses the tests replay; frontend/src/planner/graph/itemIcons.test.ts checks their item classes have icons
+  [/^docs-vault\/raw-sources\//, ["packages/game-adapter", "backend", "frontend"]],
+  // frontend/src/planner/graph/itemIcons.test.ts checks every mapped class is a real item class against it
+  [/^backend\/src\/modules\/telemetry\/itemForms\.generated\.json$/, ["frontend"]],
   [/^load\//, ["backend", "load"]], // backend/scripts/load-seed.ts imports load/lib
   [/^scripts\/load-report\.mjs$/, ["load"]],
   [/^frontend\/src\/index\.css$/, ["server-manager"]], // the server manager's build and tests read its tokens

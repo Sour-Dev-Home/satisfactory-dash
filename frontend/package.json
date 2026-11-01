@@ -19,7 +19,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@dagrejs/dagre": "3.1.1",
+    "@dagrejs/dagre": "3.1.3",
     "@satisfactory-dash/shared": "*",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.104.5",

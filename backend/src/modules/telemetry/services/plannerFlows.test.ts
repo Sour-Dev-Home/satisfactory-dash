@@ -127,7 +127,7 @@ describe("flow classes (ADR-0053 Decision 1)", () => {
     expect(edgesFrom(g, a)).toEqual([expect.objectContaining({ flow: "output", destination: "storage", itemClassName: RPLATE })]);
   });
 
-  it("leaves the excess rate unknown when the source has two excess destinations for the item", () => {
+  it("shares the excess evenly, estimated, when the source has two excess destinations for the item", () => {
     seq = 0;
     const b = [
       machine("P", { recipe: "Iron Plate", out: [[PLATE, 20, 20]] }),
@@ -137,7 +137,8 @@ describe("flow classes (ADR-0053 Decision 1)", () => {
     const g = buildProductionGraph(b, e);
     const excess = g.edges.filter((x) => x.flow === "excess");
     expect(excess.map((x) => x.destination).sort()).toEqual(["sink", "storage"]);
-    for (const x of excess) expect(x).toMatchObject({ ratePerMinute: null, rate: "unknown" });
+    // 20 out, 15 to the assembler: the one-end estimate (2026-10-27) splits the other 5.
+    for (const x of excess) expect(x).toMatchObject({ ratePerMinute: 2.5, rate: "estimated" });
   });
 
   it("a supply into a buffer storage that feeds a machine is supply to the factory", () => {

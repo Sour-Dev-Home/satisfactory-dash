@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FALLBACK_STAGE, FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, clippedEdges, fitView, isClipped, isInView, stageBesidePanel, keyView, panBy, pinchView, revealRect, toStage, zoomAt, zoomCentre } from "./viewport";
+import { FALLBACK_STAGE, FIT_PAD, MAX_ZOOM, MIN_FIT_ZOOM, MIN_ZOOM, canvasHeight, clippedEdges, fitView, isClipped, isInView, keyView, panBy, pinchView, revealRect, toStage, zoomAt, zoomCentre } from "./viewport";
 
 const home = { x: 0, y: 0, k: 1 };
 const stage = FALLBACK_STAGE;
@@ -118,11 +118,6 @@ describe("overflow", () => {
     const big = { width: 3000, height: 2000 };
     const c = clippedEdges(fitView(big.width, big.height, stage), big, stage);
     expect(c).toEqual({ left: false, right: true, top: false, bottom: true });
-  });
-
-  it("leaves the part of the stage beside a drawer, never less than a pixel", () => {
-    expect(stageBesidePanel(stage, 352)).toEqual({ width: stage.width - 352, height: stage.height });
-    expect(stageBesidePanel(stage, 5000).width).toBe(1);
   });
 
   it("says whether a box is at least partly on the stage", () => {

@@ -124,7 +124,8 @@ describe("an opened factory", () => {
 
   it("draws the train as a glyph on its edge, named in the legend and the edge's tooltip", async () => {
     const svg = await openPlate();
-    expect(svg.querySelector('[data-glyph="train"]')).not.toBeNull();
+    // At rest in the canvas, or moving in the march layer over it.
+    expect(svg.parentElement!.querySelector('[data-glyph="train"]')).not.toBeNull();
     const titles = [...svg.querySelectorAll("title")].map((t) => t.textContent);
     expect(titles.some((t) => t?.startsWith("Train, route Ore Run: Miner Mk.2 to Main Depot"))).toBe(true);
     const legend = screen.getByRole("list", { name: "Line styles" });
@@ -220,6 +221,22 @@ describe("drill-down into a bubble", () => {
     expect(svg.querySelectorAll("[data-frame]")).toHaveLength(1);
   });
 
+  it("remembers Collapse all for the factory across a visit to All factories and the Tables view (the owner, 2026-10-27)", async () => {
+    await openPlate();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    fireEvent.click(screen.getByRole("button", { name: "All factories" }));
+    await overview();
+    fireEvent.click(await button(/^Open factory: Iron Plate factory./));
+    let svg = await plateGraph();
+    expect(svg.querySelectorAll("[data-frame]")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Expand all" })).toBeInTheDocument();
+    // Tables and back to the graph remounts the canvas; the choice holds there too.
+    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+    svg = await plateGraph();
+    expect(svg.querySelectorAll("[data-frame]")).toHaveLength(0);
+  });
+
   it("opens a group inside a frame in the side panel", async () => {
     await openPlate();
     fireEvent.click(await button(/^4× Constructor, Iron Plate./));
@@ -240,16 +257,21 @@ describe("drill-down into a bubble", () => {
 
 describe("the transport motion", () => {
   beforeEach(() => answer(productionGraphFactories));
-  const moving = (svg: HTMLElement) => svg.querySelectorAll("animateMotion");
+  // A moving glyph rides its line in the march layer over the canvas (ADR-0062 amendment build PR 4), never in the canvas.
+  const moving = (svg: HTMLElement) => svg.parentElement!.querySelectorAll("[data-march-layer] animateMotion");
 
   it("moves the glyph along its edge under System when the operator has not asked for reduced motion", async () => {
     wideScreen(false);
     const svg = await openPlate();
     expect(moving(svg)).toHaveLength(1);
-    const edge = svg.querySelector("animateMotion")!;
+    const edge = moving(svg)[0]!;
     expect(edge.getAttribute("path")).toMatch(/^M[\d. -]+L/);
     expect(edge.getAttribute("repeatCount")).toBe("indefinite");
     expect(edge.closest("g[data-moving]")?.getAttribute("data-moving")).toBe("true");
+    expect(edge.closest("g[data-moving]")?.querySelector('[data-glyph="train"]')).not.toBeNull();
+    // The canvas animates nothing and leaves out the moving glyph's resting copy.
+    expect(svg.querySelector("animateMotion")).toBeNull();
+    expect(svg.querySelector('[data-glyph="train"]')).toBeNull();
   });
 
   it("stays still under System with reduced motion, and the toggle's On overrides that", async () => {
@@ -288,12 +310,17 @@ describe("the transport motion", () => {
     Reflect.deleteProperty(document, "visibilityState");
   });
 
-  it("has no motion control on a canvas with no transport", async () => {
+  // ADR-0062 amendment build PR 3: a line with a rate marches too, so a canvas with no transport has the control when its
+  // lines can move (a canvas where nothing can move has none: SiteGraph.marching.test.tsx).
+  it("has the motion control on a canvas with no transport whose lines march", async () => {
     wideScreen(false);
     renderView();
     await overview();
     fireEvent.click(await button(/^Open factory: Iron Rod factory./));
-    await screen.findByRole("img", { name: /^Graph of Iron Rod factory/ });
-    expect(screen.queryByLabelText("Motion")).not.toBeInTheDocument();
+    const svg = await screen.findByRole("img", { name: /^Graph of Iron Rod factory/ });
+    expect(svg.querySelector("[data-glyph]")).toBeNull();
+    // The marching lines are drawn in the march layer over the canvas (ADR-0062 amendment build PR 3).
+    expect(svg.parentElement!.querySelectorAll("[data-march-layer] [data-march]").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Motion")).toHaveValue("system");
   });
 });

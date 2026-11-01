@@ -7,7 +7,7 @@ import { ApiFailure, ForbiddenError, RateLimitedError, ServerNotFoundError } fro
 import { createLogger } from "../../../platform/logger.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { softDeleteServer, upsertConfiguredServer } from "../../servers/repositories/serverRepository.js";
-import { findActiveAgent, sha256 } from "../repositories/agentRepository.js";
+import { findActiveAgent, setGameConnection, sha256 } from "../repositories/agentRepository.js";
 import { createAgentsService } from "./agentsService.js";
 import type { AgentsService } from "./agentsService.js";
 import { createEnrollmentService } from "./enrollmentService.js";
@@ -244,6 +244,30 @@ describe.skipIf(!available)("agent enrolment against a real Postgres", () => {
       expect(await agents.revoke(server.publicId, OWNER)).toEqual({ revoked: true });
       expect(await agents.revoke(server.publicId, OWNER)).toEqual({ revoked: true });
       expect(codeOf(await failureOf(enrollment.enroll(code, "0.1.0")))).toBe("enrollment_code_invalid");
+    });
+
+    it("keeps the agent's game connection (#740 follow-up): the last read only moves forward, and a revoke hides it", async () => {
+      const server = await newServer("agent");
+      await enrollment.enroll((await agents.createEnrollmentCode(server.publicId, OWNER)).code, "1.4.2");
+      const fields = async () => {
+        const { gameReachable, lastGameReadAt, modVersion } = await agents.getStatus(server.publicId);
+        return { gameReachable, lastGameReadAt, modVersion };
+      };
+      expect(await fields()).toEqual({ gameReachable: undefined, lastGameReadAt: undefined, modVersion: undefined });
+      const read = new Date("2026-10-27T12:00:00.000Z");
+      await setGameConnection(pool, server.id, { gameReachable: true, lastGameReadAt: read, modVersion: "1.4.2" });
+      expect(await fields()).toEqual({ gameReachable: true, lastGameReadAt: read.toISOString(), modVersion: "1.4.2" });
+      // An older read, then none: the stored one stays. The reachability and version take the newer snapshot's values.
+      await setGameConnection(pool, server.id, { gameReachable: false, lastGameReadAt: new Date(read.getTime() - 60_000), modVersion: "1.5.0" });
+      await setGameConnection(pool, server.id, { gameReachable: false, lastGameReadAt: null, modVersion: "1.5.0" });
+      expect(await fields()).toEqual({ gameReachable: false, lastGameReadAt: read.toISOString(), modVersion: "1.5.0" });
+      await setGameConnection(pool, server.id, { gameReachable: null, lastGameReadAt: new Date(read.getTime() + 5_000), modVersion: null });
+      expect(await fields()).toEqual({ gameReachable: undefined, lastGameReadAt: new Date(read.getTime() + 5_000).toISOString(), modVersion: undefined });
+      await agents.revoke(server.publicId, OWNER);
+      await setGameConnection(pool, server.id, { gameReachable: true, lastGameReadAt: new Date(read.getTime() + 10_000), modVersion: "9.9.9" }); // no-op once revoked
+      expect(await agents.getStatus(server.publicId)).toEqual({ enrolled: false, lastSeenAt: null, agentVersion: null, connectionKind: "agent" });
+      const stored = await admin.query("SELECT game_reachable, mod_version FROM agents.agent_credentials WHERE server_id = $1", [server.id]);
+      expect(stored.rows[0]).toEqual({ game_reachable: null, mod_version: null });
     });
 
     it("status and revoke are not found for an unknown server", async () => {

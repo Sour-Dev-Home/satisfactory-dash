@@ -60,6 +60,11 @@ enforcement action — which is evidence of practical tolerance, not a legal gua
 Epic store page or Coffee Stain's own site) before committing to any monetization
 plan.**
 
+**Owner's risk acceptance (2026-10-27):** the owner decided to monetize with ads without that read: "Accept the risk
+based on their inaction against similar mods and services that are monetized like satisfactory calculator." The
+EULA question is accepted as a risk, not resolved. ADR-0021's amendment of that date sets how (privacy-first,
+isolated ads) and keeps an off switch for a takedown request.
+
 **Game icons (#571, 2026-10-21; building icons added 2026-10-24):** the map draws resource nodes, and the Planner
 draws buildings (graph cards and the group panel), with the game's own icons, exported by the
 owner from their game install and kept in `frontend/public/game-assets/`. They are © Coffee Stain Studios,

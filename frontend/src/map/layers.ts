@@ -39,6 +39,8 @@ export interface DescribeOptions {
 export interface MapLayer<T = Factory> {
   id: string;
   label: string;
+  /** How the map's caption names the layer when its label in lower case won't do ("players' markers"; caption.ts). */
+  caption?: string;
   defaultVisible: boolean;
   /** Draws onto the map; returns the cleanup that removes everything it drew. */
   draw: (ctx: MapContext, data: T) => () => void;
