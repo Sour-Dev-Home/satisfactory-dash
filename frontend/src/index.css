@@ -152,6 +152,8 @@
   /* The Planner outline's group row before it is first laid out (`outline-row-lazy`): about a desktop row's height
      (sentence, Gets, Sends, facts, buttons). Once laid out, the row keeps its own measured size. */
   --spacing-outline-row-estimate: 11rem;
+  /* Below sm the same row wraps to about 14rem (measured on planner-large at 390 px). */
+  --spacing-outline-row-estimate-phone: 14rem;
   /* How tall the fade over a capped table's bottom edge is while rows are cut (ui/ScrollRegion): under a row's
      height, so the last row shown stays readable. */
   --spacing-scroll-fade: 1.5rem;
@@ -581,6 +583,9 @@
 @utility outline-row-lazy {
   content-visibility: auto;
   contain-intrinsic-block-size: auto var(--spacing-outline-row-estimate);
+  @media (width < theme(--breakpoint-sm)) {
+    contain-intrinsic-block-size: auto var(--spacing-outline-row-estimate-phone);
+  }
   @media print {
     content-visibility: visible;
   }

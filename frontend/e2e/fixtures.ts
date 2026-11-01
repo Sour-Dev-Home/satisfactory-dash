@@ -80,9 +80,11 @@ export { expect };
  * Before a full-page screenshot: the Planner outline's rows (`outline-row-lazy`, `content-visibility: auto`) skip their
  * paint while off screen, and a full-page capture does not count as on screen, so rows below the fold would show as empty
  * boxes. This paints every row as it looks once scrolled to. Set through the CSSOM, which the CSP allows (an injected
- * stylesheet, `toHaveScreenshot`'s `stylePath`, is a CSP violation here).
+ * stylesheet, `toHaveScreenshot`'s `stylePath`, is a CSP violation here). It first waits for the rows mounted in a
+ * transition after the first screen, so no empty placeholder row is captured.
  */
 export async function paintLazyRows(page: Page): Promise<void> {
+  await expect(page.locator('[data-outline-row="pending"]')).toHaveCount(0);
   await page.evaluate(() => {
     for (const row of document.querySelectorAll<HTMLElement>(".outline-row-lazy")) row.style.contentVisibility = "visible";
   });

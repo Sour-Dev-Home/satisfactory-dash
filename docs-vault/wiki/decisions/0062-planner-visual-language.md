@@ -313,21 +313,27 @@ per group.
   **Virtualised (2026-11-01, its own PR).** No library, and no row ever leaves the DOM once mounted, because the outline is
   the canvas's text path (keyboard, find-in-page and screen readers must reach every row). Two layers:
   - **Layout and paint:** each group row is `outline-row-lazy` (`index.css`): `content-visibility: auto` with
-    `contain-intrinsic-block-size: auto var(--spacing-outline-row-estimate)` (11rem, about a desktop row). The browser skips
+    `contain-intrinsic-block-size: auto var(--spacing-outline-row-estimate)` (11rem, about a desktop row;
+    `--spacing-outline-row-estimate-phone` 14rem below sm, where rows wrap). The browser skips
     style, layout and paint of a row away from the screen; the row stays in the DOM and the accessibility tree, focus and
     `scrollIntoView` render it on demand, and Chrome's find-in-page searches it. `auto` keeps a row's last measured size. A
     printout shows every row (`@media print`). Measured in a trace (dev box, planner-large, 1440 px): layout 13.3 to 4.3 ms,
     style 4.8 to 1.1, pre-paint 2.7 to 0.5; React's 12 ms unchanged.
   - **React's render:** the first render mounts `OUTLINE_FIRST_ROWS` (24) group rows in document order, plus the rows from
     `OUTLINE_CURRENT_BEFORE` (8) before the current row (the graph's selection, which the outline focuses) to 24 after it
-    (`mountsFirst` in `outlineModel.ts`); the rest are empty `aria-hidden` placeholders of the estimated height, replaced in
-    a `startTransition` right after the first commit (one frame or a few). A neighbour's button to a row not mounted yet
-    waits for it, as it waits for a disclosure to open. Rows inside closed factories and folds still mount only when opened.
+    (`mountsFirst` in `outlineModel.ts`); the rest are empty `aria-hidden` placeholders of the estimated height (with a
+    row's border and padding), replaced in a `startTransition` right after the first commit (one frame or a few). The
+    window is fixed by the current row at the first render (`test-hunter`: a selection moving before the transition
+    unmounted rows already shown). A neighbour's button to a row not mounted yet waits for it, as it waits for a disclosure
+    to open. Rows inside closed factories and folds still mount only when opened; they count in the order, so on an
+    overview with closed factories the first 24 places can go to hidden rows (first frame only, not correctness).
   - **Trade-offs:** for the frame or few before the transition lands, rows past the first screen are not in the DOM, so a
     screen reader or find-in-page in that window sees only the first screen. A row never laid out takes the estimated
     height, so the scrollbar can shift as rows come into view (scroll anchoring keeps what is on screen still). A full-page
     capture does not count as on screen, so `e2e/states.spec.ts` paints every row before its screenshot (`paintLazyRows` in
-    `e2e/fixtures.ts`, through the CSSOM: an injected stylesheet is a CSP violation); the baselines stay as they were.
+    `e2e/fixtures.ts`, through the CSSOM: an injected stylesheet is a CSP violation; it waits for no placeholder first);
+    the baselines stay as they were. So no baseline checks the estimated heights, and Safari (no scroll anchoring) can
+    jump when scrolling up past rows never laid out.
   **Measured after** (2026-11-01, the same e2e measurement, run on the dev box's headless Chromium with the build served
   in-process, no server; five switches each, two rounds, ms from the click; "mounted" is the frame after all 160 rows are
   in the DOM, which the e2e now also records with how many rows the first frame had). CI's own numbers come with this PR's

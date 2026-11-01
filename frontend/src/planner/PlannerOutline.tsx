@@ -258,7 +258,10 @@ export function PlannerOutline({
   useEffect(() => {
     if (!allMounted) startTransition(() => setAllMounted(true));
   }, [allMounted]);
-  const currentIndex = current === null ? undefined : shape.order.get(current);
+  // The window is fixed by the current row at the first render: if the selection moved before the transition landed, a
+  // row already mounted would otherwise fall back to an empty placeholder (and lose its focus).
+  const [firstCurrent] = useState(current);
+  const currentIndex = firstCurrent === null ? undefined : shape.order.get(firstCurrent);
   const isMounted = useCallback(
     (key: string) => allMounted || mountsFirst(shape.order.get(key), currentIndex),
     [allMounted, shape, currentIndex],
@@ -553,8 +556,9 @@ function NeighbourList({ list, word }: { list: readonly Neighbour[]; word: "from
 
 function GroupItem({ node, tree }: { node: PlannerNode; tree: string | null }) {
   const outline = useOutline();
-  // Not mounted yet (one transition away): an empty row of the estimated height, off screen, hidden from assistive tech.
-  if (!outline.isMounted(node.key)) return <li aria-hidden data-outline-row="pending" className="outline-row-lazy" />;
+  // Not mounted yet (one transition away): an empty row of the estimated height (with the row's own border and padding, so
+  // nothing shifts when it mounts), off screen, hidden from assistive tech.
+  if (!outline.isMounted(node.key)) return <li aria-hidden data-outline-row="pending" className={cn(rowClass(false), "outline-row-lazy")} />;
   const current = outline.current === node.key;
   const gets = outline.neighbours.gets.get(node.key) ?? [];
   const sends = outline.neighbours.sends.get(node.key) ?? [];
