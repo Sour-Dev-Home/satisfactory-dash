@@ -12,7 +12,8 @@ import { sectionNotes } from "../factory/bottlenecks";
 import { machineState } from "../factory/machineState";
 import { formatAmount, formatPerMinute, formatRate, unitLabel } from "../format";
 import type { AggregateFlow, Bubble, BubbleEntry, ConnectionRow, FactoryModel, Remote, ShareSplit } from "./graph/hierarchy";
-import type { DestinationCap } from "./graph/capModel";
+import { capStep, type DestinationCap } from "./graph/capModel";
+import { withStepWord } from "./graph/rateStep";
 
 /** The Factory page's Bottlenecks section: a finding has no anchor of its own, so the link goes to the section. */
 export const BOTTLENECKS_LINK = "/app/factory#bottlenecks-heading";
@@ -80,6 +81,13 @@ export function stalledOf(counts: Record<string, number>): StalledKind | undefin
   const state = soleStalledState(counts);
   return state !== undefined && isStalledKind(state) ? state : undefined;
 }
+
+/**
+ * A card's stalled kind (ADR-0062 Decision 2): its first product reads 0 and its machines share one stalled state. The lines
+ * that leave such a card are stalled unless measured moving; the canvas (`stalledLine`) and the outline share this rule.
+ */
+export const productStalledOf = (rate: Pick<PlannerRate, "currentPerMinute"> | undefined, counts: Record<string, number>): StalledKind | undefined =>
+  rate !== undefined && isZeroRate(rate) ? stalledOf(counts) : undefined;
 
 /** A rate that reads 0 as "0 of 30 items/min", or "0 items/min" when the max is 0 too. */
 const zeroRateText = (rate: Pick<PlannerRate, "maxPerMinute" | "unit">): string =>
@@ -303,15 +311,19 @@ export const destinationChipText = (destination: string, count: number): string 
 
 /**
  * A destination cap's words (ADR-0062 Decision 1), its `<title>` and button name, so its speed is never the only carrier
- * of the rate: "about 120 items/min to storage, 3 flows", "48 items/min to the Sink", "2 flows to power, rate unknown". A
- * unit with no number makes the others "at least"; a stalled cap says its machines' state.
+ * of the rate: "about 120 items/min to storage, 3 flows, medium", "48 items/min to the Sink, slow", "2 flows to power, rate
+ * unknown". A unit with no number makes the others "at least"; the step word last is the cap's speed (`capStep`, the lines'
+ * `withStepWord`); a stalled cap names no step and says its machines' state.
  */
 export function capText(cap: Pick<DestinationCap, "destination" | "count" | "rates" | "stalled">): string {
   const words = ownValue(CHIP_WORD, cap.destination) ?? `to ${cap.destination}`;
   const known = cap.rates.filter((r) => r.quality !== "unknown" && r.ratePerMinute !== null);
   const partial = known.length < cap.rates.length;
   const rate = known.map((r) => aggregateRateText(partial && r.quality !== "atLeast" ? { ...r, quality: "atLeast" } : r)).join(" and ");
-  const head = known.length === 0 ? `${destinationChipText(cap.destination, cap.count)}, rate unknown` : `${rate} ${words}${cap.count === 1 ? "" : `, ${cap.count} flows`}`;
+  const head =
+    known.length === 0
+      ? `${destinationChipText(cap.destination, cap.count)}, rate unknown`
+      : withStepWord(`${rate} ${words}${cap.count === 1 ? "" : `, ${cap.count} flows`}`, capStep(cap));
   return cap.stalled === undefined ? head : `${head}, not moving: ${machineState(cap.stalled)?.label.toLowerCase() ?? cap.stalled}`;
 }
 

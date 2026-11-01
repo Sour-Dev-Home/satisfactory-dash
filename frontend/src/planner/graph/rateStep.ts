@@ -44,3 +44,27 @@ export function rateStep(ratePerMinute: number | null | undefined, unit: string 
   if (ratePerMinute >= at.fastFrom) return "fast";
   return ratePerMinute >= at.midFrom ? "mid" : "slow";
 }
+
+/** Each step's word in the text path and the legend (ADR-0062 amendment Decision 7): the step "mid" reads "medium". */
+const STEP_WORD: ReadonlyMap<RateStep, string> = new Map([
+  ["slow", "slow"],
+  ["mid", "medium"],
+  ["fast", "fast"],
+]);
+
+/** The legend's order, slowest first. */
+export const RATE_STEPS: readonly RateStep[] = ["slow", "mid", "fast"];
+
+/** A step's word ("slow", "medium", "fast"), or null for no step. */
+export const stepWord = (step: RateStep | null): string | null => (step === null ? null : (STEP_WORD.get(step) ?? null));
+
+/**
+ * A rate's words with its step word after them, so motion and width are never the only carriers of the step (ADR-0062
+ * amendment Decision 7): "about 120 items/min" and "mid" give "about 120 items/min, medium". No step (an unknown rate, a
+ * stalled flow, a rate with no step) adds nothing. The one helper the line titles, the caps and the outline share; which
+ * step a text names (none when unknown or stalled) is each caller's, as it is for the motion.
+ */
+export function withStepWord(text: string, step: RateStep | null): string {
+  const word = stepWord(step);
+  return word === null ? text : `${text}, ${word}`;
+}

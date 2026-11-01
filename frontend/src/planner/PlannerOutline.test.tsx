@@ -65,8 +65,9 @@ describe("the outline's shape", () => {
     renderSite();
     const smelter = outlineRowOf("Smelter")!;
     expect(smelter).toHaveTextContent(/^4× Smelter make Iron Ingot: /);
-    expect(smelter).toHaveTextContent(/Gets Iron Ore from Miner Mk\.2 \(120 items\/min\)\./);
-    expect(smelter).toHaveTextContent(/Sends Iron Ingot to 8× Constructor, Iron Plate/);
+    // Each neighbour's rate names its step, as its line on the canvas does (ADR-0062 amendment Decision 7).
+    expect(smelter).toHaveTextContent(/Gets Iron Ore from Miner Mk\.2 \(120 items\/min, medium\)\./);
+    expect(smelter).toHaveTextContent(/Sends Iron Ingot to 8× Constructor, Iron Plate \(about 102\.2 items\/min, slow\)\./);
     fireEvent.click(within(smelter).getByRole("button", { name: "Miner Mk.2" }));
     expect(outlineRowOf("Miner Mk.2")).toHaveFocus();
   });

@@ -10,7 +10,7 @@ import { DesignateBar, DesignatedControls, DesignatedMarker, ErrorLine, ParentCo
 import { useDesignations } from "./DesignationContext";
 import { STALE_TEXT } from "./designationText";
 import { buildFactoryTree, levelOf, levelOwner, pathBelow, resolvePath, type FactoryTree, type TreeNode, type TreeNodeKind } from "./factoryTree";
-import { factoryConnections, groupConnections } from "./outlineModel";
+import { factoryConnections, groupConnections, stalledGroups } from "./outlineModel";
 import { PlannerOutline } from "./PlannerOutline";
 import type { PathChange } from "./PlannerView";
 import { readNesting } from "./graph/plannerPrefs";
@@ -37,6 +37,7 @@ import {
   groupLabel,
   outputLine,
   plannerNotes,
+  productStalledOf,
   remoteText,
   shareText,
   siteFindings,
@@ -174,9 +175,15 @@ function FactoryOverview({
   const rates = useMemo(() => minedRates(graph.edges), [graph]);
   const connections = useMemo(() => {
     const names = new Map(models.map((m) => [m.factory.key, m.factory.name]));
+    // The factory cards the canvas draws stalled: their flows name no step (ADR-0062 amendment Decision 7).
+    const stalled = new Map(models.flatMap((m) => {
+      const kind = productStalledOf(m.factory.products[0], m.stateCounts);
+      return kind === undefined ? [] : [[m.factory.key, kind] as const];
+    }));
     return factoryConnections(
       aggregateFlows(flowParts(graph), (key) => owner.get(key)),
       names,
+      stalled,
     );
   }, [graph, models, owner]);
   const byKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
@@ -375,7 +382,7 @@ function Detail({
     },
     [byKey, owner, factory, factoryNames],
   );
-  const connections = useMemo(() => groupConnections(rows, labelOf), [rows, labelOf]);
+  const connections = useMemo(() => groupConnections(rows, labelOf, stalledGroups(graph.nodes)), [rows, labelOf, graph]);
   // Where a factory's group stands and how a shared one splits: the old table's "Place and split", now the row's facts.
   const groupFacts = (node: PlannerNode): string[] => {
     if (factory === undefined) return [];

@@ -68,8 +68,9 @@ describe("destination caps on the factory overview", () => {
     expect(capsOf(svg, PLATE).map((c) => c.getAttribute("data-cap"))).toEqual(["storage"]);
     expect(capsOf(svg, ROD).map((c) => c.getAttribute("data-cap"))).toEqual(["sink"]);
     const storage = capOf(svg, PLATE, "storage")!;
-    expect(storage.querySelector(":scope > title")!.textContent).toBe("48 items/min to storage");
-    expect(capOf(svg, ROD, "sink")!.querySelector(":scope > title")!.textContent).toBe("about 6 items/min to the Sink");
+    // The step word last (ADR-0062 amendment Decision 7), so the speed is never the only carrier.
+    expect(storage.querySelector(":scope > title")!.textContent).toBe("48 items/min to storage, slow");
+    expect(capOf(svg, ROD, "sink")!.querySelector(":scope > title")!.textContent).toBe("about 6 items/min to the Sink, slow");
     // Art from the building icons where it has one; a single flow has no badge.
     expect(storage.querySelector("[data-cap-art]")!.getAttribute("data-cap-art")).toBe("image");
     expect(storage.querySelector("[data-cap-badge]")).toBeNull();
@@ -125,7 +126,7 @@ describe("destination caps on the factory overview", () => {
     const caps = capsOf(svg, PLATE);
     expect(caps.map((c) => c.getAttribute("data-cap") ?? `+${c.getAttribute("data-cap-more")}`)).toEqual(["storage", "depot", "power", "+2"]);
     expect(caps[0].querySelector("[data-cap-badge]")!.textContent).toBe("2");
-    expect(caps[0].querySelector(":scope > title")!.textContent).toBe("60 items/min to storage, 2 flows");
+    expect(caps[0].querySelector(":scope > title")!.textContent).toBe("60 items/min to storage, 2 flows, slow");
     expect(caps[3].querySelector("text")!.textContent).toBe("+2");
     expect(caps[3].querySelector(":scope > title")!.textContent).toBe("2 more destinations (1 flow leaving by station, 1 flow to unknown ends), 2 flows");
     // A glyph where no building's icon stands for the kind.
@@ -228,7 +229,7 @@ describe("the caps' buttons (the keyboard and screen readers)", () => {
   it("is one tab stop for every cap, arrows move between them, and the focused one is ringed in the picture", async () => {
     const svg = await overview();
     const buttons = capButtons();
-    expect(buttons.map((b) => b.textContent)).toEqual(["Iron Plate factory sends 48 items/min to storage", "Iron Rod factory sends about 6 items/min to the Sink"]);
+    expect(buttons.map((b) => b.textContent)).toEqual(["Iron Plate factory sends 48 items/min to storage, slow", "Iron Rod factory sends about 6 items/min to the Sink, slow"]);
     expect(buttons.map((b) => b.tabIndex)).toEqual([0, -1]);
     act(() => buttons[0].focus());
     expect(capOf(svg, PLATE, "storage")!.querySelector("circle")).toHaveClass("stroke-accent");
@@ -268,7 +269,7 @@ describe("a group's folded storage as a cap (Storage detail off)", () => {
     expect(capsOf(svg, group).map((c) => c.getAttribute("data-cap"))).toEqual(["storage"]);
     expect(capOf(svg, group, "storage")!.getAttribute("data-cap-step")).toBe("slow");
     const [button] = capButtons();
-    expect(button.textContent).toMatch(/ sends 48 items\/min to storage$/);
+    expect(button.textContent).toMatch(/ sends 48 items\/min to storage, slow$/);
     fireEvent.click(button);
     const panel = await screen.findByRole("region", { name: /Constructor/ });
     expect(panel).toHaveTextContent("1 flow to storage");

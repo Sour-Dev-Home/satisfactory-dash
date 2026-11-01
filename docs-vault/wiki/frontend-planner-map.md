@@ -168,6 +168,15 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   group and mask: only the item card is a hole), at most `CAP_MARCH_MAX` (40, `marching.ts`) in the settled view, beside the
   lines' `MARCH_MAX`. An estimated cap's stub leaves the canvas only while the layer moves it. The words are each cap's `<title>`
   and button (`capText`, `moreCapsText` in `plannerText.ts`); the chip words stay in the description, the panel and `FactoryFacts`.
+- The step word (ADR-0062 amendment Decision 7, build PR 5): `withStepWord` (`rateStep.ts`) appends ", slow", ", medium"
+  or ", fast" to a rate's words, nothing for no step. Lines: `flowTitle` with `flowTextStep` (none when unknown or
+  stalled; a bundle names its sum's step after its link count). Caps: `capText` with `capStep`. Outline: each
+  neighbour's rate and the connections' Rate cell (`rateWords` in `outlineModel.ts`), none for a flow out of a stalled
+  card (`stalledGroups`, or the overview's factory models, both by `productStalledOf`, the canvas's own rule).
+- The legend (`Legend` in `SiteGraph.tsx`, under the canvas): the list "Line styles" (measured, about, unknown, mixed
+  belt, pipe; "transport", the double line, when the scene has a transport; "stalled", a stop bar, when it draws a
+  stalled line in marks mode; each transport mode's glyph) and the list "Rate steps" (the speed in words, "the speed is
+  the rate, not the belt"; the three widths, 2, 3, 4, each with its word). Every sample is still.
 - Item focus (ADR-0060 build PR 3), behind `planner.itemFocus` in `plannerPrefs.ts`. It is off by default and has no
   control: set the key to `on` in the browser's localStorage. Build PR 6 removes the flag after the owner's review.
   - Focus is `{ edgeKey, item }` (`edgeKeyOf`: ends, carrier, kind and unit, as `bundleFlows` groups them, so a poll that reorders edges keeps it). It clears

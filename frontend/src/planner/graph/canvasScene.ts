@@ -11,10 +11,10 @@ import {
   hasUnknown,
   mergeStateCounts,
   outputLine,
+  productStalledOf,
   remoteText,
   shareText,
   siteNodes,
-  stalledOf,
   stalledStateText,
   UNKNOWN_FLOW_NOTE,
   type StalledKind,
@@ -22,6 +22,7 @@ import {
 import { levelOf, levelOwner, type FactoryTree, type TreeNode } from "../factoryTree";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
 import { sumCapRates, withCapStalled, type DestinationCap } from "./capModel";
+import { rateStep, withStepWord, type RateStep } from "./rateStep";
 import {
   INFERRED_FROM_NODE,
   MAX_SUMMARY_CHARS,
@@ -387,9 +388,17 @@ export const flowSureness = (flow: Pick<CanvasFlow, "rate">): string => (flow.ra
 export const stalledSourceText = (kind: StalledKind): string => `The source is ${stalledStateText({ [kind]: 1 })}`;
 
 /**
- * A flow's tooltip and accessible words:"Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated)". A bundle
- * lists every link it draws, each with its own rate: "A to B, 2 links: Iron Ingot · 30 items/min (measured); Steel Pipe
- * (rate unknown)".
+ * The step a line's words name (ADR-0062 amendment Decision 7): its rate's step, the one its width and motion show; none for
+ * an unknown rate or a stalled line, whose words say why it does not move. A transport names its step too: its rate is an
+ * average over trips, and the word is the only place its step shows.
+ */
+export const flowTextStep = (flow: Pick<CanvasFlow, "rate" | "ratePerMinute" | "unit" | "stalled">): RateStep | null =>
+  flow.rate === "unknown" || flow.stalled !== undefined ? null : rateStep(flow.ratePerMinute, flow.unit);
+
+/**
+ * A flow's tooltip and accessible words:"Train, route Ore Run: A to B: Iron Ore · 120 items/min (estimated), medium", the
+ * step word last (`withStepWord`). A bundle lists every link it draws, each with its own rate, and names the step of their
+ * sum, the one the line shows: "A to B, 2 links, slow: Iron Ingot · 30 items/min (measured); Steel Pipe (rate unknown)".
  */
 export function flowTitle(flow: CanvasFlow, from: string, to: string): string {
   const by = flow.carrier === "belt" || flow.carrier === "pipe" ? "" : `${carrierWord(flow.carrier)}${flow.routeName === undefined ? "" : `, route ${flow.routeName}`}: `;
@@ -397,10 +406,11 @@ export function flowTitle(flow: CanvasFlow, from: string, to: string): string {
   const unknownWhy = (bundle ?? [flow]).some(hasUnknown) ? `. ${UNKNOWN_FLOW_NOTE}` : "";
   // The stop bar's words (ADR-0062 Decision 2), in both state styles: a mark is never the only carrier.
   const why = `${flow.stalled === undefined ? "" : `. ${stalledSourceText(flow.stalled)}`}${unknownWhy}`;
+  const step = flowTextStep(flow);
   if (bundle !== null) {
-    return `${by}${from} to ${to}, ${bundle.length} links: ${bundle.map((p) => `${flow.routeName === undefined && p.routeName !== undefined ? `route ${p.routeName}, ` : ""}${p.label} (${flowSureness(p)})`).join("; ")}${why}`;
+    return `${by}${withStepWord(`${from} to ${to}, ${bundle.length} links`, step)}: ${bundle.map((p) => `${flow.routeName === undefined && p.routeName !== undefined ? `route ${p.routeName}, ` : ""}${p.label} (${flowSureness(p)})`).join("; ")}${why}`;
   }
-  return `${by}${from} to ${to}: ${flow.label} (${flowSureness(flow)})${why}`;
+  return `${by}${from} to ${to}: ${withStepWord(`${flow.label} (${flowSureness(flow)})`, step)}${why}`;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -430,7 +440,7 @@ type StalledLine = { note: string; kind: StalledKind | undefined };
 /** The stalled note under a product that reads 0 (`stalledNote`) and its mark, when its state has one; null for a running card. */
 function stalledLine(rate: PlannerRate | undefined, stateCounts: Record<string, number>): StalledLine | null {
   const note = stalledNote(rate, stateCounts);
-  return note === null ? null : { note, kind: stalledOf(stateCounts) };
+  return note === null ? null : { note, kind: productStalledOf(rate, stateCounts) };
 }
 
 /**

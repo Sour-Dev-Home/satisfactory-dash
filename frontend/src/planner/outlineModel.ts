@@ -1,6 +1,7 @@
 import type { Bottleneck, PlannerNode, PlannerRate, ProductionGraph } from "@satisfactory-dash/shared";
 import { isStaleNode } from "./graph/graphModel";
-import { aggregateFlows, flowParts, type AggregateFlow, type ConnectionRow } from "./graph/hierarchy";
+import { aggregateFlows, flowParts, type AggregateFlow, type ConnectionRow, type FlowQuality } from "./graph/hierarchy";
+import { rateStep, withStepWord } from "./graph/rateStep";
 import {
   aggregateRateText,
   carrierText,
@@ -15,6 +16,7 @@ import {
   isZeroRate,
   itemFromText,
   outputLine,
+  productStalledOf,
   rateText,
   stalledOf,
   stalledStateText,
@@ -118,6 +120,34 @@ export interface Neighbours {
 
 const itemOf = (f: Pick<AggregateFlow, "itemName" | "itemClassName" | "mixed">) => edgeItemText(f);
 
+/**
+ * The cards whose lines the canvas draws stalled, by key (`productStalledOf`, the canvas's rule): a group that is not stale
+ * whose first product reads 0 while its machines share one stalled state.
+ */
+export function stalledGroups(nodes: readonly PlannerNode[]): ReadonlyMap<string, StalledKind> {
+  const out = new Map<string, StalledKind>();
+  for (const node of nodes) {
+    const kind = isStaleNode(node) ? undefined : productStalledOf(node.products[0], node.stateCounts);
+    if (kind !== undefined) out.set(node.key, kind);
+  }
+  return out;
+}
+
+type RateOf = { quality: FlowQuality | "measured" | "estimated" | "unknown"; ratePerMinute: number | null; unit: string };
+
+/**
+ * A flow's rate words with the step word its line on the canvas names (ADR-0062 amendment Decision 7, `withStepWord`):
+ * "about 120 items/min, medium". No step for an unknown rate, or for a flow out of a stalled card that was not measured
+ * moving, as `withStalledFlows` rules for the lines.
+ */
+function rateWords(text: string, f: RateOf, from: string, stalled: ReadonlyMap<string, StalledKind>): string {
+  const moving = f.quality === "measured" && f.ratePerMinute !== null && f.ratePerMinute > 0;
+  const still = f.quality === "unknown" || (stalled.has(from) && !moving);
+  return withStepWord(text, still ? null : rateStep(f.ratePerMinute, f.unit));
+}
+
+const NONE_STALLED: ReadonlyMap<string, StalledKind> = new Map();
+
 /** Every group's neighbours in the graph: belts, pipes and transports between two groups, summed per item and carrier. */
 export function neighboursOf(graph: ProductionGraph): Neighbours {
   const gets = new Map<string, Neighbour[]>();
@@ -127,8 +157,9 @@ export function neighboursOf(graph: ProductionGraph): Neighbours {
     if (list === undefined) map.set(key, [n]);
     else list.push(n);
   };
+  const stalled = stalledGroups(graph.nodes);
   for (const f of aggregateFlows(flowParts(graph), (k) => k)) {
-    const rate = aggregateRateText(f);
+    const rate = rateWords(aggregateRateText(f), f, f.from, stalled);
     push(sends, f.from, { key: f.to, item: itemOf(f), rate });
     push(gets, f.to, { key: f.from, item: itemOf(f), rate });
   }
@@ -164,9 +195,14 @@ export interface OutlineConnection {
 
 /**
  * An opened site's or factory's connections (`connectionRows`), each end named by `labelOf`. Keyed by the row's own key
- * and its count among equal keys, not its index, so a poll that adds or drops a row keeps an open Details on its row.
+ * and its count among equal keys, not its index, so a poll that adds or drops a row keeps an open Details on its row. The
+ * Rate names its step (`rateWords`), none for a row out of a `stalled` group.
  */
-export function groupConnections(rows: readonly ConnectionRow[], labelOf: (key: string) => string): OutlineConnection[] {
+export function groupConnections(
+  rows: readonly ConnectionRow[],
+  labelOf: (key: string) => string,
+  stalled: ReadonlyMap<string, StalledKind> = NONE_STALLED,
+): OutlineConnection[] {
   const seen = new Map<string, number>();
   return rows.map((row) => ({
     key: `${row.key}|${nthOf(seen, row.key)}`,
@@ -176,7 +212,7 @@ export function groupConnections(rows: readonly ConnectionRow[], labelOf: (key: 
     to: labelOf(row.to),
     item: edgeItemText(row),
     itemNote: row.itemClassName === null ? null : itemFromText(row.itemFrom),
-    rate: rateText(row.rate, row.ratePerMinute, row.unit),
+    rate: rateWords(rateText(row.rate, row.ratePerMinute, row.unit), { ...row, quality: row.rate }, row.from, stalled),
     rateSort: row.rate === "unknown" ? null : row.ratePerMinute,
     carrier: carrierText(row),
     capacity: row.capacityPerMinute === null ? null : edgeCapacityText({ kind: row.carrier === "pipe" ? "pipe" : "belt", capacityPerMinute: row.capacityPerMinute }),
@@ -184,12 +220,19 @@ export function groupConnections(rows: readonly ConnectionRow[], labelOf: (key: 
   }));
 }
 
-/** The overview's connections: the flows between the level's cards (`aggregateFlows`), each end a factory's name. */
-export function factoryConnections(flows: readonly AggregateFlow[], nameOf: ReadonlyMap<string, string>): OutlineConnection[] {
+/**
+ * The overview's connections: the flows between the level's cards (`aggregateFlows`), each end a factory's name. A flow out
+ * of a `stalled` factory card names no step, as its line does not move.
+ */
+export function factoryConnections(
+  flows: readonly AggregateFlow[],
+  nameOf: ReadonlyMap<string, string>,
+  stalled: ReadonlyMap<string, StalledKind> = NONE_STALLED,
+): OutlineConnection[] {
   const seen = new Map<string, number>();
   return flows.map((f) => {
     const key = [f.from, f.to, f.itemClassName ?? "", f.carrier, f.flow, f.unit].join("\u0001");
-    return connectionOf(f, `${key}|${nthOf(seen, key)}`, nameOf);
+    return connectionOf(f, `${key}|${nthOf(seen, key)}`, nameOf, stalled);
   });
 }
 
@@ -200,7 +243,7 @@ function nthOf(seen: Map<string, number>, key: string): number {
   return n;
 }
 
-function connectionOf(f: AggregateFlow, key: string, nameOf: ReadonlyMap<string, string>): OutlineConnection {
+function connectionOf(f: AggregateFlow, key: string, nameOf: ReadonlyMap<string, string>, stalled: ReadonlyMap<string, StalledKind>): OutlineConnection {
   return {
     key,
     fromKey: f.from,
@@ -209,7 +252,7 @@ function connectionOf(f: AggregateFlow, key: string, nameOf: ReadonlyMap<string,
     to: nameOf.get(f.to) ?? "Factory not listed",
     item: itemOf(f),
     itemNote: null,
-    rate: aggregateRateText(f),
+    rate: rateWords(aggregateRateText(f), f, f.from, stalled),
     rateSort: f.quality === "unknown" ? null : f.ratePerMinute,
     carrier: carrierWord(f.carrier),
     capacity: null,

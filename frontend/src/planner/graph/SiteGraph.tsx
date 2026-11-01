@@ -59,10 +59,10 @@ import { GLYPH_MODES } from "./transportModes";
 import { MIN_LASSO_POINTS, cardsInLasso, lassoPath, toLayout } from "./lasso";
 import { BADGE_H, BADGE_W } from "./cardBadges";
 import { roundedOrthogonalPath } from "./edgeShapes";
-import { lineStroke } from "./lineWidth";
+import { LINE_W_BASE, LINE_W_FAST, LINE_W_MID, LINE_W_SLOW, lineStroke } from "./lineWidth";
 import { CARD_STACK_OFFSET, MARCH_SETTLE_MS, PULSE_DASH, PULSE_MIN_W, marchCandidates, marchHoles, marchingLines, type MarchHole } from "./marching";
 import { glyphCandidates, movingGlyphs, type GlyphCandidate } from "./glyphMotion";
-import type { RateStep } from "./rateStep";
+import { RATE_STEPS, stepWord, type RateStep } from "./rateStep";
 import { useSettled } from "./useSettled";
 import {
   BUBBLE_D,
@@ -1712,7 +1712,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         )}
       </div>
 
-      <Legend modes={modes} />
+      <Legend modes={modes} transport={transports.length > 0} stalled={marks && layout.edges.some((e) => e.flow.stalled !== undefined)} />
     </div>
   );
 }
@@ -2537,13 +2537,79 @@ const LEGEND: readonly { label: string; edge: EdgeStyle }[] = [
   { label: "pipe", edge: { mixed: false, carrier: "pipe", rate: "measured" } },
 ];
 
-/** The samples. Why an item or a rate can be unknown (#728 step 5) is under the page's "About this data" (PlannerPanel). */
-function Legend({ modes }: { modes: readonly string[] }) {
-  return <LegendSamples modes={modes} />;
+/** Each step's width sample: the line widths of `lineWidth.ts`. */
+const STEP_WIDTH: ReadonlyMap<RateStep, number> = new Map([
+  ["slow", LINE_W_SLOW],
+  ["mid", LINE_W_MID],
+  ["fast", LINE_W_FAST],
+]);
+
+type LegendProps = {
+  /** The modes the scene's transports use (a glyph row each). */
+  modes: readonly string[];
+  /** The scene draws a transport: the double line's row. */
+  transport: boolean;
+  /** The scene draws a stalled line in marks mode: the stop bar's row. */
+  stalled: boolean;
+};
+
+/**
+ * The samples, then the rate rows (ADR-0062 amendment Decision 7): the speed's words and the three widths. Every sample is
+ * still (nothing in the legend moves, whatever the Motion control says). Why an item or a rate can be unknown (#728 step 5)
+ * is under the page's "About this data" (PlannerPanel).
+ */
+function Legend(props: LegendProps) {
+  return (
+    <div className="grid gap-1">
+      <LegendSamples {...props} />
+      <RateLegend />
+    </div>
+  );
 }
 
-/** A legend sample at the base width (its rows for the width steps come with amendment build PR 5); a mixed belt's sample
- *  wears the inner stroke, as on the canvas. */
+/** The step rows: the speed is the rate (Decision 5: not the belt's tier), and the width says the same step. */
+function RateLegend() {
+  return (
+    <ul aria-label="Rate steps" className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-sm text-muted">
+      <li>Speed: slow, medium, fast. The speed is the rate, not the belt.</li>
+      <li className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span>Width:</span>
+        {RATE_STEPS.map((step) => (
+          <span key={step} className="flex items-center gap-1" data-legend-width={step}>
+            <svg aria-hidden="true" viewBox="0 0 24 6" className="h-1.5 w-6 shrink-0">
+              <line x1={1} y1={3} x2={23} y2={3} fill="none" strokeWidth={STEP_WIDTH.get(step)} className="stroke-muted" />
+            </svg>
+            <span>{stepWord(step)}</span>
+          </span>
+        ))}
+      </li>
+    </ul>
+  );
+}
+
+/** A transport's double line (`lineStroke`'s `double`): its wide stroke and the canvas-coloured gap, two rails. */
+function LegendDoubleLine() {
+  const stroke = lineStroke({ carrier: "train", mixed: false, ratePerMinute: null, unit: "items/min" });
+  return (
+    <svg aria-hidden="true" viewBox="0 0 32 8" className="h-2 w-8 shrink-0">
+      <line x1={1} y1={4} x2={31} y2={4} fill="none" strokeWidth={stroke.width} className="stroke-muted" />
+      {stroke.inner !== null && <line x1={1} y1={4} x2={31} y2={4} fill="none" strokeWidth={stroke.inner} data-double-gap="" className="stroke-surface" />}
+    </svg>
+  );
+}
+
+/** A stalled line's end (Decision 2): the line runs into its stop bar, here in backed up's tone (the marker's shape). */
+function LegendStopBar() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 32 12" className="h-3 w-8 shrink-0">
+      <line x1={1} y1={6} x2={28} y2={6} fill="none" strokeWidth={LINE_W_BASE} className="stroke-muted" />
+      <rect x={27} y={0} width={4} height={12} rx={1} data-stop-bar="backedUp" className={cn("fill-current", stateMarkTone("backedUp"))} />
+    </svg>
+  );
+}
+
+/** A legend sample at the base width (the width steps have their own row); a mixed belt's sample wears the inner stroke,
+ *  as on the canvas. */
 function LegendLine({ edge }: { edge: EdgeStyle }) {
   const stroke = lineStroke({ ...edge, ratePerMinute: null, unit: "items/min" });
   const dash = edgeDash(edge.rate);
@@ -2557,7 +2623,7 @@ function LegendLine({ edge }: { edge: EdgeStyle }) {
   );
 }
 
-function LegendSamples({ modes }: { modes: readonly string[] }) {
+function LegendSamples({ modes, transport, stalled }: LegendProps) {
   return (
     <ul aria-label="Line styles" className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-sm text-muted">
       {LEGEND.map(({ label, edge }) => (
@@ -2568,6 +2634,18 @@ function LegendSamples({ modes }: { modes: readonly string[] }) {
           <span>{label}</span>
         </li>
       ))}
+      {transport && (
+        <li className="flex items-center gap-2">
+          <LegendDoubleLine />
+          <span>transport</span>
+        </li>
+      )}
+      {stalled && (
+        <li className="flex items-center gap-2">
+          <LegendStopBar />
+          <span>stalled</span>
+        </li>
+      )}
       {modes.map((mode) => (
         <li key={mode} className="flex items-center gap-2">
           <svg aria-hidden="true" viewBox="-15 -15 30 30" className="size-5 shrink-0">

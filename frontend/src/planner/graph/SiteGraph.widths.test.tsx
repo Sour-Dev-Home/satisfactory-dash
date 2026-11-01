@@ -79,7 +79,8 @@ describe("line widths on the canvas", () => {
   it("widens a bundle by its summed rate: 120 + 400 items/min is fast though each link alone is not", async () => {
     const lime = { ...DATA.edges[0], itemClassName: "Desc_Stone_C", itemName: "Limestone", ratePerMinute: 400, rate: "measured" as const };
     const svg = await openGraph({ ...DATA, edges: [...DATA.edges, lime] });
-    const bundle = lineFor(svg, /, 2 links: /);
+    // The title names the step its width shows (ADR-0062 amendment Decision 7): the sum's, fast.
+    const bundle = lineFor(svg, /, 2 links, fast: /);
     expect(bundle.title).toMatch(/120 items\/min.*400 items\/min/);
     const label = svg.querySelector(`[data-edge-label="${bundle.path.parentElement!.getAttribute("data-edge")}"]`)!;
     expect(label.querySelector(":scope > text")?.textContent).toBe("520 items/min");

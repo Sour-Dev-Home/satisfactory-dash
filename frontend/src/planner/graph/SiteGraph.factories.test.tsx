@@ -131,6 +131,15 @@ describe("an opened factory", () => {
     const legend = screen.getByRole("list", { name: "Line styles" });
     expect(within(legend).getByText("train")).toBeInTheDocument();
     expect(within(legend).queryByText("truck")).not.toBeInTheDocument();
+    // The transport's double line (amendment build PR 5): its wide stroke and the canvas-coloured gap, as on the canvas.
+    const double = within(legend).getByText("transport").closest("li")!;
+    const [rails, gap] = [...double.querySelectorAll("line")];
+    expect(rails.getAttribute("stroke-width")).toBe("6");
+    expect(gap.getAttribute("stroke-width")).toBe("3");
+    expect(gap).toHaveAttribute("data-double-gap");
+    expect(gap).toHaveClass("stroke-surface");
+    // The train's line names its step too: the label's rate, then the step word.
+    expect(titles.some((t) => /^Train, route Ore Run: .*\(estimated\), (slow|medium|fast)/.test(t ?? ""))).toBe(true);
   });
 
   it("hides storage behind the toggle: terminal storage becomes a chip on the group that fills it, and the choice is remembered", async () => {

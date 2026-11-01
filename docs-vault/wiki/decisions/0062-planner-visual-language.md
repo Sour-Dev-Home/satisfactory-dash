@@ -88,8 +88,8 @@ every line shows its rate; see "Amendment, 2026-10-27" at the end.**
 - **Graph sync.** Selecting a card moves focus and scroll to its row; "Show in graph" sets the selection. One shared selection.
 - **All connections.** One table behind a disclosure, 5 columns (From, To, Item, Rate, Carrier) with `aria-sort` headers. Capacity
   and Flow move into a row's detail. The groups table goes.
-- **Cost.** DOM only; factories over 20 groups start closed. Virtualise only if a measured render passes 50 ms
-  **[NEEDS MEASUREMENT]**.
+- **Cost.** DOM only; factories over 20 groups start closed. Virtualise only if a measured render passes 50 ms. Measured
+  (build PR 4's CI run, recorded in amendment build PR 5): it passes on CI, see "Values chosen in build PR 4 (outline)".
 - **Accessibility.** Headings in order, `aria-expanded` on disclosures, `aria-current` on the row matching the graph selection, the
   `StateMark` always followed by its word. Axe and a keyboard-only e2e in build PR 4.
 
@@ -189,8 +189,19 @@ per group.
 - **Frame times.** A new e2e test (`e2e/planner-graph.spec.ts`, "destination caps move in the march layer ...", scenario
   `planner-caps-large`: 48 factory cards, every one with one to five kinds of end, more than 100 caps) records fitted, all
   in view and Motion Off frame times as `caps-frame-times.json` and holds the lines' regression bound on desktop (fitted p95
-  at most twice Off's plus 17 ms). CI's numbers **[NEEDS MEASUREMENT]**: to record from the PR's e2e run. A second test
-  reaches a cap by keyboard from the cards' buttons, moves with the arrows, runs axe and opens the factory.
+  at most twice Off's plus 17 ms). A second test reaches a cap by keyboard from the cards' buttons, moves with the arrows,
+  runs axe and opens the factory.
+  **Measured** (CI headless, software raster, PR #813's e2e run 40719274213, recorded in amendment build PR 5; 132 caps,
+  `CAP_MARCH_MAX` 40; p50 / p95 / max ms over 2 s, frames, caps moving in brackets):
+  - 1440 px: fitted (31) 16.7 / 33.4 / 50, 95 frames; all in view (40) 16.7 / 33.4 / 50, 102 frames; off 16.7 / 16.7 / 16.8,
+    121 frames.
+  - 390 px: fitted (7) 16.7 / 16.8 / 16.8; all in view (40) 16.7 / 16.7 / 16.8; off 16.7 / 16.7 / 16.8 (120 to 121 frames).
+  **The cap rule** (the lines', amendment build PR 3): desktop "all in view" p95 is 33.4, two whole vsyncs, one frame (16.7)
+  over Off's: inside "within a frame of off" (may rise) and 0.4 past "passes 33 ms" (lower) only by timer jitter, the
+  boundary where both clauses meet. **`CAP_MARCH_MAX` stays 40.** Not raised: the desktop already drops about one frame in
+  six at p95, and more caps would push toward three vsyncs. Not lowered: the fitted view moves 31 caps at the same 33.4 as
+  40, so a lower cap would not buy the frame back (the cost does not follow the count on CI's software raster). The
+  regression bound (at most twice Off's p95 plus 17, 50.4) held. The phone holds one frame throughout.
 - **Screenshots.** A factory card with destinations grows one row, so the overview baselines with such cards change (the
   `planner-factories` cards: storage on Iron Plate, the Sink on Iron Rod), and a factory's canvas with Storage detail off.
   Screenshots run under reduced motion with animations disabled, so they show the still caps.
@@ -244,8 +255,16 @@ per group.
   `planner-large` (160 groups, 210 lines, one site): in jsdom (vitest on the dev box, the whole Planner panel, three
   cold renders) 89 to 94 ms; in the browser, Graph to Outline, to the first frame after the commit and to the next
   (`e2e/planner-graph.spec.ts`, "the outline of 160 groups records its render time", attached as
-  `outline-render-times.json`) **[NEEDS MEASUREMENT]**: to record from the PR's CI run. Virtualise only if the browser's
-  number passes 50 ms (jsdom is several times slower than Chromium, so its number is an upper bound, not the trigger).
+  `outline-render-times.json`). Virtualise only if the browser's number passes 50 ms (jsdom is several times slower than
+  Chromium, so its number is an upper bound, not the trigger).
+  **Measured** (CI headless, software raster, PR #817's e2e run 41338886478, recorded in amendment build PR 5; three
+  switches each, ms from the click; "rendered" is the first frame after React's commit, "painted" the frame after it):
+  - 1440 px: rendered 23.6, 30.6, 54.9; painted 58.9, 77.4, 102.8.
+  - 390 px: rendered 40.1, 22.9, 26.2; painted 70.1, 58.0, 58.0.
+  **It passes 50 ms:** every painted number (58 to 103) and one rendered one (54.9). By this rule the outline is to be
+  virtualised; that is not built in amendment build PR 5 (out of its scope) and waits for its own PR. Note for it: CI is
+  software raster (the marching baseline's 117 ms p95 was the same kind of number), so a real GPU's figure may be lower;
+  that PR can measure on a GPU too, but the rule as written reads the browser's number, and CI's passes.
 - **What a switch keeps.** The open and closed choices are explicit values (`test-hunter`: stored as "flipped from the
   default", a poll moving a factory across 20 groups reversed them). Switching to the graph unmounts the outline, so its
   disclosures, sort and open Details start afresh on the way back; only the selection is kept (the cost of not keeping
@@ -282,8 +301,8 @@ transport uses a different line style."
 ### Owner answers (2026-10-27)
 1. **Colour:** "Speed + thickness only". Colour keeps its meaning of carrier and kind: pipe is info, a mixed belt is warn, an
    unknown line is the unknown style, stalled is bad or warn (Decision 2). Rate never changes colour.
-2. **Moving lines:** "Lines in view, capped". The cap is set after a measurement on a factory of 200+ edges
-   **[NEEDS MEASUREMENT]**.
+2. **Moving lines:** "Lines in view, capped". The cap is set after a measurement on a factory of 200+ edges: measured in
+   build PR 3 (210 lines, `MARCH_MAX` 60; see "Values chosen in build PR 3").
 3. **Transports:** "Double line".
 
 ### Decisions
@@ -485,13 +504,57 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
 - **Frame times.** A new e2e test (`e2e/planner-graph.spec.ts`, "transport glyphs move in the march layer ...", scenario
   `planner-transports-large`: the caps' 48-factory overview plus 48 transports of every mode and rate quality, more than the
   cap) records fitted, all in view and Motion Off frame times as `transport-frame-times.json` with glyphs, lines and caps all
-  moving, and holds the lines' regression bound on desktop (fitted p95 at most twice Off's plus 17 ms). CI's numbers
-  **[NEEDS MEASUREMENT]**: to record from the PR's e2e run.
+  moving, and holds the lines' regression bound on desktop (fitted p95 at most twice Off's plus 17 ms).
+  **Measured** (CI headless, software raster, PR #814's e2e run 40726749223, recorded in amendment build PR 5; 48
+  transports, `GLYPH_MOVE_MAX` 40; p50 / p95 / max ms over 2 s, frames, glyphs moving in brackets; caps and lines move too):
+  - 1440 px: fitted (9) 16.7 / 33.4 / 50, 93 frames; all in view (40) 16.7 / 33.4 / 50, 88 frames; off 16.7 / 16.8 / 16.8,
+    121 frames.
+  - 390 px: fitted (2) 16.7 / 16.7 / 16.8; all in view (14) 16.7 / 16.8 / 16.8; off 16.7 / 16.7 / 16.8 (120 to 121 frames).
+  **The cap rule:** as for the caps, desktop "all in view" is two vsyncs, one frame over Off's, the boundary of both
+  clauses. **`GLYPH_MOVE_MAX` stays 40:** 9 glyphs (with the scene's caps and lines) already cost the same 33.4 as 40, so
+  the second frame is the scene's moving caps and lines, not the glyph count; a lower glyph cap would not remove it and a
+  higher one has nothing more to show on this scene. The regression bound held; the phone holds one frame.
 - **Legend.** Unchanged: it shows each mode's glyph, no transport line sample (build PR 5 adds the double line's row).
 - **Screenshots.** Every canvas with a transport changes its line: `planner-factory-transports` (the four modes) and any
   baseline that shows the opened Iron Plate factory with the fixture's train (`planner-factory-canvas` and the other
   `planner-factory-*` and designation states drawn inside it). The overview draws no transport (the train stays inside one
   factory). Screenshots run under reduced motion, so the glyphs stand at rest in their pills as before.
+
+### Values chosen in build PR 5 (2026-11-01)
+- **The step word** (`planner/graph/rateStep.ts`): `stepWord` gives "slow", "medium" (the step `mid`; "mid" reads badly
+  aloud) and "fast", and `withStepWord(text, step)` appends ", <word>" or nothing for no step. The one helper every text
+  path uses; which step a text names is each caller's, as it is for the motion:
+  - **Lines** (`flowTitle`, the `<title>` of the line and of its label, the line's only accessible words): `flowTextStep`,
+    the rate's `rateStep` (a bundle's summed rate, the one its width shows), none for an unknown rate or a stalled line.
+    "Train, route Ore Run: A to B: Iron Ore · about 120 items/min (estimated), medium"; a bundle names it after its link
+    count, "A to B, 2 links, fast: ...". A stalled line keeps "The source is backed up" and names no step, in both state
+    styles (it does not move in either). A transport names its rate's step though its glyph's speed follows the line's
+    length: the word is the only place its step shows. The item bubbles' names are per item, not the line's step: unchanged.
+  - **Caps** (`capText`: the cap's `<title>` and its button): `capStep`, so the word is the speed the cap moves at (a cap of
+    items and fluid takes the faster unit's), last: "about 120 items/min to storage, 3 flows, medium". A stalled cap names
+    none and keeps ", not moving: backed up"; an unknown one keeps "rate unknown".
+  - **Outline** (`outlineModel.ts`): each neighbour's rate ("Gets Iron Ore from Miner Mk.2 (120 items/min, medium)") and the
+    "All connections" Rate cell; it still sorts by the number. None for an unknown rate, or for a flow out of a stalled card
+    not measured moving (`withStalledFlows`' rule), so the outline and the canvas agree: the stalled cards are
+    `stalledGroups` (groups) and, on the overview, the factory models, both by `productStalledOf` (`plannerText.ts`, now
+    also `canvasScene`'s `stalledLine` rule). Known limit: in an opened factory a closed bubble card is stalled by its
+    merged states, while the outline's neighbours are per group.
+- **The legend** (`SiteGraph.tsx`, `Legend`): two lists under the canvas.
+  - "Line styles", as before, plus **transport** (the double line, `lineStroke`'s 6-wide stroke with its 3-wide
+    `stroke-surface` gap) when the scene draws a transport, and **stalled** (a line into backed up's stop bar) when it draws
+    a stalled line in marks mode. Like the glyph rows, a row shows only when the canvas has its kind, so a site without
+    them keeps its legend short.
+  - "Rate steps": a speed row in words, "Speed: slow, medium, fast. The speed is the rate, not the belt." (Decision 5),
+    and a width row, "Width:" then three `stroke-muted` samples at 2, 3 and 4 (`LINE_W_*`), each with its word. Speed is
+    words, not moving samples: nothing in the legend animates, so Motion Off and reduced motion need no rule there.
+  - Both lists wrap (`flex-wrap`, `text-sm`), so at 390 px they take more rows, never a scrollbar.
+- **Proof.** Unit and RTL tests for the helper, each text path and the legend rows. Axe: every Planner graph state in
+  `e2e/states.spec.ts` already runs axe with the legend on screen (`planner-stalled-graph` with the stalled row,
+  `planner-factory-transports` with the transport row). No new e2e test.
+- **Screenshots.** Every Planner state with the graph shows the legend, so each grows by the rate list (and
+  `planner-factory-transports`, the opened Iron Plate factory states and `planner-stalled-graph` by their new row). The
+  outline states show the step words in the neighbours' rates (`planner-outline-attention`, and the phone states that open
+  on the outline).
 
 ### Consequences
 - The graph reads rate at a glance by speed and width, with colour left free for carrier and state.
