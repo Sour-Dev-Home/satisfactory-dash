@@ -195,3 +195,43 @@ tag" method, not its code snippet: `frontend/index.html` carries `<meta name="go
 CSP and Decision 2 (no ad request before consent) are untouched. The snippet arrives with build step 2's consent gate and
 step 4's CSP change. `e2e/build-output.spec.ts` checks that the tag and ads.txt name the same publisher and that no
 AdSense script ships before then. The doc captures of build step 1 are still to come.
+
+### Note, 2026-11-01: build step 1 is complete; the captures contradict Decision 3's domain list
+[`adsense-csp-and-cmp-2026-11-01.md`](../../raw-sources/adsense-csp-and-cmp-2026-11-01.md) captures Google's CSP, CMP,
+limited-ads, crawler-login and placement pages, so build step 1 is complete. No decision changes here; the owner decides
+what follows from the contradictions below.
+
+Resolved [NEEDS VERIFICATION] items:
+- **Decision 1 (is Google's CMP enough):** yes. The Privacy & messaging European regulations message is a Google-certified
+  TCF CMP ("Google LLC CMP", ID 300; E3, E4). It is turned on by picking Google's CMP at site review, which creates the
+  message automatically, or by publishing one in Privacy & messaging (E5, E6). It needs a referrer policy that sends the
+  Referer cross-origin; the current `strict-origin-when-cross-origin` qualifies (E6). Withdrawal is AdSense's automatic
+  revocation link or `googlefc.callbackQueue.push(googlefc.showRevocationMessage)` (E7, E10). A US state regulations
+  opt-out message ("Do Not Sell or Share", IAB GPP) also exists (E12).
+- **Decision 6 (AdSense's own limits):** no numeric per-page limit. Ads must not exceed publisher content, never appear on
+  screens without content or used for alerts or navigation, or on error or other dead-end screens; labels are only
+  "Advertisements" or "Sponsored Links"; take care near navigation and game windows; no ads in desktop applications (so
+  never in the edge agent) (E16-E18). These agree with Decision 6.
+- **Decision 2 inputs (limited ads):** limited ads are **on by default**; they serve when there is no Purpose 1 consent and
+  use invalid-traffic-only cookies, local storage and Shared Storage without consent, which Google leaves to the
+  publisher's legal judgement; they can be turned off under Brand Safety > Blocking controls > Ad serving (E8, E13).
+
+Contradictions and new constraints (for the owner):
+- **Decision 3 contradicts the capture.** Decision 3 plans an app CSP that "allows Google's ad domains". Google supports
+  **no domain allowlist**: only a strict CSP with a per-response nonce, `'strict-dynamic'`, `'unsafe-eval'` and `https:`
+  fallbacks, and "more restrictive policies may break without notice" (E1, E2). Its example sets no `default-src`, so
+  frames, images and fetches are unrestricted in it. The site's CSP today is a static `_headers` file, which cannot carry a
+  per-response nonce. Whether a hash-based strict CSP works is not documented.
+- **Decision 2 and build step 2's proof ("no ad request before consent").** Google's CMP is deployed by the AdSense tag
+  itself (E5-E7), so `adsbygoogle.js` must load before the user chooses; ad requests can be held with `pauseAdRequests=1`,
+  during which "various scripts are still loaded" (E9). Google also says not to call its ad tag without Purpose 1 consent,
+  while its own table serves limited ads without it (E8). With limited ads on (the default), ads are requested without
+  consent. Build step 2 must choose between these.
+- **Decision 5 (crawler account).** The crawler login is available only after the account is activated, needs Search
+  Console verification, and takes a login URL plus GET or POST parameters that make the server "return a cookie" (E15).
+  Whether the app's password login (a JSON POST to the API origin, not the app origin) fits that form is
+  [NEEDS VERIFICATION] in build step 3.
+
+Still [NEEDS VERIFICATION]: frame/img/connect hosts (not documented, and unsupported by E1); the CMP script's origin; a
+hash-based strict CSP; whether Google's CMP holds ad requests until a choice by itself; Google's processor or controller
+role; which CMP option the owner picked when requesting the review.
