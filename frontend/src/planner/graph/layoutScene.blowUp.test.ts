@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { AUTO_KEY, P, T, designated, treeId, treeWorld, wideTreeWorld } from "../../test/plannerTree";
+import { AUTO_KEY, P, T, designated, treeId, treeWorld, wideTreeWorld, withoutParents } from "../../test/plannerTree";
 import { buildFactoryTree } from "../factoryTree";
 import { EXPAND_MAX_CARDS, expandAllKeys, overviewScene } from "./canvasScene";
 import { COLLAPSE_W, FRAME_HEADER_H, NODE_PAD_X, PILL_HIT, clearLayoutMemo, layoutScene, layoutStats, type LaidFrame, type LaidNode } from "./layoutSite";
@@ -138,8 +138,8 @@ describe("the blow-up benchmark (ADR-0061 Decision 5, recorded in the ADR)", () 
     const t = buildFactoryTree(w.graph, w.designations);
     expect(w.graph.nodes).toHaveLength(160);
     // One factory of 59 groups at the top level, blown up: the most cards one frame can hold under the cap.
-    const one = wideTreeWorld(1, 1, EXPAND_MAX_CARDS - 1);
-    const flat = buildFactoryTree(one.graph, one.designations, false);
+    const one = withoutParents(wideTreeWorld(1, 1, EXPAND_MAX_CARDS - 1));
+    const flat = buildFactoryTree(one.graph, one.designations);
     const timings: Record<string, number> = {};
     const cases: [string, typeof w.graph, typeof t, ReadonlySet<string>][] = [
       ["closed", w.graph, t, new Set()],

@@ -978,7 +978,7 @@ export const SCENARIOS = {
   "planner-merge-split": plannerMergeSplit,
   "planner-merge-apart": plannerMergeApart,
   "planner-merge-stale": { ...plannerMergeSplit, plannerDesignationReplace: fail(409, plannerDesignationStaleError) },
-  // ADR-0061 build PR 6: nested factories (with `planner.nesting` on): Main base > Smelters (own machines) > Plates and Rods,
+  // ADR-0061 build PR 6: nested factories: Main base > Smelters (own machines) > Plates and Rods,
   // beside the automatic Screws, for a parent's breadcrumb level and a card blown up in place.
   "planner-nested": plannerNested,
   // The iron site without its recycle loop's two connections: the recycler stands alone, so an item filter (Iron Ingot: 4 of

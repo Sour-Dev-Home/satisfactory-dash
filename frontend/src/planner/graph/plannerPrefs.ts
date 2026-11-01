@@ -1,5 +1,4 @@
 import { useCallback, useState } from "react";
-import { IS_DEMO } from "../../demo/mode";
 
 /**
  * The planner canvas's per-viewer choices (ADR-0055 Decision 6): whether storage is drawn in detail, and whether the
@@ -75,17 +74,6 @@ export const writeStateStyle = (pref: StateStylePref): void => write(STATE_STYLE
 export const ITEM_FOCUS_KEY = "planner.itemFocus";
 
 export const readItemFocus = (): boolean => read(ITEM_FOCUS_KEY) === "on";
-
-/**
- * The nesting feature flag (ADR-0061 Decision 7): the factory tree, its levels and the breadcrumb ship off until the owner
- * reviews them on the demo (build PR 6), which then removes this flag. Off, every factory is top level, as before. Only
- * "on" turns it on; there is no control for it in the UI. A path in the address is read either way.
- * The demo build (ADR-0061 build PR 6) turns it on by default, so the owner reviews it on the demo site; there "off" turns it
- * off, to compare. `IS_DEMO` is a build-time constant, so the production build keeps only the "on" check.
- */
-export const NESTING_KEY = "planner.nesting";
-
-export const readNesting = (): boolean => (IS_DEMO ? read(NESTING_KEY) !== "off" : read(NESTING_KEY) === "on");
 
 export const COLLAPSED_KEY = "planner.collapsed";
 /** At most this many collapsed cards are kept, each key at most this long: a hand-edited value cannot grow without bound. */

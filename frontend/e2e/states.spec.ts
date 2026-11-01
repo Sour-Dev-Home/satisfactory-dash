@@ -116,9 +116,6 @@ interface StateCase {
   storage?: Readonly<Record<string, string>>;
 }
 
-/** ADR-0061: the nesting flag, off by default outside the demo build until the owner's review. */
-const NESTING_ON = { "planner.nesting": "on" } as const;
-
 /** Stands in for the browser's push state before the page loads. */
 async function stubPushBrowser(page: Page, state: "off" | "subscribed" | "denied") {
   await page.addInitScript((s) => {
@@ -270,7 +267,7 @@ const CASES: StateCase[] = [
   { scenario: "factory-many-machines", path: "/app/factory", shows: "Showing 50 of 55 machines." },
   // ADR-0062 F.2: the table grouped by the Planner's factories and groups, then "Other machines"; the flat fallback.
   { scenario: "factory-grouped", path: "/app/factory", shows: /^Other machines · 1 machine$/ },
-  { scenario: "factory-grouped-nested", path: "/app/factory", shows: /^Main base · 5 machines · 1 backed up$/, storage: NESTING_ON },
+  { scenario: "factory-grouped-nested", path: "/app/factory", shows: /^Main base · 5 machines · 1 backed up$/ },
   { scenario: "factory-groups-error", path: "/app/factory", shows: "The Planner's factories could not be read, so the machines are listed in one table." },
   // ADR-0048 (#349), the Factory page's Bottlenecks section (the default scenario shows findings with a belt cap).
   { scenario: "default", name: "bottlenecks-belt-cap", path: "/app/factory", shows: /Capped by: Conveyor Belt Mk.1/ },
@@ -525,7 +522,7 @@ const CASES: StateCase[] = [
       await page.getByRole("button", { name: "Select Constructor", exact: true }).click();
     },
   },
-  // ADR-0061 build PR 6, with `planner.nesting` on: a parent's level (its own machines beside its two factories, under the
+  // ADR-0061 build PR 6: a parent's level (its own machines beside its two factories, under the
   // breadcrumb "All factories / Main base / Smelters"), and the overview with Main base and Smelters blown up in place.
   {
     scenario: "planner-nested",
@@ -533,7 +530,6 @@ const CASES: StateCase[] = [
     path: "/app/planner",
     shows: "All factories",
     clock: FACTORIES_NOW,
-    storage: NESTING_ON,
     act: async (page) => {
       // Anchored and without the parent's own-machines card: a string name matches as a substring, so "Smelters" would
       // also match "Smelters (own machines)" (and the canvas card's name goes on past the factory's).
@@ -548,7 +544,6 @@ const CASES: StateCase[] = [
     path: "/app/planner",
     shows: "Fit to view",
     clock: FACTORIES_NOW,
-    storage: NESTING_ON,
     act: async (page) => {
       await page.getByRole("button", { name: "Graph", exact: true }).click();
       const overview = page.getByRole("img", { name: /^Graph of Factories/ });

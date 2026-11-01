@@ -6,7 +6,7 @@ import { groupLabel } from "../planner/plannerText";
 
 /**
  * ADR-0062 F.2, pure: the Factory page's machines grouped the way the Planner shows them, by factory (with ADR-0061's
- * parents, when nesting is on) and then by group, from the same production graph and designations reads. Each machine is
+ * parents) and then by group, from the same production graph and designations reads. Each machine is
  * listed once: under the group that names its id first, in the tree's order (a group shared between factories goes under
  * the factory that owns it, `factoryOfNode`), and whatever no group names under "Other machines".
  */
@@ -55,7 +55,6 @@ export function groupMachines(
   buildings: readonly FactoryBuilding[],
   graph: ProductionGraph | undefined,
   designations: readonly PlannerDesignation[] | undefined,
-  nesting: boolean,
 ): MachineGrouping | null {
   if (graph === undefined) return null;
   // Ids come from the game server: a Map. A repeated id (never expected) groups its first building; the others go under
@@ -81,7 +80,7 @@ export function groupMachines(
   };
 
   const owner = factoryOfNode(graph);
-  const tree = buildFactoryTree(graph, designations, nesting);
+  const tree = buildFactoryTree(graph, designations);
   const sectionOf = (entry: TreeNode): MachineFactory[] => {
     if (entry.kind === "parent") {
       const parts = entry.childKeys.flatMap((k) => {

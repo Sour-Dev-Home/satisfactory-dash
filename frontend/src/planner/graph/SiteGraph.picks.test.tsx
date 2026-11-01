@@ -77,7 +77,7 @@ describe("the overview's Select tool (the owner, 2026-10-27)", () => {
     expect(select).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(select);
     expect(select).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("Click factories to pick them for a merge; Escape clears.")).toBeInTheDocument();
+    expect(screen.getByText("Click factories to pick them to merge, group or move; Escape clears.")).toBeInTheDocument();
     const [first, second] = factoryCards(svg);
     fireEvent.click(first!);
     fireEvent.click(second!);

@@ -10,11 +10,10 @@ import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { UNDO_DONE } from "./designationChanges";
 import { CYCLE_TEXT, DEPTH_TEXT, SHAPE_TEXT, STALE_TEXT } from "./designationText";
-import { NESTING_KEY } from "./graph/plannerPrefs";
 import { PlannerView } from "./PlannerView";
 
 // ADR-0061 build PR 5 (Decision 6): Group (automatic factories designated on the way), Ungroup and Move through the
-// replace write, their undo, each 409's words, and nothing of it with the nesting flag off. The replace is answered by the
+// replace write, their undo and each 409's words. The replace is answered by the
 // demo's in-memory store, which follows the backend's replace rules.
 
 const ROD = "factory|Desc_IronRod_C|1250|100";
@@ -124,10 +123,8 @@ async function groupBoth(name = "Iron area") {
 
 beforeEach(() => {
   sent = [];
-  window.localStorage.setItem(NESTING_KEY, "on");
 });
 afterEach(() => {
-  window.localStorage.removeItem(NESTING_KEY);
   return act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 });
 
@@ -277,19 +274,5 @@ describe("Move", () => {
     expect(move).toHaveAccessibleDescription("Move: There is nowhere else these factories can go.");
     fireEvent.click(move);
     expect(screen.queryByRole("combobox", { name: "Move to" })).not.toBeInTheDocument();
-  });
-});
-
-describe("with the nesting flag off", () => {
-  it("offers no Group, Move or Ungroup, and the bar reads as before", async () => {
-    window.localStorage.removeItem(NESTING_KEY);
-    serve([stored(BASE_ID, "Main base", [], null, 1), rod(BASE_ID)]);
-    renderView();
-    await settled("Rod works");
-    expect(screen.queryByRole("heading", { name: "Main base" })).not.toBeInTheDocument();
-    expect(within(bar()).queryByRole("button", { name: "Group into a new factory" })).not.toBeInTheDocument();
-    expect(within(bar()).queryByRole("button", { name: "Move to…" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Ungroup/ })).not.toBeInTheDocument();
-    expect(within(bar()).getByRole("button", { name: "Merge into one" })).toHaveAccessibleDescription("Select at least two factories to merge.");
   });
 });

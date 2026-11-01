@@ -1,21 +1,18 @@
 import { act, configure, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, useLocation } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import { serversRoleOwner } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
 import { designated, T, treeGraphResponse, treeWorld } from "../test/plannerTree";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
-import { NESTING_KEY } from "./graph/plannerPrefs";
 import { PlannerView } from "./PlannerView";
 
 configure({ asyncUtilTimeout: 3_000 });
 
-beforeEach(() => window.localStorage.setItem(NESTING_KEY, "on"));
 afterEach(() => {
-  window.localStorage.removeItem(NESTING_KEY);
   vi.unstubAllGlobals();
   return act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 });

@@ -5,14 +5,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type PlannerDesignation, type ProductionGraph } from "@satisfactory-dash/shared";
 import { serversRoleOwner } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../../servers/ServerContext";
-import { AUTO_KEY, P, T, designated, treeGraphResponse, treeWorld } from "../../test/plannerTree";
+import { AUTO_KEY, P, T, designated, treeGraphResponse, treeWorld, withoutParents } from "../../test/plannerTree";
 import { renderWithClient } from "../../test/render";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
 import { clearFoldMemory, FOLDS_KEY, overviewFoldsKey } from "./foldMemory";
-import { NESTING_KEY } from "./plannerPrefs";
 
-// Hunt: the keyboard chain, the group panel, machines, picks and the flag-off path around blow-up (ADR-0061 build PR 4).
+// Hunt: the keyboard chain, the group panel, machines, picks and an old backend's flat tree around blow-up (ADR-0061 build PR 4).
 
 configure({ asyncUtilTimeout: 3_000 });
 
@@ -29,8 +28,7 @@ function Address() {
   return <output aria-label="Address">{`${location.pathname}${location.search}`}</output>;
 }
 
-function renderView(world: { graph: ProductionGraph; designations: PlannerDesignation[] } = treeWorld(), nesting = true) {
-  if (nesting) window.localStorage.setItem(NESTING_KEY, "on");
+function renderView(world: { graph: ProductionGraph; designations: PlannerDesignation[] } = treeWorld()) {
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("min-width"), addEventListener: () => {}, removeEventListener: () => {} }));
   server.use(
     http.get(endpoints.productionGraph.route, () => HttpResponse.json(treeGraphResponse(world.graph))),
@@ -199,23 +197,24 @@ describe("blow-up and factory picks", () => {
   });
 });
 
-describe("with the planner.nesting flag off", () => {
-  it("ignores a remembered blow-up: names unchanged, no frames, no blow-up buttons", async () => {
+describe("from a backend that sends no parentId", () => {
+  it("ignores a remembered blow-up of a parent it no longer has: no frames, every factory top level", async () => {
     window.sessionStorage.setItem(FOLDS_KEY, JSON.stringify([[overviewFoldsKey([]), { flipped: [], unfolded: [], machines: [], expanded: [MAIN] }]]));
-    renderView(treeWorld(), false);
+    renderView(withoutParents(treeWorld()));
     const svg = await canvas();
     expect(frames(svg)).toEqual([]);
-    expect(svg.querySelector("[data-blow-up], [data-blow-up-frame]")).toBeNull();
+    expect(svg.querySelector("[data-blow-up-frame]")).toBeNull();
     expect(document.querySelector("[data-blown-from]")).toBeNull();
-    expect(screen.queryByRole("button", { name: /in place|^Collapse Main base/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Collapse Main base/ })).not.toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Factories in the graph" })).toBeInTheDocument();
     expect(svg).not.toHaveAccessibleName(/Blown up/);
     // Flat: every factory is top level, so the parts of Main base are the cards.
     expect(screen.getByRole("button", { name: /^Open factory: Smelters/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Open factory: Main base/ })).not.toBeInTheDocument();
   });
 
   it("Escape on a card does nothing to the address or the picture", async () => {
-    renderView(treeWorld(), false);
+    renderView(withoutParents(treeWorld()));
     const svg = await canvas();
     fireEvent.keyDown(await screen.findByRole("button", { name: /^Open factory: Screws/ }), { key: "Escape" });
     expect(svg.querySelector("[data-frame]")).toBeNull();

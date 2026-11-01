@@ -173,9 +173,10 @@ describe("merging factories", () => {
     tick("Select Rod works");
     const merge = screen.getByRole("button", { name: "Merge into one" });
     expect(merge).toHaveAttribute("aria-disabled", "true");
-    expect(merge).toHaveAccessibleDescription("Select at least two factories to merge.");
+    // ADR-0061 Decision 6: each action's reason is named, as Group and Move have their own.
+    expect(merge).toHaveAccessibleDescription("Merge: Select at least two factories to merge.");
     tick("Select Iron Plate factory");
-    expect(merge).toHaveAccessibleDescription(NOT_CONNECTED_TEXT);
+    expect(merge).toHaveAccessibleDescription(`Merge: ${NOT_CONNECTED_TEXT}`);
     fireEvent.click(merge);
     expect(screen.queryByRole("textbox", { name: "Name" })).not.toBeInTheDocument();
     expect(sent).toHaveLength(0);
@@ -187,7 +188,7 @@ describe("merging factories", () => {
     await settled();
     tick("Select Rod works");
     tick("Select Iron Plate factory");
-    expect(screen.getByRole("button", { name: "Merge into one" })).toHaveAccessibleDescription(NEEDS_NEWER_BACKEND);
+    expect(screen.getByRole("button", { name: "Merge into one" })).toHaveAccessibleDescription(`Merge: ${NEEDS_NEWER_BACKEND}`);
   });
 
   it("on designation_stale re-reads, drops the selection and says to select again", async () => {

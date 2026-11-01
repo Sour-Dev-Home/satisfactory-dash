@@ -34,7 +34,7 @@ describe("FactoryPanel grouping, hunted edges", () => {
   it("groups a repeated building id's first building and lists the copy under Other machines, as the flat table would", () => {
     const { graph, factory } = groupedFactoriesWorld();
     const dup = { ...factory.data.buildings[0]! };
-    const grouping = groupMachines([...factory.data.buildings, dup], graph, undefined, false)!;
+    const grouping = groupMachines([...factory.data.buildings, dup], graph, undefined)!;
     expect(grouping.factories[0]!.groups[0]!.buildings).toEqual([factory.data.buildings[0]]);
     expect(grouping.other.filter((b) => b.id === dup.id)).toEqual([dup]);
   });

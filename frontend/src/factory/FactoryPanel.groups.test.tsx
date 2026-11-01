@@ -6,7 +6,7 @@ import { endpoints, type FactoryResponse, type ProductionGraph } from "@satisfac
 import { errorForbidden, serversSingle } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
 import { factoryForGraph, factoriesGraph, graphResponse, groupedFactoriesWorld, manyPlateConstructorsWorld } from "../test/factoryGroups";
-import { treeWorld } from "../test/plannerTree";
+import { treeWorld, withoutParents } from "../test/plannerTree";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { FactoryPanel } from "./FactoryPanel";
@@ -108,10 +108,10 @@ describe("FactoryPanel grouped by Planner factory and group (ADR-0062 F.2)", () 
     expect(screen.queryByRole("list", { name: "Machines by factory" })).not.toBeInTheDocument();
   });
 
-  it("nests factories with nesting on, parents then their parts, and lists them flat with it off", () => {
+  it("nests factories, parents then their parts, and lists a world without parents flat", () => {
     const world = treeWorld();
     const { graph, factory } = factoryForGraph(world.graph);
-    const { unmount } = render(<FactoryPanel snapshot={factory} graph={graph} designations={world.designations} nesting />);
+    const { unmount } = render(<FactoryPanel snapshot={factory} graph={graph} designations={world.designations} />);
     expect(toggle("Main base").closest("h4")).toBeInTheDocument();
     expect(toggle("Smelters").closest("h5")).toBeInTheDocument();
     const parts = within(sectionOf("Smelters")).getByRole("list", { name: "Parts of Smelters" });
@@ -120,7 +120,9 @@ describe("FactoryPanel grouped by Planner factory and group (ADR-0062 F.2)", () 
     );
     expect(toggle("Screws").closest("h4")).toBeInTheDocument();
     unmount();
-    render(<FactoryPanel snapshot={factory} graph={graph} designations={world.designations} nesting={false} />);
+    const flatWorld = withoutParents(world);
+    const flat = factoryForGraph(flatWorld.graph);
+    render(<FactoryPanel snapshot={flat.factory} graph={flat.graph} designations={flatWorld.designations} />);
     expect(screen.queryByRole("button", { name: "Main base" })).not.toBeInTheDocument();
     expect(within(sections()).getAllByRole("heading", { level: 4 }).map((h) => h.textContent?.split(" · ")[0])).toEqual(["Smelters", "Plates", "Screws", "Rods"]);
   });

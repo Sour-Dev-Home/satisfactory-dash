@@ -95,6 +95,12 @@ export function treeWorld(): { graph: ProductionGraph; designations: PlannerDesi
   return { graph, designations };
 }
 
+/** A world as a backend from before ADR-0061 sends it: no `parentId` on the list, no `parentDesignationId` on the graph. */
+export function withoutParents(world: { graph: ProductionGraph; designations: PlannerDesignation[] }): { graph: ProductionGraph; designations: PlannerDesignation[] } {
+  const factories = world.graph.factories?.map(({ parentDesignationId: _parent, ...f }) => f);
+  return { graph: { ...world.graph, factories }, designations: world.designations.map(({ parentId: _parent, ...d }) => d) };
+}
+
 /** The production-graph response for the world. */
 export const treeGraphResponse = (graph: ProductionGraph) => ({ ...productionGraphFactories, data: graph });
 

@@ -63,10 +63,10 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   is one replace built by `designationOps.ts` (pure, round-trip tested) and run by `designationChanges.ts`, whose undo
   (the read pre-image, never the matcher's ids) `UndoToast.tsx` offers for `UNDO_MS`, holding while focused or hovered.
   `designation_stale` re-reads and drops the selection. The demo keeps designations in memory (`demo/designations.ts`).
-- Nested factories (ADR-0061 build PR 3), behind `planner.nesting` in `plannerPrefs.ts` (off by default, no control; set
-  it to `on` in localStorage; the demo build has it on unless `off`, and its world nests three levels deep, `DEMO_TREE`;
-  the flag goes after the owner's review on the demo). `factoryTree.ts` (pure) builds the tree from the designations'
-  `parentId` (the graph's `parentDesignationId` while the list has not answered). A parent with no machines of its own
+- Nested factories (ADR-0061 build PR 3), always on since the owner's demo review (2026-11-01, the `planner.nesting` flag
+  removed; a stored value is ignored). The demo world nests three levels deep, `DEMO_TREE`. `factoryTree.ts` (pure)
+  builds the tree from the designations' `parentId` (the graph's `parentDesignationId` while the list has not answered);
+  a backend that sends neither gives a flat tree, every factory top level. A parent with no machines of its own
   has no graph factory, so it is keyed `factory|designation|<id>` and named from the list. A parent's card is a roll-up
   (`FactoryModel` with `atLeast`): machine and state counts summed, products its parts' minus the flows between them,
   clamped at 0, a product used up inside dropped, "at least" where such a flow is estimated or unknown. Its own machines
@@ -81,7 +81,7 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   - `overviewScene(graph, models, path, tree)` draws the parent's parts (top level for an empty path), each group owned
     by its shown card (`levelOwner`), so flows inside one card vanish and flows that leave the parent are not drawn;
     `Scene.path` and the name "Factories in <parent>".
-  - Editing (build PR 5, same flag; ADR-0061 Decision 6 and its note): the overview's picks (Select tool or the outline's Select)
+  - Editing (build PR 5; ADR-0061 Decision 6 and its note): the overview's picks (Select tool or the outline's Select)
     are the level's cards, parents too, at any level, never an own-machines card. `MergeBar` adds "Group into a new
     factory" (name form; picked automatic factories are designated in the same replace) and "Move to…" (`MoveForm`, the
     destinations `moveTargets` accepts), each disabled with its reason; a parent has Ungroup (`ParentControls`, on its
@@ -89,7 +89,7 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
     simulates each change: it removes parents left empty, up the tree, and refuses depth, cycle and overlap in the
     server's words (`designationText.ts` maps the 409s to the same). Undo restores `parentId` explicitly. Dissolve moves
     a parent's children up, and a split's new factory keeps its source's parent. The demo store carries `parentId`.
-  - Blow up (build PR 4, same flag): `overviewScene(..., expanded)` replaces each expanded card by a frame of its parts (a
+  - Blow up (build PR 4): `overviewScene(..., expanded)` replaces each expanded card by a frame of its parts (a
     parent's factories, or a factory's groups as group cards), depth first, at most `EXPAND_MAX_DEPTH` (2) frames deep and
     `EXPAND_MAX_CARDS` (60, measured: see the ADR's note) cards; flows re-aggregate at the finest card. `Card.blowUp`
     (parts, noun, fits) draws an Expand pill (drawn disabled past the cap: "Too large to expand here; open it", and a click
