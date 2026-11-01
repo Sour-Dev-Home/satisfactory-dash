@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { CAP_MARCH_MAX, GLYPH_MOVE_MAX, MARCH_MAX } from "../src/planner/graph/marching";
+import { OUTLINE_FIRST_ROWS } from "../src/planner/outlineModel";
 import { expect, expectNoAxeViolations, test } from "./fixtures";
 
 // ADR-0050 task 6, the graph's CSP gate: pan, zoom, the item filter and the group panel, all with zero CSP violations
@@ -740,15 +741,16 @@ test("the outline by keyboard: a neighbour moves to its row, Show in graph and b
   await expectNoAxeViolations(page, testInfo);
 });
 
-// ADR-0062 Decision 3, cost: the outline is DOM only, virtualised only if a measured render passes 50 ms. This records the
-// render of `planner-large`'s 160 groups (Graph to Outline) in the browser: to the first frame after React's commit, and to
-// the frame after that (painted). Attached and logged for the ADR; the bound is only that it renders every row.
+// ADR-0062 Decision 3, cost: the outline is DOM only, virtualised because a measured render passed 50 ms. This records the
+// render of `planner-large`'s 160 groups (Graph to Outline) in the browser: to the first frame after React's commit, to
+// the frame after that (painted), and to the frame after every row is mounted (the rows past the first screen mount in a
+// transition). Attached and logged for the ADR; the bounds are that every row ends up in the DOM, a screen's worth first.
 test("the outline of 160 groups records its render time (planner-large)", async ({ page, mockApi }, testInfo) => {
   await mockApi("planner-large");
   await page.goto("/app/planner");
   await page.getByRole("button", { name: "Open site: Large site" }).click();
   await expect(page.getByRole("button", { name: "All sites" })).toBeVisible();
-  const runs: { rendered: number; painted: number; rows: number }[] = [];
+  const runs: { rendered: number; painted: number; mounted: number; firstRows: number; rows: number }[] = [];
   for (let i = 0; i < 3; i++) {
     await page.getByRole("button", { name: "Graph", exact: true }).click();
     await expect(page.getByRole("img", { name: /^Graph of Large site/ })).toBeVisible();
@@ -759,13 +761,21 @@ test("the outline of 160 groups records its render time (planner-large)", async 
         const start = performance.now();
         outline.click();
         const rendered = (await frame()) - start;
+        const groups = () => document.querySelectorAll('[data-outline-row="group"]').length;
+        const firstRows = groups();
         const painted = (await frame()) - start;
-        return { rendered, painted, rows: document.querySelectorAll('[data-outline-row="group"]').length };
+        // Bounded: a transition that never lands fails the count below instead of hanging the test.
+        for (let n = 0; n < 120 && groups() < 160; n++) await frame();
+        const mounted = (await frame()) - start;
+        return { rendered, painted, mounted, firstRows, rows: groups() };
       }),
     );
   }
   const result = { project: testInfo.project.name, runs };
   console.log(`[outline] planner-large render ms ${JSON.stringify(result)}`);
   await testInfo.attach("outline-render-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
-  for (const run of runs) expect(run.rows).toBe(160);
+  for (const run of runs) {
+    expect(run.firstRows).toBeGreaterThanOrEqual(OUTLINE_FIRST_ROWS);
+    expect(run.rows).toBe(160);
+  }
 });

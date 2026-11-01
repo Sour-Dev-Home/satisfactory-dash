@@ -149,6 +149,11 @@
   /* How far an overflow fade reaches in from the canvas edge (the graph) and the nav's edge (the main tabs). */
   --spacing-graph-fade: 3rem;
   --spacing-nav-fade: 2rem;
+  /* The Planner outline's group row before it is first laid out (`outline-row-lazy`): about a desktop row's height
+     (sentence, Gets, Sends, facts, buttons). Once laid out, the row keeps its own measured size. */
+  --spacing-outline-row-estimate: 11rem;
+  /* Below sm the same row wraps to about 14rem (measured on planner-large at 390 px). */
+  --spacing-outline-row-estimate-phone: 14rem;
   /* How tall the fade over a capped table's bottom edge is while rows are cut (ui/ScrollRegion): under a row's
      height, so the last row shown stays readable. */
   --spacing-scroll-fade: 1.5rem;
@@ -570,6 +575,20 @@
 /* SVG text drawn with its halo stroke underneath the fill, so the halo reads as an outline (the planner graph's edge labels). */
 @utility paint-stroke-first {
   paint-order: stroke;
+}
+
+/* The Planner outline's virtualised group row (ADR-0062 Decision 3, cost): off screen, the browser skips its style, layout
+   and paint, but the row stays in the DOM, so the keyboard, find-in-page and screen readers still reach it. `auto` keeps
+   the size it last had, so a row scrolled past does not change the page's height again. A printout shows every row. */
+@utility outline-row-lazy {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto var(--spacing-outline-row-estimate);
+  @media (width < theme(--breakpoint-sm)) {
+    contain-intrinsic-block-size: auto var(--spacing-outline-row-estimate-phone);
+  }
+  @media print {
+    content-visibility: visible;
+  }
 }
 
 /* The main nav's sideways scroller fades out at an edge it can still scroll past (Shell, below sm); the mask is the

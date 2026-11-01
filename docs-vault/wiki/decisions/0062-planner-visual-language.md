@@ -90,6 +90,7 @@ every line shows its rate; see "Amendment, 2026-10-27" at the end.**
   and Flow move into a row's detail. The groups table goes.
 - **Cost.** DOM only; factories over 20 groups start closed. Virtualise only if a measured render passes 50 ms. Measured
   (build PR 4's CI run, recorded in amendment build PR 5): it passes on CI, see "Values chosen in build PR 4 (outline)".
+  Virtualised 2026-11-01 without removing rows (`content-visibility` plus a first screen mounted before the rest), same section.
 - **Accessibility.** Headings in order, `aria-expanded` on disclosures, `aria-current` on the row matching the graph selection, the
   `StateMark` always followed by its word. Axe and a keyboard-only e2e in build PR 4.
 
@@ -309,6 +310,45 @@ per group.
   virtualised; that is not built in amendment build PR 5 (out of its scope) and waits for its own PR. Note for it: CI is
   software raster (the marching baseline's 117 ms p95 was the same kind of number), so a real GPU's figure may be lower;
   that PR can measure on a GPU too, but the rule as written reads the browser's number, and CI's passes.
+  **Virtualised (2026-11-01, its own PR).** No library, and no row ever leaves the DOM once mounted, because the outline is
+  the canvas's text path (keyboard, find-in-page and screen readers must reach every row). Two layers:
+  - **Layout and paint:** each group row is `outline-row-lazy` (`index.css`): `content-visibility: auto` with
+    `contain-intrinsic-block-size: auto var(--spacing-outline-row-estimate)` (11rem, about a desktop row;
+    `--spacing-outline-row-estimate-phone` 14rem below sm, where rows wrap). The browser skips
+    style, layout and paint of a row away from the screen; the row stays in the DOM and the accessibility tree, focus and
+    `scrollIntoView` render it on demand, and Chrome's find-in-page searches it. `auto` keeps a row's last measured size. A
+    printout shows every row (`@media print`). Measured in a trace (dev box, planner-large, 1440 px): layout 13.3 to 4.3 ms,
+    style 4.8 to 1.1, pre-paint 2.7 to 0.5; React's 12 ms unchanged.
+  - **React's render:** the first render mounts `OUTLINE_FIRST_ROWS` (24) group rows in document order, plus the rows from
+    `OUTLINE_CURRENT_BEFORE` (8) before the current row (the graph's selection, which the outline focuses) to 24 after it
+    (`mountsFirst` in `outlineModel.ts`); the rest are empty `aria-hidden` placeholders of the estimated height (with a
+    row's border and padding), replaced in a `startTransition` right after the first commit (one frame or a few). The
+    window is fixed by the current row at the first render (`test-hunter`: a selection moving before the transition
+    unmounted rows already shown). A neighbour's button to a row not mounted yet waits for it, as it waits for a disclosure
+    to open. Rows inside closed factories and folds still mount only when opened; they count in the order, so on an
+    overview with closed factories the first 24 places can go to hidden rows (first frame only, not correctness).
+  - **Trade-offs:** for the frame or few before the transition lands, rows past the first screen are not in the DOM, so a
+    screen reader or find-in-page in that window sees only the first screen. A row never laid out takes the estimated
+    height, so the scrollbar can shift as rows come into view (scroll anchoring keeps what is on screen still). A full-page
+    capture does not count as on screen, so `e2e/states.spec.ts` paints every row before its screenshot (`paintLazyRows` in
+    `e2e/fixtures.ts`, through the CSSOM: an injected stylesheet is a CSP violation; it waits for no placeholder first);
+    the baselines stay as they were. So no baseline checks the estimated heights, and Safari (no scroll anchoring) can
+    jump when scrolling up past rows never laid out.
+  **Measured after** (2026-11-01, the same e2e measurement, run on the dev box's headless Chromium with the build served
+  in-process, no server; five switches each, two rounds, ms from the click; "mounted" is the frame after all 160 rows are
+  in the DOM, which the e2e now also records with how many rows the first frame had). CI's own numbers come with this PR's
+  e2e run. The dev box at 2x CPU throttle matched CI's before numbers (rendered 21 to 39, painted 67 to 87), so it is the
+  CI-like row ("before" is `main`; at 2x it is `main` plus the row class with its CSS switched off, the same work):
+  - 1440 px, no throttle: before rendered 10.9 to 15.6, painted 31.4 to 43.1; after rendered 7.2 to 17.4, painted 20.4 to
+    31.3, mounted 34.4 to 47.1.
+  - 390 px, no throttle: before rendered 10.4 to 22.0, painted 29.0 to 47.2; after rendered 5.4 to 20.0, painted 19.5 to
+    31.7, mounted 33.9 to 49.1.
+  - 1440 px, 2x throttle: before rendered 26.2 to 39.0, painted 71.0 to 87.1; after rendered 13.7 to 18.5, painted 30.0 to
+    45.9, mounted 52.5 to 88.9.
+  - 390 px, 2x throttle: before rendered 21.5 to 36.1, painted 66.6 to 85.9; after rendered 14.7 to 20.5, painted 28.3 to
+    37.1, mounted 58.7 to 76.5.
+  Every rendered and painted number is now under 50 ms; the whole outline is in the DOM about as soon as before (the
+  first screen is what got faster).
 - **What a switch keeps.** The open and closed choices are explicit values (`test-hunter`: stored as "flipped from the
   default", a poll moving a factory across 20 groups reversed them). Switching to the graph unmounts the outline, so its
   disclosures, sort and open Details start afresh on the way back; only the selection is kept (the cost of not keeping

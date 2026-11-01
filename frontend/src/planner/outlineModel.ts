@@ -31,6 +31,25 @@ import {
 /** ADR-0062 Decision 3, cost: a factory with more groups than this starts closed in the outline. */
 export const OUTLINE_OPEN_MAX = 20;
 
+/**
+ * ADR-0062 Decision 3, cost (virtualised, 2026-11-01): how many group rows, in document order, the outline mounts in its
+ * first render. The rest mount in a transition right after, so the switch to the outline paints this many first. More
+ * than a tall screen holds, so the rows in view are real on the first frame.
+ */
+export const OUTLINE_FIRST_ROWS = 24;
+/** Rows before the current row (the graph's selection, which the outline scrolls to) that also mount at once. */
+export const OUTLINE_CURRENT_BEFORE = 8;
+
+/**
+ * Whether a group row mounts in the outline's first render: one of the first `OUTLINE_FIRST_ROWS`, or near the current row
+ * (from `OUTLINE_CURRENT_BEFORE` before it to `OUTLINE_FIRST_ROWS` after it, the screen it scrolls to). A row with no place
+ * in the order (`index` undefined) always mounts, so a row the order missed is never left out.
+ */
+export function mountsFirst(index: number | undefined, currentIndex: number | undefined): boolean {
+  if (index === undefined || index < OUTLINE_FIRST_ROWS) return true;
+  return currentIndex !== undefined && index >= currentIndex - OUTLINE_CURRENT_BEFORE && index < currentIndex + OUTLINE_FIRST_ROWS;
+}
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** A group's products that read 0 although its machines could make some: what the canvas marks as stalled. */
