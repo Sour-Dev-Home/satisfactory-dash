@@ -545,12 +545,15 @@ Build PR 1 of the ADR and of this amendment landed as one PR (both add the same 
     a stalled line in marks mode. Like the glyph rows, a row shows only when the canvas has its kind, so a site without
     them keeps its legend short.
   - "Rate steps": a speed row in words, "Speed: slow, medium, fast. The speed is the rate, not the belt." (Decision 5),
-    and a width row, "Width:" then three `stroke-muted` samples at 2, 3 and 4 (`LINE_W_*`), each with its word. Speed is
+    and a width row, "Width:" then three `stroke-muted` samples at 2, 3 and 4 (`LINE_W_*`), each with its word, in one
+    `role="group"` named "Width" (`ui-reviewer`: grouped for assistive tech). Speed is
     words, not moving samples: nothing in the legend animates, so Motion Off and reduced motion need no rule there.
   - Both lists wrap (`flex-wrap`, `text-sm`), so at 390 px they take more rows, never a scrollbar.
 - **Proof.** Unit and RTL tests for the helper, each text path and the legend rows. Axe: every Planner graph state in
   `e2e/states.spec.ts` already runs axe with the legend on screen (`planner-stalled-graph` with the stalled row,
-  `planner-factory-transports` with the transport row). No new e2e test.
+  `planner-factory-transports` with the transport row). No new e2e test. `test-hunter` found no disagreement between a
+  text's step and the canvas's and added tests for a 0 rate and per-unit thresholds. `ui-reviewer` (from the diff; no live
+  check) found nothing blocking; to check on the baselines: the speed sentence's wrap at 390 px.
 - **Screenshots.** Every Planner state with the graph shows the legend, so each grows by the rate list (and
   `planner-factory-transports`, the opened Iron Plate factory states and `planner-stalled-graph` by their new row). The
   outline states show the step words in the neighbours' rates (`planner-outline-attention`, and the phone states that open

@@ -2574,14 +2574,17 @@ function RateLegend() {
       <li>Speed: slow, medium, fast. The speed is the rate, not the belt.</li>
       <li className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span>Width:</span>
-        {RATE_STEPS.map((step) => (
-          <span key={step} className="flex items-center gap-1" data-legend-width={step}>
-            <svg aria-hidden="true" viewBox="0 0 24 6" className="h-1.5 w-6 shrink-0">
-              <line x1={1} y1={3} x2={23} y2={3} fill="none" strokeWidth={STEP_WIDTH.get(step)} className="stroke-muted" />
-            </svg>
-            <span>{stepWord(step)}</span>
-          </span>
-        ))}
+        {/* `ui-reviewer`: the samples are one group for assistive tech, named by the row's word. */}
+        <span role="group" aria-label="Width" className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {RATE_STEPS.map((step) => (
+            <span key={step} className="flex items-center gap-1" data-legend-width={step}>
+              <svg aria-hidden="true" viewBox="0 0 24 6" className="h-1.5 w-6 shrink-0">
+                <line x1={1} y1={3} x2={23} y2={3} strokeWidth={STEP_WIDTH.get(step)} className="stroke-muted" />
+              </svg>
+              <span>{stepWord(step)}</span>
+            </span>
+          ))}
+        </span>
       </li>
     </ul>
   );
