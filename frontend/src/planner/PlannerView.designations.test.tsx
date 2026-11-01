@@ -109,7 +109,7 @@ describe("PlannerView: designating from the text form (ADR-0055 Decision 5)", ()
     await openRod();
     const designate = screen.getByRole("button", { name: "Designate selected" });
     expect(designate).toBeDisabled();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Constructor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Constructor" }));
     expect(screen.getByText("1 group, 2 machines selected")).toBeInTheDocument();
     fireEvent.click(designate);
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveFocus();
@@ -119,14 +119,14 @@ describe("PlannerView: designating from the text form (ADR-0055 Decision 5)", ()
     expect(seen[0]).toMatchObject({ method: "POST", body: { name: "Rod works", mode: "core", members: rodMembers } });
     // The form closes and the ticks clear once the backend has taken it.
     await waitFor(() => expect(screen.queryByRole("form", { name: "Name the designated factory" })).not.toBeInTheDocument());
-    expect(screen.getByRole("checkbox", { name: "Select Constructor" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Select Constructor" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("works for an admin and refuses a name the backend would, before sending", async () => {
     serve();
     renderView(serversRoleAdmin);
     await openRod();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Constructor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Constructor" }));
     fireEvent.click(screen.getByRole("button", { name: "Designate selected" }));
     type("Name", "   ");
     fireEvent.click(screen.getByRole("button", { name: "Designate" }));
@@ -138,7 +138,7 @@ describe("PlannerView: designating from the text form (ADR-0055 Decision 5)", ()
     serve();
     renderView();
     await openRod();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Constructor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Constructor" }));
     fireEvent.click(screen.getByRole("button", { name: "Designate selected" }));
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Name" }), { key: "Escape" });
     await waitFor(() => expect(screen.getByRole("button", { name: "Designate selected" })).toHaveFocus());
@@ -149,7 +149,7 @@ describe("PlannerView: designating from the text form (ADR-0055 Decision 5)", ()
     serve({ write: () => HttpResponse.json(plannerDesignationOverlapError, { status: 409 }) });
     renderView();
     await openRod();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Constructor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select Constructor" }));
     fireEvent.click(screen.getByRole("button", { name: "Designate selected" }));
     type("Name", "Rod works");
     fireEvent.click(screen.getByRole("button", { name: "Designate" }));
@@ -253,7 +253,7 @@ describe("PlannerView: a viewer", () => {
     const plate = await card("Iron Plate factory");
     fireEvent.click(within(plate).getByRole("button", { name: /^Open factory/ }));
     await screen.findByRole("heading", { name: "Groups" });
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Select / })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Designate selected" })).not.toBeInTheDocument();
   });
 });
@@ -288,7 +288,7 @@ describe("PlannerView: designating on the canvas (ADR-0055 Decision 5, PR 10b)",
   const transformOf = (svg: HTMLElement) => svg.querySelector(":scope > g")?.getAttribute("transform");
   const pickButtons = () => within(cardList()).getAllByRole("button", { name: /^Pick / });
 
-  it("Select mode turns a card's button into a pick toggle shared with the table's ticks, and Designate selected sends its machines", async () => {
+  it("Select mode turns a card's button into a pick toggle shared with the outline's Select, and Designate selected sends its machines", async () => {
     serve();
     const svg = await openRodGraph();
     const select = screen.getByRole("button", { name: "Select" });
@@ -302,9 +302,9 @@ describe("PlannerView: designating on the canvas (ADR-0055 Decision 5, PR 10b)",
     expect(svg.querySelectorAll("[data-picked]")).toHaveLength(1);
     expect(svg.querySelector("[data-check]")).not.toBeNull();
     expect(screen.getByText("1 group, 2 machines selected")).toBeInTheDocument();
-    // The ticks in the Tables view are the same selection.
-    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
-    expect(screen.getByRole("checkbox", { name: "Select Constructor" })).toBeChecked();
+    // The outline's Select buttons are the same selection.
+    fireEvent.click(screen.getByRole("button", { name: "Outline" }));
+    expect(screen.getByRole("button", { name: "Select Constructor" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "Graph" }));
     await rodGraph();
     fireEvent.click(screen.getByRole("button", { name: "Designate selected" }));

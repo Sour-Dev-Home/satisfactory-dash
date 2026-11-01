@@ -195,6 +195,60 @@ per group.
   `planner-factories` cards: storage on Iron Plate, the Sink on Iron Rod), and a factory's canvas with Storage detail off.
   Screenshots run under reduced motion with animations disabled, so they show the still caps.
 
+### Values chosen in build PR 4 (outline), 2026-11-01
+
+- **Where it is.** `planner/PlannerOutline.tsx` (React) over `planner/outlineModel.ts` (pure: the summary, "Needs
+  attention", each group's neighbours, the connection rows and their sort). It is the overview's text view (the level's
+  factories, a parent with its parts under it, each factory with its groups) and an opened site's or factory's (its groups).
+  Mounted only in the Outline view: unlike the old tables, it is not kept hidden under the graph.
+- **The toggle.** "Graph" / "Outline" (was "Tables"); the phone still opens on the outline (`useWideScreen`). The view
+  was only state, never in the address, so there is no old value to migrate. The canvas's name says "The Outline view
+  lists the same", and the bars' idle words "select some below" / "Select groups to ..." (were "tick").
+- **Headings.** The sections ("Needs attention", "Groups" or "Factories", "All connections") are one level below what
+  is open (h4 on the overview's top level, h5 under a factory's or a parent's h4); a factory row's name is a heading one
+  below that, its parts one more, capped at h6. Each factory's name is its disclosure button (`aria-expanded`) inside
+  its heading.
+- **A group's sentence.** "8× Constructor make Iron Plate: 72 / 160 items/min." The subject is the count and the
+  building's name ("8× Constructor"; one machine: "Constructor makes"), not an English plural ("Miner Mk.2s" would be
+  wrong). An extractor "mines"; a stale group says its muted note; storage and other ends with nothing to make are just
+  their subject. A product reading 0 adds ", " then the `StateMark` (when its state has one) and always the word ("0 of
+  60 items/min, [mark] backed up"). Then "Gets <item> from <group> (<rate>)" and "Sends <item> to <group> (<rate>)",
+  summed per neighbour, item and carrier (`aggregateFlows` on groups); a neighbour with a row in this outline is a button
+  that opens what hides that row and moves the keyboard there, one without (another factory, when one is open) is its
+  name with the factory in brackets. Then "Ends: 1 flow to storage" (`destinationChipText`), then a muted facts line
+  (role, tree ordinal, recipe, states, "In a loop", and in a factory the remote place and the share split that were the
+  table's "Place and split"). A bottleneck badge only when the group has findings.
+- **Step word.** Not added: no step-word text helper exists on `main` yet (amendment build PR 5 adds it to `<title>`
+  and aria); the outline should take it from there.
+- **Needs attention, by severity** (the Decision did not rank them): stalled outputs first, the largest maximum lost
+  first (a product reading 0 of a max is a line stopped); then the bottleneck findings, in the Factory page's order
+  (already ranked by output lost), each joined to its group by machine id; then the flows ending at an unknown end, per
+  group. "Nothing needs attention." when empty, and "Bottlenecks not read yet." while that read has not answered. Each
+  item has "Show in graph: <group>".
+- **Graph sync.** One `current` key per level (a factory's key, or a group's), held by the page beside the view mode.
+  The canvas (`SiteGraph`'s new `current` prop, its only change) reports a card whose button takes the keyboard or whose
+  group panel opens (a factory's key, else its first group's); "Show in graph" sets the key and shows the graph, which
+  gives the card standing for it (its own, else the smallest card holding that group) the keyboard as it mounts, so it
+  is ringed and brought into view. The outline marks that row `aria-current="true"` (tinted, `border-accent`), opens
+  what hides it and focuses it as it mounts.
+- **Row actions.** Buttons in the row, unchanged in behaviour: "Show in graph", and for owners "Select <name>" (a toggle,
+  `aria-pressed`, the same picks as the canvas: was a checkbox) and "Pop out"; a factory row has "Open factory", its own
+  Select, and its designation controls as the cards had them (`DesignatedControls`; a parent's `ParentControls` with
+  Ungroup), and the bar above keeps Merge, Group into a new factory and Move to. The recipe trees beyond the fold cap stay behind one "Show N more ... trees" button.
+- **All connections.** A disclosure (closed; its count shown under it), then one table: From, To, Item, Rate, Carrier,
+  each header a sort button (ascending, then descending; `aria-sort` on the sorted one only; an unknown rate sorts last
+  either way, ties keep the data's order). Each row's "Details" button (`aria-expanded`) opens a row under it with the
+  Capacity and the Flow. On the overview the rows are the flows between the level's cards (what "Flows between factories"
+  listed). Below 640 px the table stacks as the others do, but keeps its header row of sort buttons (`table.sortable`).
+- **Cost.** A factory of more than `OUTLINE_OPEN_MAX` (20) groups starts closed ("N groups, folded"). Measured render of
+  `planner-large` (160 groups, 210 lines, one site): in jsdom (vitest on the dev box, the whole Planner panel, three
+  cold renders) 89 to 94 ms; in the browser, Graph to Outline, to the first frame after the commit and to the next
+  (`e2e/planner-graph.spec.ts`, "the outline of 160 groups records its render time", attached as
+  `outline-render-times.json`) **[NEEDS MEASUREMENT]**: to record from the PR's CI run. Virtualise only if the browser's
+  number passes 50 ms (jsdom is several times slower than Chromium, so its number is an upper bound, not the trigger).
+- **Old tables.** `PlannerTables.tsx` and `FactoryParts.tsx`'s `FactoryFlows` are no longer rendered or imported; they
+  stay until the owner reviews the outline (build PR 5 deletes them). The tests that read their cells read the outline.
+
 ## Consequences
 
 - The canvas reads at a glance by shape and motion, and the words are never lost for a screen reader or a phone.

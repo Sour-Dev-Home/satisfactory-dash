@@ -71,18 +71,18 @@ const groupButton =(name: RegExp) => screen.findByRole("button", { name });
 const dimmed = (svg: HTMLElement) => svg.querySelectorAll(":scope > g > g.opacity-graph-dim").length;
 
 describe("the site view toggle", () => {
-  it("opens on the tables where there is no wide screen, and the graph is one press away", async () => {
+  it("opens on the outline where there is no wide screen, and the graph is one press away", async () => {
     renderView();
     fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
-    expect(await screen.findByRole("button", { name: "Tables" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getAllByRole("table")).toHaveLength(2);
+    expect(await screen.findByRole("button", { name: "Outline" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("list", { name: "Groups" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /^Graph of/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Graph" }));
     expect(await screen.findByRole("img", { name: /^Graph of Iron Plate site/ }, { timeout: 3_000 })).toBeInTheDocument();
-    // The tables are the text alternative: still in the page, hidden from view while the graph shows.
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
-    expect(screen.getAllByRole("table")).toHaveLength(2);
+    // The outline is the text alternative, one press away; it is not drawn while the graph shows.
+    expect(screen.queryByRole("list", { name: "Groups" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Outline" }));
+    expect(screen.getByRole("list", { name: "Groups" })).toBeInTheDocument();
   });
 
   it("opens on the graph on a wide screen", async () => {
@@ -101,7 +101,7 @@ describe("the site view toggle", () => {
 describe("the site graph", () => {
   it("is an image with a summary, and every group is a keyboard button with a name", async () => {
     const svg = await openGraph();
-    expect(svg).toHaveAccessibleName("Graph of Iron Plate site: 5 groups, 5 connections, 2 in a loop. The Tables view lists the same.");
+    expect(svg).toHaveAccessibleName("Graph of Iron Plate site: 5 groups, 5 connections, 2 in a loop. The Outline view lists the same.");
     const list = screen.getByRole("list", { name: "Groups in the graph" });
     const names = within(list).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
     expect(names).toHaveLength(5);
@@ -335,7 +335,8 @@ describe("the graph's readable chrome", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_Stone_C" } });
     expect(label).not.toHaveClass("opacity-graph-dim");
     // The text path keeps a row per link.
-    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
+    fireEvent.click(screen.getByRole("button", { name: "Outline" }));
+    fireEvent.click(screen.getByRole("button", { name: "All connections" }));
     const rows = screen.getAllByRole("row").map((r) => r.textContent ?? "");
     expect(rows.some((r) => r.includes("Limestone") && r.includes("30"))).toBe(true);
     expect(rows.some((r) => r.includes("Iron Ore") && r.includes("120"))).toBe(true);

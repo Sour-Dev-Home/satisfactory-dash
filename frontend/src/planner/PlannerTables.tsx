@@ -35,6 +35,9 @@ import {
   stateCountsText,
 } from "./plannerText";
 
+// ADR-0062 Decision 3: the Planner no longer renders these tables; `PlannerOutline` is the text form. This file stays only
+// until the owner has reviewed the outline on the demo, and build PR 5 deletes it (with `FactoryFlows` in FactoryParts.tsx).
+
 /** Which groups are ticked for "Designate selected" (ADR-0055 Decision 5); absent when the viewer cannot designate. */
 export interface GroupSelection {
   selected: ReadonlySet<string>;

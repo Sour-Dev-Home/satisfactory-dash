@@ -122,7 +122,7 @@ describe("graphSummary", () => {
   it("is counts only, names the site, and points at the tables", () => {
     const { nodes, edges } = ProductionGraphSchema.parse(productionGraphTwoSites.data);
     expect(graphSummary(nodes.slice(0, 5), edges, "Iron Plate site")).toBe(
-      "Graph of Iron Plate site: 5 groups, 6 connections, 2 in a loop. The Tables view lists the same.",
+      "Graph of Iron Plate site: 5 groups, 6 connections, 2 in a loop. The Outline view lists the same.",
     );
     expect(graphSummary(nodes.slice(0, 1), [], "S")).toContain("1 group, 0 connections");
   });

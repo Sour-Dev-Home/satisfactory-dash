@@ -706,8 +706,20 @@
   /* Stacked rows at phone width, for the Factory table. Not the power chart's legend (also a
      table) or its readings table, which scrolls in its own box instead. */
   @media (width < theme(--breakpoint-table-rows)) {
-    .panel table:not(.readings, .u-legend) thead {
+    .panel table:not(.readings, .u-legend, .sortable) thead {
       display: none;
+    }
+    /* A sortable table (the Planner's "All connections") keeps its header's sort buttons, as one wrapping row. */
+    .panel table.sortable thead tr {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      border-bottom: 0;
+    }
+    .panel table.sortable thead th {
+      display: block;
+      padding: 0;
+      border: 0;
     }
     .panel table:not(.readings, .u-legend),
     .panel table:not(.readings, .u-legend) :is(tbody, tr, tbody th, tbody td) {

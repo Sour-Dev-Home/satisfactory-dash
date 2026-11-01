@@ -40,7 +40,7 @@ function Browser() {
 const q = (...keys: string[]) => (keys.length === 0 ? "" : `?${keys.map((k) => `open=${encodeURIComponent(k)}`).join("&")}`);
 
 function renderView(entry = "/app/planner") {
-  // Narrow: the Tables view, so the cards are plain buttons.
+  // Narrow: the Outline view, so the cards are plain buttons.
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} }));
   const { graph, designations } = treeWorld();
   server.use(
@@ -76,9 +76,11 @@ describe("the factory tree in the Planner", () => {
     renderView();
     const list = await screen.findByRole("list", { name: "Factories" });
     const cards = [...list.children] as HTMLElement[];
-    expect(cards.map((c) => within(c).getByRole("heading").textContent)).toEqual(["Main base", "Screws"]);
-    expect(within(cards[0]!).getByText(/^5 machines/)).toBeInTheDocument();
-    expect(within(cards[0]!).getByText(/^Desc_IronIngot_C: at least 20/)).toBeInTheDocument();
+    // Each row's first heading is its own; a parent's parts are listed under it (the outline's tree, ADR-0062 Decision 3).
+    expect(cards.map((c) => within(c).getAllByRole("heading")[0]!.textContent)).toEqual(["Main base", "Screws"]);
+    // The parent's own facts come first, before its parts' rows.
+    expect(within(cards[0]!).getAllByText(/^5 machines/)[0]!.closest("li")).toBe(cards[0]);
+    expect(within(cards[0]!).getAllByText(/^Desc_IronIngot_C: at least 20/)[0]!.closest("li")?.closest('[data-outline-row="parent"]')).toBe(cards[0]);
     expect(screen.queryByRole("navigation", { name: "Factory path" })).not.toBeInTheDocument();
   });
 

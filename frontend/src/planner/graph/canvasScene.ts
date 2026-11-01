@@ -983,14 +983,14 @@ export function factoryScene(graph: ProductionGraph, model: FactoryModel, view: 
   };
 }
 
-/** The canvas's accessible name: counts only, since the tables carry the detail. */
+/** The canvas's accessible name: counts only, since the outline carries the detail. */
 export function sceneSummary(scene: Scene, loops: number): string {
   const n = scene.cards.length;
   const noun = scene.noun === "factories" || scene.noun === "factory" ? (n === 1 ? "factory" : "factories") : n === 1 ? scene.noun : `${scene.noun}s`;
   const c = `${scene.flows.length} ${scene.flows.length === 1 ? "connection" : "connections"}`;
   // Blow-ups (ADR-0061 Decision 5) are named, so the label says the picture is not the level's cards alone.
   const blown = scene.frames.filter((f) => f.expands !== undefined).map((f) => f.title);
-  const where = blown.length === 0 ? " The Tables view lists the same." : ` Blown up in place: ${blown.join(", ")}. The Tables view lists this level's factories.`;
+  const where = blown.length === 0 ? " The Outline view lists the same." : ` Blown up in place: ${blown.join(", ")}. The Outline view lists this level's factories.`;
   return `Graph of ${scene.name}: ${n} ${noun}, ${c}${loops > 0 ? `, ${loops} in a loop` : ""}.${where}`;
 }
 

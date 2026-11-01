@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
@@ -12,10 +12,10 @@ import { groupCard, sceneFor, EMPTY_VIEW } from "./graph/canvasScene";
 import { MAX_LINE_CHARS, MAX_WRAP_LINES, nodeFacts, STALE_NODE_NOTE } from "./graph/graphModel";
 import { glyphKindOf } from "./graph/buildingIcons";
 import { GroupPanel } from "./graph/GroupPanel";
-import { GroupsTable } from "./PlannerTables";
+import { outlineRows, renderOutline } from "../test/outline";
 
 // #728 cause 11: a node built only from conveyor ends that name machines the latest factory read lacks. The card says the
-// conveyor data is older (muted), never an unknown "other" card; the tooltip, the side panel and the Tables view say the same.
+// conveyor data is older (muted), never an unknown "other" card; the tooltip, the side panel and the Outline view say the same.
 
 const NOTE = "Conveyor data older than the factory read · refreshes within 10 minutes";
 const node = (over: Partial<PlannerNode> = {}): PlannerNode => ({
@@ -84,19 +84,19 @@ describe("words for a stale node", () => {
   });
 });
 
-describe("Tables view (the text path)", () => {
-  it("the Output cell says it, muted, instead of No output data", () => {
-    render(<GroupsTable nodes={[stale]} findings={undefined} />);
-    const row = screen.getAllByRole("row").find((r) => within(r).queryByRole("rowheader") !== null)!;
+describe("Outline view (the text path, ADR-0062 Decision 3)", () => {
+  it("the row's sentence says it, muted, instead of No output data", () => {
+    renderOutline([stale]);
+    const row = outlineRows()[0]!;
     expect(within(row).getByText(NOTE)).toHaveClass("text-muted");
-    expect(within(row).queryByText("No output data")).toBeNull();
+    expect(within(row).queryByText(/No output data/)).toBeNull();
   });
 
-  it("a bubble row of stale nodes says it once on the bubble row too", () => {
-    render(<GroupsTable nodes={[node({ treeKey: "t" }), node({ key: "machine||2|2", treeKey: "t" })]} findings={undefined} />);
-    const bubbleRow = screen.getAllByRole("row").find((r) => r.querySelector("th[scope=rowgroup]") !== null)!;
-    expect(within(bubbleRow).getByText(NOTE)).toHaveClass("text-muted");
-    expect(screen.queryByText("No output data")).toBeNull();
+  it("a tree of stale nodes says it once on the tree's line too", () => {
+    renderOutline([node({ treeKey: "t" }), node({ key: "machine||2|2", treeKey: "t" })]);
+    const line = screen.getByRole("list", { name: /^Groups of / }).closest("li")!.firstElementChild as HTMLElement;
+    expect(within(line).getByText(NOTE)).toHaveClass("text-muted");
+    expect(screen.queryByText(/No output data/)).toBeNull();
   });
 });
 

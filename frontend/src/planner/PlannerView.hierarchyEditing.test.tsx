@@ -107,7 +107,8 @@ const settled = async (heading: string) => {
   await waitFor(() => expect(view.client.isFetching()).toBe(0));
 };
 const bar = () => screen.getByRole("group", { name: "Selected factories" });
-const tick = (name: string) => fireEvent.click(screen.getByRole("checkbox", { name }));
+/** A row's Select in the outline (ADR-0062 Decision 3: a toggle button, `aria-pressed`). */
+const tick = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
 
 /** Picks both top-level factories and opens the Group form, named. */
 async function groupBoth(name = "Iron area") {

@@ -11,13 +11,13 @@ import { flowTitle, groupCard, type CanvasFlow } from "./graph/canvasScene";
 import { nodeFacts, nodeSummary, productSummary } from "./graph/graphModel";
 import { GroupPanel } from "./graph/GroupPanel";
 import { PlannerPanel } from "./PlannerPanel";
-import { GroupsTable } from "./PlannerTables";
+import { outlineRows, renderOutline } from "../test/outline";
 import { PlannerView } from "./PlannerView";
 import { mergeStateCounts, outputLine, stalledStateText, UNKNOWN_FLOW_NOTE } from "./plannerText";
 
 // Issue #728 Phase 1, steps 2 and 5. Step 2: FRM's CurrentProd is instantaneous and drops to 0 while an input is
 // missing (frm-getFactory.md E3), so a 0 reads "0 of <max>" with the machine's state, never a bare "0/min". Step 5: one
-// plain line says why an item or a rate can be unknown. The card, the tooltip, the side panel and the Tables view agree.
+// plain line says why an item or a rate can be unknown. The card, the tooltip, the side panel and the Outline view agree.
 
 const ingot = (current: number, max: number, unit: PlannerRate["unit"] = "items/min"): PlannerRate => ({
   className: "Desc_IronIngot_C",
@@ -136,19 +136,27 @@ describe("unknown items and rates say why", () => {
   });
 });
 
-describe("Tables view (the text path)", () => {
-  const rowOf = (name: string) => screen.getAllByRole("row").find((r) => within(r).queryByRole("rowheader", { name: new RegExp(`^${name}`) }) !== null)!;
+describe("Outline view (the text path, ADR-0062 Decision 3)", () => {
+  const rows = outlineRows;
 
-  it("a group's output cell says '0 of max' and the state, like the card", () => {
-    render(<GroupsTable nodes={[smelter()]} findings={undefined} />);
-    expect(within(rowOf("Smelter")).getByText("Iron Ingot: 0 of 60 items/min · backed up")).toBeInTheDocument();
+  it("a group's sentence says '0 of max' and the state after its mark, like the card", () => {
+    renderOutline([smelter()]);
+    expect(rows()[0]).toHaveTextContent(/^2× Smelter make Iron Ingot: 0 of 60 items\/min, backed up\./);
+    expect(rows()[0]!.querySelector('[data-state-mark="backedUp"]')).not.toBeNull();
   });
 
-  it("a bubble's row sums its groups' states", () => {
-    render(<GroupsTable nodes={[smelter({ treeKey: "t" }), smelter({ key: "sm2", treeKey: "t", stateCounts: { backedUp: 1 } })]} findings={undefined} />);
-    const bubbleRow = screen.getAllByRole("row").find((r) => r.querySelector("th[scope=rowgroup]") !== null)!;
-    expect(within(bubbleRow).getByText("Iron Ingot: 0 of 120 items/min · backed up")).toBeInTheDocument();
+  it("a tree's line sums its groups' states", () => {
+    renderOutline([smelter({ treeKey: "t" }), smelter({ key: "sm2", treeKey: "t", stateCounts: { backedUp: 1 } })]);
+    const tree = screen.getByRole("list", { name: /^Groups of / }).closest("li")!;
+    expect(tree.firstElementChild).toHaveTextContent("Iron Ingot: 0 of 120 items/min, backed up");
   });
+
+  const openConnections = () => {
+    const button = screen.queryByRole("button", { name: "Outline" });
+    if (button !== null) fireEvent.click(button);
+    fireEvent.click(screen.getByRole("button", { name: "All connections" }));
+    return screen.getByRole("region", { name: "All connections" });
+  };
 
   it("explains unknowns under the connections when one is listed", () => {
     const parsed = ProductionGraphResponseSchema.parse(productionGraphTwoSites);
@@ -157,10 +165,7 @@ describe("Tables view (the text path)", () => {
         <PlannerPanel snapshot={parsed} path={[parsed.data.sites[0].key]} onPath={() => {}} />
       </MemoryRouter>,
     );
-    const tablesButton = screen.queryByRole("button", { name: "Tables" });
-    if (tablesButton !== null) fireEvent.click(tablesButton);
-    const section = screen.getByRole("region", { name: "Connections" });
-    expect(within(section).getByText(UNKNOWN_FLOW_NOTE)).toBeInTheDocument();
+    expect(within(openConnections()).getByText(UNKNOWN_FLOW_NOTE)).toBeInTheDocument();
   });
 
   it("says nothing about unknowns when every connection is known", () => {
@@ -170,10 +175,8 @@ describe("Tables view (the text path)", () => {
         <PlannerPanel snapshot={parsed} path={[parsed.data.sites[1].key]} onPath={() => {}} />
       </MemoryRouter>,
     );
-    const tablesButton = screen.queryByRole("button", { name: "Tables" });
-    if (tablesButton !== null) fireEvent.click(tablesButton);
-    // The page's "About this data" always has it; the connections table only when one is unknown.
-    expect(within(screen.getByRole("region", { name: "Connections" })).queryByText(UNKNOWN_FLOW_NOTE)).toBeNull();
+    // The page's "About this data" always has it; the connections only when one is unknown.
+    expect(within(openConnections()).queryByText(UNKNOWN_FLOW_NOTE)).toBeNull();
   });
 });
 

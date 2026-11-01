@@ -307,7 +307,16 @@ export interface SiteGraphProps {
    * when the write fails, and the panel shows why.
    */
   onPopOut?: ((nodeKey: string) => Promise<void>) | undefined;
+  /**
+   * ADR-0062 Decision 3, graph sync: the one selection shared with the outline. A key given as the canvas mounts ("Show in
+   * graph") brings the card standing for it into view and gives its button the keyboard; focusing or opening a card here
+   * reports its key (a factory's, else its first group's) so the outline marks and focuses that row.
+   */
+  current?: { key: string | null; onChange: (key: string) => void } | undefined;
 }
+
+/** The key a card reports as the shared selection: a factory's own, else its first group's (the outline's rows). */
+const currentKeyOf = (card: Card): string => (card.kind === "factory" ? card.key : (card.nodeKeys[0] ?? card.key));
 
 /** Whether a card can be picked: it stands for groups that are drawn (a fold's are hidden, a factory is not a group). */
 const pickable = (card: Card) => (card.kind === "group" || card.kind === "bubble") && card.nodeKeys.length > 0;
@@ -331,7 +340,7 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
  * draws a lasso that picks the cards whose centre it encloses (ADR-0055 Decision 5); in Select mode a click (or a card's
  * button) picks or unpicks one card instead of opening it.
  */
-export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, factoryPicks, onPopOut }: SiteGraphProps) {
+export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, factoryPicks, onPopOut, current }: SiteGraphProps) {
   // View state of this session, per factory (it outlives this canvas: foldMemory): which bubbles differ from their
   // default, which folds are open; and the viewer's saved choices: whose upstream is hidden, storage shown, motion.
   // Blow-up (ADR-0061 Decision 5) works on a level of the factory tree; its choices are remembered per path, like folds.
@@ -1041,7 +1050,27 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const focusNode = (n: LaidNode) => {
     setFocusKey(n.key);
     setView((v) => revealRect(v, n, stageRef.current));
+    if (current !== undefined && current.key !== currentKeyOf(n.card)) current.onChange(currentKeyOf(n.card));
   };
+  // ADR-0062 Decision 3, graph sync. Out: a group's panel opened (a click on its card) is the selection too.
+  const reportOpen = current?.onChange;
+  const panelCard = openKey === null ? undefined : laidByKey.get(openKey)?.card;
+  const openReport = panelCard === undefined ? null : currentKeyOf(panelCard);
+  useEffect(() => {
+    if (openReport !== null) reportOpen?.(openReport);
+  }, [openReport, reportOpen]);
+  // In: the outline's "Show in graph" mounts the canvas with a key; the card standing for it (its own, else the smallest card
+  // holding that group) gets the keyboard, which rings it and brings it into view. Once, as the canvas opens.
+  // The key as the canvas mounted: a selection made here later is reported out, never shown back in.
+  const [shownKey] = useState(() => current?.key ?? null);
+  const currentShown = useRef(false);
+  useEffect(() => {
+    if (currentShown.current || shownKey === null) return;
+    currentShown.current = true;
+    const holders = layout.nodes.filter((n) => n.key === shownKey || n.card.nodeKeys.includes(shownKey));
+    const target = holders.find((n) => n.key === shownKey) ?? [...holders].sort((a, b) => a.card.nodeKeys.length - b.card.nodeKeys.length)[0];
+    if (target !== undefined) buttons.current.get(target.key)?.focus();
+  }, [shownKey, layout]);
   /**
    * A destination cap chosen (ADR-0062 Decision 1), drawn or by its button: the card's detail, which lists every destination
    * in words. A factory opens (its facts list where its flows end), a group's panel opens (its facts, focused), a closed

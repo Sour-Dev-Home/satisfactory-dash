@@ -110,7 +110,7 @@ describe("overviewScene", () => {
       expect(f.from).not.toBe(f.to);
     }
     expect(scene.flows.map((f) => f.carrier)).toEqual(["belt"]);
-    expect(sceneSummary(scene, 0)).toBe("Graph of Factories: 2 factories, 1 connection. The Tables view lists the same.");
+    expect(sceneSummary(scene, 0)).toBe("Graph of Factories: 2 factories, 1 connection. The Outline view lists the same.");
   });
 });
 
@@ -353,7 +353,7 @@ describe("siteScene", () => {
     const scene = siteScene(g.sites[0], g);
     expect(scene.cards.map((c) => c.key)).toEqual(["a", "b"]);
     expect(scene.flows).toHaveLength(1);
-    expect(sceneSummary(scene, 0)).toBe("Graph of Site: 2 groups, 1 connection. The Tables view lists the same.");
+    expect(sceneSummary(scene, 0)).toBe("Graph of Site: 2 groups, 1 connection. The Outline view lists the same.");
   });
 });
 

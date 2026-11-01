@@ -25,6 +25,13 @@ const FACTORY_DATA = ProductionGraphResponseSchema.parse(productionGraphFactorie
 const answer = (body: JsonBodyType) => server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(body)));
 const withData = (data: object) => ({ ...productionGraphFactories, data: { ...FACTORY_DATA, ...data } });
 const card = async (name: string) => (await screen.findByRole("heading", { name })).closest("li") as HTMLElement;
+/** The outline's group rows (ADR-0062 Decision 3), in order. */
+const groupRows = () => [...document.querySelectorAll<HTMLElement>('[data-outline-row="group"]')];
+/** Opens "All connections" and gives its table's rows, the header row first. */
+async function connectionRowsShown() {
+  fireEvent.click(await screen.findByRole("button", { name: "All connections" }));
+  return within(screen.getByRole("table")).getAllByRole("row");
+}
 
 describe("PlannerView: the factory overview (ADR-0055)", () => {
   beforeEach(() => answer(productionGraphFactories));
@@ -64,30 +71,34 @@ describe("PlannerView: the factory overview (ADR-0055)", () => {
     expect(line).toHaveClass("min-h-lh");
     expect(line).toBeEmptyDOMElement();
     answer();
-    expect(await within(plate).findByText("No bottlenecks")).toBeInTheDocument();
+    expect(await within(line as HTMLElement).findByText("No bottlenecks")).toBeInTheDocument();
     expect(plate.querySelector("[data-bottleneck-line]")).toBe(line);
   });
 
-  it("lists the flows between factories as a table with headers, the carrier and the flow class", async () => {
+  it("lists the flows between factories under All connections: 5 columns, the flow class in the row's detail", async () => {
     renderView();
-    const heading = await screen.findByRole("heading", { name: "Flows between factories" });
-    const table = within(heading.closest("section") as HTMLElement).getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["From", "To", "Item", "Rate per minute", "Carrier", "Flow"]);
+    fireEvent.click(await screen.findByRole("button", { name: "All connections" }));
+    const table = within(screen.getByRole("heading", { name: "All connections" }).closest("section") as HTMLElement).getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent?.replace(/[↕↑↓]/u, ""))).toEqual(["From", "To", "Item", "Rate", "Carrier"]);
     const row = within(table).getAllByRole("row")[1];
     expect(within(row).getByRole("rowheader")).toHaveTextContent("Iron Plate factory");
     expect(row).toHaveTextContent("Iron Rod factory");
     expect(row).toHaveTextContent("Iron Ingot");
     expect(row).toHaveTextContent("about 48 items/min");
     expect(row).toHaveTextContent("Belt");
-    expect(row).toHaveTextContent("Supply");
+    expect(row).not.toHaveTextContent("Supply");
+    fireEvent.click(within(row).getByRole("button", { name: /^Details: Iron Plate factory to Iron Rod factory/ }));
+    expect(within(table).getAllByRole("row")[2]).toHaveTextContent("Flow: Supply");
   });
 
-  it("leaves out the flows table when the factories stand alone", async () => {
+  it("says so when the factories stand alone", async () => {
     const { nodes, edges } = FACTORY_DATA;
     answer(withData({ edges: edges.filter((e) => e.to !== nodes[4].key && e.from !== nodes[2].key), transports: [] }));
     renderView();
     await card("Iron Plate factory");
-    expect(screen.queryByRole("heading", { name: "Flows between factories" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "All connections" }));
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByText("No flows between these factories are known.")).toBeInTheDocument();
   });
 
   it("falls back to the site cards when the backend sent no factories (an older backend), or an empty list", async () => {
@@ -134,46 +145,27 @@ describe("PlannerView: an opened factory", () => {
     expect(screen.getByText(/Where: Main base \+ 1 remote \(Site near \(5000, 5000\)\)/)).toBeInTheDocument();
   });
 
-  it("lists the groups with role, remote place and how a shared group splits, under proper headers", async () => {
+  it("lists the groups with role, remote place and how a shared group splits, in each row's facts", async () => {
     await openPlate();
-    const table = screen.getAllByRole("table")[0];
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
-      "Group",
-      "Count",
-      "Recipe",
-      "Output, actual / max",
-      "States",
-      "Loop",
-      "Bottlenecks",
-      "Place and split",
-    ]);
-    const rows = within(table).getAllByRole("row").slice(1);
-    const miner = rows.find((r) => r.textContent?.includes("Miner Mk.2")) as HTMLElement;
+    // A row by its sentence's subject (a neighbour's name shows in other rows too).
+    const rows = groupRows();
+    const rowOf = (name: string) => rows.find((r) => r.firstElementChild?.textContent?.includes(name)) as HTMLElement;
+    const miner = rowOf("Miner Mk.2");
     // 4100 m east and 4960 m south of the home site's centre.
     expect(miner).toHaveTextContent("Site near (5000, 5000), 6.4 km, by train");
     expect(miner).toHaveTextContent("Shared: 60% here, 40% Iron Rod factory");
-    const depot = rows.find((r) => r.textContent?.includes("Main Depot")) as HTMLElement;
+    const depot = rowOf("Main Depot");
     expect(depot).toHaveTextContent("Dimensional Depot");
-    const store = rows.find((r) => r.textContent?.includes("Storage Container")) as HTMLElement;
+    const store = rowOf("Storage Container");
     expect(store).toHaveTextContent("Storage");
-    expect(store).toHaveTextContent("Home site");
+    expect(store).not.toHaveTextContent("Shared:");
     // Groups of the other factory are not listed here.
-    expect(rows.some((r) => r.textContent?.includes("Iron Rod: 30"))).toBe(false);
+    expect(rows.some((r) => r.firstElementChild?.textContent?.includes("Iron Rod: 30"))).toBe(false);
   });
 
   it("lists connections with transports, flow classes, how an item was inferred and which factory the other end is in", async () => {
     await openPlate();
-    const table = screen.getAllByRole("table")[1];
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
-      "From",
-      "To",
-      "Item",
-      "Rate per minute",
-      "Capacity",
-      "Carrier",
-      "Flow",
-    ]);
-    const rows = within(table).getAllByRole("row");
+    const rows = await connectionRowsShown();
     const train = rows.find((r) => r.textContent?.includes("Train")) as HTMLElement;
     expect(train).toHaveTextContent("Train: Ore Run (2 trains)");
     expect(train).toHaveTextContent("Iron Ore");
@@ -182,16 +174,21 @@ describe("PlannerView: an opened factory", () => {
     const toRod = rows.find((r) => r.textContent?.includes("Iron Rod factory")) as HTMLElement;
     expect(within(toRod).getByRole("rowheader")).toHaveTextContent("4× Smelter, Iron Ingot");
     expect(toRod).toHaveTextContent("2× Constructor, Iron Rod (Iron Rod factory)");
-    const output = rows.find((r) => r.textContent?.includes("Output to storage")) as HTMLElement;
+    // Capacity and Flow are in the row's detail (ADR-0062 Decision 3).
+    const output = rows.find((r) => r.textContent?.includes("Storage Container")) as HTMLElement;
     expect(output).toHaveTextContent("Iron Plate");
     expect(output).toHaveTextContent("48 items/min");
+    fireEvent.click(within(output).getByRole("button", { name: /^Details: / }));
+    expect(output.nextElementSibling).toHaveTextContent("Flow: Output to storage");
+    expect(output.nextElementSibling).toHaveTextContent("Capacity:");
   });
 
-  it("says the excess goes to the sink in the other factory's table", async () => {
+  it("says the excess goes to the sink in the other factory's connections", async () => {
     renderView();
     fireEvent.click(await screen.findByRole("button", { name: "Open factory: Iron Rod factory" }));
-    const rows = within(screen.getAllByRole("table")[1]).getAllByRole("row");
-    expect(rows.some((r) => r.textContent?.includes("Excess to the AWESOME Sink"))).toBe(true);
+    await connectionRowsShown();
+    for (const details of within(screen.getByRole("table")).queryAllByRole("button", { name: /^Details: / })) fireEvent.click(details);
+    expect(within(screen.getByRole("table")).getAllByRole("row").some((r) => r.textContent?.includes("Excess to the AWESOME Sink"))).toBe(true);
   });
 
   it("shows words it does not know as the backend's own text, not as markup", async () => {
@@ -200,7 +197,9 @@ describe("PlannerView: an opened factory", () => {
     answer(withData({ nodes, edges: [...FACTORY_DATA.edges.slice(0, 3), edge] }));
     renderView();
     fireEvent.click(await screen.findByRole("button", { name: "Open factory: Iron Plate factory" }));
-    expect((await screen.findAllByText("<b>spill</b> to <i>bin</i>")).length).toBe(1);
+    await connectionRowsShown();
+    for (const details of within(screen.getByRole("table")).queryAllByRole("button", { name: /^Details: / })) fireEvent.click(details);
+    expect((await screen.findAllByText(/· Flow: <b>spill<\/b> to <i>bin<\/i>$/)).length).toBe(1);
     expect(screen.getAllByText(/<u>hub<\/u>/).length).toBeGreaterThan(0);
     expect(document.querySelector("b, i, u")).toBeNull();
   });
@@ -217,15 +216,14 @@ describe("PlannerView: trees in a factory", () => {
     return withData({ nodes: [...data.nodes.map((n) => (n === first ? { ...n, treeKey: "tree|a" } : n)), sibling, other], factories });
   }
 
-  it("indents a tree's groups under a row that names it with its ordinal, and numbers a lone group's tree", async () => {
+  it("nests a tree's groups under a line that names it with its ordinal, and numbers a lone group's tree", async () => {
     answer(twoTrees());
     renderView();
     fireEvent.click(await screen.findByRole("button", { name: "Open factory: Iron Plate factory" }));
-    const table = screen.getAllByRole("table")[0];
-    const group = within(table).getByRole("rowheader", { name: "5× Constructor, Iron Plate, tree 1 of 2" });
-    expect(group).toHaveAttribute("scope", "rowgroup");
-    expect(group.closest("tbody")?.querySelectorAll("tr")).toHaveLength(3);
-    expect(within(table).getByText("tree 2 of 2")).toBeInTheDocument();
+    const tree = await screen.findByRole("list", { name: "Groups of 5× Constructor, Iron Plate, tree 1 of 2" });
+    expect(tree.querySelectorAll('[data-outline-row="group"]')).toHaveLength(2);
+    const lone = groupRows().find((r) => !tree.contains(r) && r.textContent?.includes("tree 2 of 2"));
+    expect(lone).toBeDefined();
   });
 
   it("folds trees beyond the cap behind one button that shows and hides them", async () => {
@@ -236,20 +234,20 @@ describe("PlannerView: trees in a factory", () => {
     answer(withData({ nodes: [...data.nodes.filter((n) => n !== first), ...extra], factories: factories.map((f) => ({ ...f, nodeKeys: f.nodeKeys.filter((k) => k !== first.key) })) }));
     renderView();
     fireEvent.click(await screen.findByRole("button", { name: "Open factory: Iron Plate factory" }));
-    const table = screen.getAllByRole("table")[0];
-    const rowsOf = () => within(table).getAllByRole("row").filter((r) => r.textContent?.includes("Constructor")).length;
+    const list = await screen.findByRole("list", { name: "Groups" });
+    const rowsOf = () => groupRows().filter((r) => r.textContent?.includes("Constructor make") || r.textContent?.startsWith("Constructor makes")).length;
     expect(rowsOf()).toBe(5);
-    const button = within(table).getByRole("button", { name: "Show 2 more Iron Plate trees" });
+    const button = within(list).getByRole("button", { name: "Show 2 more Iron Plate trees" });
     expect(button).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(button);
     expect(rowsOf()).toBe(7);
-    expect(within(table).getByRole("button", { name: "Hide 2 more Iron Plate trees" })).toHaveAttribute("aria-expanded", "true");
-    fireEvent.click(within(table).getByRole("button", { name: "Hide 2 more Iron Plate trees" }));
+    expect(within(list).getByRole("button", { name: "Hide 2 more Iron Plate trees" })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(within(list).getByRole("button", { name: "Hide 2 more Iron Plate trees" }));
     expect(rowsOf()).toBe(5);
   });
 });
 
-describe("PlannerView: sites keep their tables when there are no factories", () => {
+describe("PlannerView: sites keep their outline when there are no factories", () => {
   it("shows a transport and a flow class in a site's connections too", async () => {
     answer({
       ...productionGraphTwoSites,
@@ -260,7 +258,9 @@ describe("PlannerView: sites keep their tables when there are no factories", () 
     });
     renderView();
     fireEvent.click(await screen.findByRole("button", { name: "Open site: Iron Plate site" }));
-    const rows = within(screen.getAllByRole("table")[1]).getAllByRole("row");
+    await connectionRowsShown();
+    for (const details of within(screen.getByRole("table")).queryAllByRole("button", { name: /^Details: / })) fireEvent.click(details);
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
     expect(rows.some((r) => r.textContent?.includes("Output to storage"))).toBe(true);
     expect(rows.some((r) => r.textContent?.includes("Supply"))).toBe(true);
   });

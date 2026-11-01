@@ -85,9 +85,9 @@ describe("blowing up a card on the overview", () => {
 
   it("names the blow-ups in the canvas's accessible label", () => {
     expect(sceneSummary(top(new Set([MAIN, SMELTERS])), 0)).toBe(
-      "Graph of Factories: 4 factories, 3 connections. Blown up in place: Main base, Smelters. The Tables view lists this level's factories.",
+      "Graph of Factories: 4 factories, 3 connections. Blown up in place: Main base, Smelters. The Outline view lists this level's factories.",
     );
-    expect(sceneSummary(top(new Set()), 0)).toBe("Graph of Factories: 2 factories, 1 connection. The Tables view lists the same.");
+    expect(sceneSummary(top(new Set()), 0)).toBe("Graph of Factories: 2 factories, 1 connection. The Outline view lists the same.");
   });
 
   it("offers a plain factory of the shared fixture its groups (the e2e case: Iron Rod factory, 2 groups)", () => {

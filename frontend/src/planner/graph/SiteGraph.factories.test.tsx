@@ -72,7 +72,7 @@ describe("the factory overview on the canvas", () => {
   it("draws a card per factory with the flow between them, and opens a factory from its card", async () => {
     renderView();
     const svg = await overview();
-    expect(svg).toHaveAccessibleName("Graph of Factories: 2 factories, 1 connection. The Tables view lists the same.");
+    expect(svg).toHaveAccessibleName("Graph of Factories: 2 factories, 1 connection. The Outline view lists the same.");
     expect(cardNames().map((n) => n?.split(". ")[0])).toEqual(["Open factory: Iron Plate factory", "Open factory: Iron Rod factory"]);
     // A factory card prints its name and one product line, with the main machine's count; the rest is in its tooltip and name.
     expect(within(svg).getByText("Iron Plate factory")).toBeInTheDocument();
@@ -95,12 +95,12 @@ describe("the factory overview on the canvas", () => {
     expect(await screen.findByRole("img", { name: /^Graph of Iron Rod factory/ })).toBeInTheDocument();
   });
 
-  it("keeps the cards and the flows table as the Tables view", async () => {
+  it("keeps the factories and the flows between them as the Outline view", async () => {
     renderView();
     await overview();
-    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
+    fireEvent.click(screen.getByRole("button", { name: "Outline" }));
     expect(await screen.findByRole("list", { name: "Factories" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Flows between factories" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "All connections" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /^Graph of/ })).not.toBeInTheDocument();
   });
 });
@@ -221,7 +221,7 @@ describe("drill-down into a bubble", () => {
     expect(svg.querySelectorAll("[data-frame]")).toHaveLength(1);
   });
 
-  it("remembers Collapse all for the factory across a visit to All factories and the Tables view (the owner, 2026-10-27)", async () => {
+  it("remembers Collapse all for the factory across a visit to All factories and the Outline view (the owner, 2026-10-27)", async () => {
     await openPlate();
     fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
     fireEvent.click(screen.getByRole("button", { name: "All factories" }));
@@ -230,8 +230,8 @@ describe("drill-down into a bubble", () => {
     let svg = await plateGraph();
     expect(svg.querySelectorAll("[data-frame]")).toHaveLength(0);
     expect(screen.getByRole("button", { name: "Expand all" })).toBeInTheDocument();
-    // Tables and back to the graph remounts the canvas; the choice holds there too.
-    fireEvent.click(screen.getByRole("button", { name: "Tables" }));
+    // Outline and back to the graph remounts the canvas; the choice holds there too.
+    fireEvent.click(screen.getByRole("button", { name: "Outline" }));
     fireEvent.click(screen.getByRole("button", { name: "Graph" }));
     svg = await plateGraph();
     expect(svg.querySelectorAll("[data-frame]")).toHaveLength(0);

@@ -114,7 +114,8 @@ const settled = async () => {
   await screen.findByRole("heading", { name: "Rod works" });
   await waitFor(() => expect(view.client.isFetching()).toBe(0));
 };
-const tick = (name: string) => fireEvent.click(screen.getByRole("checkbox", { name }));
+/** A row's Select in the outline (ADR-0062 Decision 3: a toggle button, `aria-pressed`). */
+const tick = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
 const openRodWorks = async () => {
   await settled();
   fireEvent.click(within(screen.getByRole("heading", { name: "Rod works" }).closest("li")!).getByRole("button", { name: /^Open factory/ }));
@@ -199,7 +200,7 @@ describe("merging factories", () => {
     fireEvent.click(screen.getByRole("button", { name: "Merge into one" }));
     fireEvent.click(screen.getByRole("button", { name: "Merge" }));
     expect(await screen.findByText(STALE_TEXT)).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Select Rod works" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Select Rod works" })).toHaveAttribute("aria-pressed", "false");
     expect(within(screen.getByRole("group", { name: "Selected factories" })).getByRole("status")).toHaveTextContent("No factories selected");
     await waitFor(() => expect(listReads).toBeGreaterThan(before));
   });
@@ -210,11 +211,11 @@ describe("merging factories", () => {
     await settled();
     tick("Select Rod works");
     fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
-    expect(screen.getByRole("checkbox", { name: "Select Rod works" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Select Rod works" })).toHaveAttribute("aria-pressed", "false");
     view.unmount();
     renderView(serversRoleViewer);
     await settled();
-    expect(screen.queryByRole("checkbox", { name: /^Select / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Select / })).not.toBeInTheDocument();
   });
 });
 

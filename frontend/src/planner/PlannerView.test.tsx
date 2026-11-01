@@ -109,6 +109,9 @@ describe("PlannerView: the site overview", () => {
   });
 });
 
+/** The outline's group rows (ADR-0062 Decision 3), in order. */
+const groupRows = () => [...document.querySelectorAll<HTMLElement>('[data-outline-row="group"]')];
+
 describe("PlannerView: a site's detail", () => {
   async function openIron() {
     renderView();
@@ -124,22 +127,24 @@ describe("PlannerView: a site's detail", () => {
     expect(screen.getByRole("heading", { name: "Production planner" })).toHaveFocus();
   });
 
-  it("lists the groups with count, recipe, actual over max, states and the loop marker", async () => {
+  it("lists the groups as sentences with count, recipe, actual over max, states and the loop marker", async () => {
     await openIron();
-    const rows = within(screen.getAllByRole("table")[0]).getAllByRole("row").slice(1);
+    const rows = groupRows();
     expect(rows).toHaveLength(5);
     const plates = rows.find((r) => r.textContent?.includes("Iron Plate: 72 / 160 items/min")) as HTMLElement;
-    expect(plates).toHaveTextContent("Constructor");
+    expect(plates).toHaveTextContent(/^8× Constructor make Iron Plate: 72 \/ 160 items\/min\./);
+    expect(plates).toHaveTextContent("Recipe: Iron Plate");
     expect(plates).toHaveTextContent("In a loop");
     expect(plates).toHaveTextContent("6 Producing, 2 Underfed");
     // The miner is not in a loop.
     expect(rows[0]).toHaveTextContent("Miner Mk.2");
-    expect(within(rows[0]).getByText("No")).toBeInTheDocument();
+    expect(rows[0]).not.toHaveTextContent("In a loop");
   });
 
   it("words each connection's rate: measured plain, 'about' for estimated, 'unknown' with no number; marks the mixed belt", async () => {
     await openIron();
-    const rows = within(screen.getAllByRole("table")[1]).getAllByRole("row");
+    fireEvent.click(screen.getByRole("button", { name: "All connections" }));
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
     const rowFor = (item: string, rate: string) => rows.find((r) => r.textContent?.includes(item) && r.textContent?.includes(rate));
     expect(rowFor("Iron Ore", "120 items/min")).toBeDefined();
     expect(rowFor("Iron Ingot", "about 102.2 items/min")).toBeDefined();
@@ -153,7 +158,7 @@ describe("PlannerView: a site's detail", () => {
   it("badges a group whose machines have a finding, and not the others", async () => {
     server.use(http.get(endpoints.bottlenecks.route, () => HttpResponse.json(findingOnIronSite)));
     await openIron();
-    const rows = within(screen.getAllByRole("table")[0]).getAllByRole("row").slice(1);
+    const rows = groupRows();
     const badged = await screen.findAllByRole("link", { name: /1 bottleneck in 8× Constructor, Iron Plate/ });
     expect(badged).toHaveLength(1);
     expect(rows.filter((r) => within(r).queryByRole("link") !== null)).toHaveLength(1);
