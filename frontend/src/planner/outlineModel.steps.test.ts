@@ -89,6 +89,20 @@ describe("the outline's step words", () => {
     expect(groupConnections([row("b", 120, { rate: "estimated" })], labelOf).map((r) => r.rate)).toEqual(["about 120 items/min, medium"]);
   });
 
+  it("names no step for a 0 rate (the line does not move), measured or not, even from a stalled group", () => {
+    const g = graphOf([node("a"), backedUp, node("c")], [edge("a", "c", 0), edge("b", "c", 0)]);
+    const { sends } = neighboursOf(g);
+    expect(sends.get("a")!.map((n) => n.rate)).toEqual(["0 items/min"]);
+    expect(sends.get("b")!.map((n) => n.rate)).toEqual(["0 items/min"]);
+  });
+
+  it("names the step per unit: the same number is slow as a belt's items and medium as a pipe's m3", () => {
+    const pipe = (r: number) => edge("a", "c", r, { kind: "pipe", itemClassName: "Desc_Water_C", itemName: "Water" });
+    const { sends } = neighboursOf(graphOf([node("a"), node("c")], [pipe(299), edge("a", "c", 299)]));
+    expect(sends.get("a")!.map((n) => n.rate)).toEqual(["299 items/min, medium", "299 m³/min, slow"]);
+    expect(neighboursOf(graphOf([node("a"), node("c")], [pipe(300)])).sends.get("a")![0]!.rate).toBe("300 m³/min, medium");
+  });
+
   it("does the same on the overview, a stalled factory card's flows naming no step", () => {
     const flow = (from: string, ratePerMinute: number, quality: AggregateFlow["quality"]): AggregateFlow => ({
       from,
