@@ -272,6 +272,34 @@ run "edge_optional_backend_secrets_are_opt_in" {
   }
 }
 
+run "edge_the_metrics_ingest_hash_is_opt_in_and_readable" {
+  command = apply
+
+  variables {
+    backend_optional_secrets = ["METRICS_INGEST_SECRET_SHA256"]
+  }
+
+  assert {
+    condition = contains([for s in [for c in jsondecode(aws_ecs_task_definition.main.container_definitions) : c.secrets if c.name == "backend"][0] : s.valueFrom if s.name == "METRICS_INGEST_SECRET_SHA256"],
+    local.ssm_parameter_arns["METRICS_INGEST_SECRET_SHA256"])
+    error_message = "the opted-in ingest hash is injected from /satis/prod/METRICS_INGEST_SECRET_SHA256"
+  }
+
+  assert {
+    condition     = contains(jsondecode(aws_iam_role_policy.execution.policy).Statement[0].Resource, local.ssm_parameter_arns["METRICS_INGEST_SECRET_SHA256"])
+    error_message = "the execution role can read the ingest hash once it is injected"
+  }
+}
+
+run "edge_the_metrics_ingest_hash_is_off_by_default" {
+  command = apply
+
+  assert {
+    condition     = !contains(jsondecode(aws_iam_role_policy.execution.policy).Statement[0].Resource, local.ssm_parameter_arns["METRICS_INGEST_SECRET_SHA256"])
+    error_message = "with no opt-in, the task neither injects nor may read the ingest hash"
+  }
+}
+
 run "edge_a_tag_image_is_refused" {
   command = plan
 
