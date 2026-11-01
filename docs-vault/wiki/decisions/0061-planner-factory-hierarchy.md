@@ -150,6 +150,32 @@ are relative to `frontend/src/planner/` unless they say otherwise. Nothing here 
   The write order (inserts parents first, then updates in place, then deletes) keeps the `ON DELETE RESTRICT` key whole.
   Re-parenting is a write to each child (revision + 1), so a client holding the old revision gets `designation_stale` and
   re-reads. An empty childless parent the previous build left (it ignores `parent_id`) never blocks an unrelated write.
+- **Note (2026-10-28, build PR 5: what the Decision left open).** All of it behind `planner.nesting`.
+  - *Where.* The overview's selection bar (`MergeBar`) gains "Group into a new factory" (the in-place name form, no name
+    proposed) and "Move to…" (an in-place choice of destinations, by path name: "Main base / Smelters", "Top level"). The
+    picks are the level's cards, parents too, from the Select tool or the Tables ticks, at any level (siblings by
+    construction). A parent's own-machines card is never picked: those machines move with the parent. Ungroup is a button
+    on a parent: its card in the Tables view and under a parent level's heading (the canvas reaches it by opening the
+    parent). Merge with a parent picked is disabled and says "Only factories with no factories inside them merge."
+  - *Group* needs 2 to 9 picks (the new parent is the tenth `put`). The client makes the new parent's id
+    (`crypto.randomUUID`) so the picks can name it in the same replace; an automatic factory is inserted under its own name.
+  - *Ungroup* of a parent that owns machines keeps it, as their factory in the same place, and moves only its children up
+    (the Decision's "own members go to its parent" read as: they stay a factory at the level the children move to, not
+    merged into the grandparent's own machines, which would lose the name). One that owns none is removed.
+  - *Move* offers only destinations a move is accepted into (not a pick or inside one, not past depth 3), never where the
+    picks already are. Moving into a plain factory makes it a parent that owns machines (owner answer 2).
+  - *Emptied parents.* Every builder simulates the result and removes, in the same replace, each designation the change
+    leaves with no machines and no factories, up the tree (the replace does not do it for the client, per the PR 2 note).
+    Dissolve follows the server's DELETE: its children move up, an emptied ancestor goes too. A split's new factory stays
+    beside its source (same `parentId`).
+  - *Checks before sending*, in the server's words: depth "Factories nest at most 3 levels.", cycle "A factory cannot go
+    inside itself or a factory inside it.", shape "That would leave a factory with no machines and no factories in it.",
+    and an automatic factory's machines another designation holds ("Some of these machines already belong to <name>").
+    They cover only what the change touches, so an old breach elsewhere never blocks an unrelated edit. The same words
+    show for the server's 409s, where the action was taken (the form, or under Ungroup). Stale keeps ADR-0055's "Changed
+    by someone else; select again." (the page re-reads by itself, so "reload" would be wrong).
+  - *Undo* is the existing one level, from the pre-image: every restored designation sends its `parentId` (null for the
+    top level), and a removed parent with no machines is re-inserted. A stale undo says so and never overwrites.
 
 ### 7. Persistent state and the flag
 

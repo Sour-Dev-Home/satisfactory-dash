@@ -2,7 +2,23 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CanvasFlow } from "./canvasScene";
-import { CARD_DECOR_INSET, CARD_STACK_OFFSET, MARCH_MAX, PULSE_DASH, marchCandidates, marchHoles, marchStep, marchingLines, routeBox } from "./marching";
+import { glyphCandidates, movingGlyphs } from "./glyphMotion";
+import {
+  CARD_DECOR_INSET,
+  CARD_STACK_OFFSET,
+  GLYPH_MAX_S,
+  GLYPH_MIN_S,
+  GLYPH_MOVE_MAX,
+  GLYPH_SPEED,
+  MARCH_MAX,
+  PULSE_DASH,
+  marchCandidates,
+  marchHoles,
+  marchStep,
+  marchingLines,
+  routeBox,
+} from "./marching";
+import { GLYPH_HALO_RADIUS } from "./transportModes";
 import type { Stage, View } from "./viewport";
 
 // ADR-0062 amendment build PR 3: which lines march, at which step, and which of them the in-view cap keeps.
@@ -119,6 +135,69 @@ describe("marchingLines", () => {
   it("marches nothing with a cap of 0 or no candidates", () => {
     expect(marchingLines(marchCandidates([edge(0, 10, 10)]), AT_REST, STAGE, 0).size).toBe(0);
     expect(marchingLines([], AT_REST, STAGE).size).toBe(0);
+  });
+});
+
+// ADR-0062 amendment build PR 4: which transport glyphs move, along which path, and which of them the in-view cap keeps.
+/** A transport 200 long from (x, y) to the right, its label pill (40 by 20) on its middle. */
+const ride = (index: number, x: number, y: number, over: Partial<CanvasFlow> = {}, length = 200) => ({
+  ...edge(index, x, y, { carrier: "train", ...over }),
+  points: [
+    { x, y },
+    { x: x + length, y },
+  ],
+  length,
+  labelX: x + length / 2,
+  labelY: y,
+  labelWidth: 40,
+  labelHeight: 20,
+});
+
+describe("glyphCandidates", () => {
+  it("lists every transport in edge order, never a belt or pipe, and leaves out a stalled one only in marks mode", () => {
+    const edges = [
+      ride(0, 0, 10),
+      ride(1, 0, 60, { carrier: "belt" }),
+      ride(2, 0, 110, { carrier: "drone", stalled: "backedUp" }),
+      ride(3, 0, 160, { carrier: "pipe", unit: "m3/min" }),
+      ride(4, 0, 210, { carrier: "hovercraft" }),
+      { ...ride(5, 0, 260), points: [{ x: 0, y: 260 }] },
+    ];
+    expect(glyphCandidates(edges, true).map((c) => c.edge.index)).toEqual([0, 4]);
+    expect(glyphCandidates(edges, false).map((c) => c.edge.index)).toEqual([0, 2, 4]);
+  });
+
+  it("rides the route around its own label box grown by the glyph's halo: no point of the path lies in it", () => {
+    const [c] = glyphCandidates([ride(0, 0, 10)], true);
+    const grown = { x: 80 - GLYPH_HALO_RADIUS - 1, y: 0 - GLYPH_HALO_RADIUS - 1, width: 40 + 2 * (GLYPH_HALO_RADIUS + 1), height: 20 + 2 * (GLYPH_HALO_RADIUS + 1) };
+    expect(c.path.match(/M/g)).toHaveLength(2);
+    const numbers = c.path.match(/-?\d+(\.\d+)?/g)!.map(Number);
+    for (let i = 0; i + 1 < numbers.length; i += 2) {
+      const [px, py] = [numbers[i], numbers[i + 1]];
+      expect(px > grown.x + 1e-6 && px < grown.x + grown.width - 1e-6 && py > grown.y && py < grown.y + grown.height, `${px},${py}`).toBe(false);
+    }
+  });
+
+  it("leaves out a transport whose whole route lies in its own label box (nothing left to ride)", () => {
+    expect(glyphCandidates([{ ...ride(0, 0, 10, {}, 20), labelWidth: 200 }], true)).toEqual([]);
+  });
+
+  it("takes one trip in the line's length over GLYPH_SPEED, within GLYPH_MIN_S and GLYPH_MAX_S", () => {
+    const seconds = (length: number) => glyphCandidates([ride(0, 0, 10, {}, length)], true)[0]!.seconds;
+    expect(seconds(400)).toBe(400 / GLYPH_SPEED);
+    expect(seconds(100)).toBe(GLYPH_MIN_S);
+    expect(seconds(5000)).toBe(GLYPH_MAX_S);
+  });
+});
+
+describe("movingGlyphs", () => {
+  it("moves only the glyphs whose route meets the stage, in edge order, up to the cap", () => {
+    const candidates = glyphCandidates([ride(0, 100, 100), ride(1, 1300, 100), ride(2, 100, 300)], true);
+    expect(movingGlyphs(candidates, AT_REST, STAGE).map((c) => c.edge.index)).toEqual([0, 2]);
+    expect(movingGlyphs(candidates, { x: -1200, y: 0, k: 1 }, STAGE).map((c) => c.edge.index)).toEqual([1]);
+    const many = glyphCandidates(Array.from({ length: GLYPH_MOVE_MAX + 5 }, (_, i) => ride(i, 10, 10 + i * 10)), true);
+    expect(movingGlyphs(many, { x: 0, y: 0, k: 0.5 }, STAGE).map((c) => c.edge.index)).toEqual(many.slice(0, GLYPH_MOVE_MAX).map((c) => c.edge.index));
+    expect(movingGlyphs(many, AT_REST, STAGE, 0)).toEqual([]);
   });
 });
 

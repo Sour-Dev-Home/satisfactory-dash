@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { CAP_MARCH_MAX, MARCH_MAX } from "../src/planner/graph/marching";
+import { CAP_MARCH_MAX, GLYPH_MOVE_MAX, MARCH_MAX } from "../src/planner/graph/marching";
 import { expect, expectNoAxeViolations, test } from "./fixtures";
 
 // ADR-0050 task 6, the graph's CSP gate: pan, zoom, the item filter and the group panel, all with zero CSP violations
@@ -158,19 +158,26 @@ test.describe("the factory canvas", () => {
   });
 
   // ADR-0055 PR 8b: the transport glyphs move by SVG animateMotion, with no inline style and no script, and stop on the Motion toggle.
+  // ADR-0062 amendment build PR 4: they move in the march layer over the canvas (never in it), along their double line.
   test("shows every transport mode as a glyph, moves them, and the Motion toggle stops them and is remembered", async ({ page, mockApi }, testInfo) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await mockApi("planner-factories-transports");
     await page.goto("/app/planner");
     const svg = await openPlate(page);
-    for (const mode of ["train", "truck", "drone", "depot"]) await expect(svg.locator(`[data-glyph="${mode}"]`)).toHaveCount(1);
+    // The canvas and the march layer stacked over it (the legend draws its own glyphs, outside this box).
+    const stack = svg.locator("xpath=..");
+    const layerMotion = page.locator("[data-march-layer] animateMotion");
+    for (const mode of ["train", "truck", "drone", "depot"]) await expect(stack.locator(`[data-glyph="${mode}"]`)).toHaveCount(1);
+    await expect(svg.locator("[data-double]")).toHaveCount(4);
     // Only the edges in view move (on a phone most of the four lie past the fitted canvas), so at least one does.
-    await expect.poll(() => svg.locator("animateMotion").count()).toBeGreaterThanOrEqual(1);
-    await expect(svg.locator("[style]")).toHaveCount(0);
+    await expect.poll(() => layerMotion.count()).toBeGreaterThanOrEqual(1);
+    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    await expect(stack.locator("[style]")).toHaveCount(0);
     await expectNoAxeViolations(page, testInfo);
 
     await page.getByLabel("Motion").selectOption("off");
-    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    await expect(page.locator("[data-march-layer]")).toHaveCount(0);
+    await expect(svg.locator('[data-moving="false"]')).toHaveCount(4);
     expect(await page.evaluate(() => window.localStorage.getItem("planner.motion"))).toBe("off");
     // The opened factory is in the address (?open=), so a reload comes back to it.
     await page.reload();
@@ -179,7 +186,7 @@ test.describe("the factory canvas", () => {
     const again = page.getByRole("img", { name: /^Graph of Iron Plate factory/ });
     await expect(again).toBeVisible();
     await expect(page.getByLabel("Motion")).toHaveValue("off");
-    await expect(again.locator("animateMotion")).toHaveCount(0);
+    await expect(page.locator("animateMotion")).toHaveCount(0);
   });
 
   test("System follows the operator's reduced-motion setting", async ({ page, mockApi }) => {
@@ -188,10 +195,11 @@ test.describe("the factory canvas", () => {
     await page.goto("/app/planner");
     const svg = await openPlate(page);
     await expect(page.getByLabel("Motion")).toHaveValue("system");
-    await expect(svg.locator("animateMotion")).toHaveCount(0);
+    await expect(page.locator("animateMotion")).toHaveCount(0);
     await expect(svg.locator('[data-glyph="train"]')).toHaveCount(1);
     await page.emulateMedia({ reducedMotion: "no-preference" });
-    await expect.poll(() => svg.locator("animateMotion").count()).toBeGreaterThanOrEqual(1);
+    await expect.poll(() => page.locator("[data-march-layer] animateMotion").count()).toBeGreaterThanOrEqual(1);
+    await expect(svg.locator("animateMotion")).toHaveCount(0);
   });
 
   test("hides what only feeds a card behind a count, Escape restores it, and storage folds into chips", async ({ page, mockApi }, testInfo) => {
@@ -255,10 +263,19 @@ test("an owner designates a factory's groups from the keyboard", async ({ page, 
   await mockApi("planner-designations");
   await page.goto("/app/planner");
   const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
-    await page.getByRole(role, { name }).focus();
+    // Visible first: the page reveals at once (PageReveal), and focus() on a still-invisible control lands nowhere, so the
+    // key went to the body (seen on slow desktop and mobile runs).
+    const control = page.getByRole(role, { name });
+    await expect(control).toBeVisible();
+    await control.focus();
+    await expect(control).toBeFocused();
     await page.keyboard.press(key);
   };
   await press("Open factory: Iron Plate factory");
+  // The overview has its own Tables button: wait until the factory is open, or "Tables" can land on the overview's
+  // (it did on a slow desktop run, and the Smelter tick never appeared).
+  // The back button exists only inside an opened factory, at every width (a phone may not open on the graph).
+  await expect(page.getByRole("button", { name: /All factories/ })).toBeVisible();
   await press("Tables");
   await press("Select Smelter", "checkbox", "Space");
   await expect(page.getByText("1 group, 4 machines selected")).toBeVisible();
@@ -282,7 +299,11 @@ test("an owner merges two factories and splits them back from the keyboard", asy
   await mockApi("planner-merge-split");
   await page.goto("/app/planner");
   const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
-    await page.getByRole(role, { name, exact: typeof name === "string" }).focus();
+    // Visible first, as in the designate case above: focus() on a control the page has not revealed yet lands nowhere.
+    const control = page.getByRole(role, { name, exact: typeof name === "string" });
+    await expect(control).toBeVisible();
+    await control.focus();
+    await expect(control).toBeFocused();
     await page.keyboard.press(key);
   };
   await press("Tables");
@@ -315,6 +336,51 @@ test("an owner merges two factories and splits them back from the keyboard", asy
   expect(undoBody.put).toEqual([expect.objectContaining({ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", createdAt: "2026-10-20T10:00:00.000Z" })]);
   await expect(page.getByText("Split back: the factories are as they were.").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Production planner" })).toBeFocused();
+});
+
+// ADR-0061 build PR 5, behind `planner.nesting`: group a designated and an automatic factory into a new one and undo it, by
+// keyboard alone. One replace designates the automatic factory on the way; the undo offer takes the focus.
+test("with the nesting flag on, an owner groups two factories and undoes it from the keyboard", async ({ page, mockApi }, testInfo) => {
+  await page.addInitScript(() => window.localStorage.setItem("planner.nesting", "on"));
+  await mockApi("planner-merge-split");
+  await page.goto("/app/planner");
+  const press = async (name: string | RegExp, role: "button" | "checkbox" = "button", key = "Enter") => {
+    // Visible first, as in the designate case above: focus() on a control the page has not revealed yet lands nowhere.
+    const control = page.getByRole(role, { name, exact: typeof name === "string" });
+    await expect(control).toBeVisible();
+    await control.focus();
+    await expect(control).toBeFocused();
+    await page.keyboard.press(key);
+  };
+  await press("Tables");
+  await press("Select Rod works", "checkbox", "Space");
+  await press("Select Iron Plate factory", "checkbox", "Space");
+  await expect(page.getByText("2 factories selected")).toBeVisible();
+  await press("Group into a new factory");
+  await expect(page.getByRole("textbox", { name: "Name" })).toBeFocused();
+  await expectNoAxeViolations(page, testInfo);
+  const grouped = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/planner/designations/replace"));
+  await page.keyboard.type("Iron area");
+  await page.keyboard.press("Enter");
+  type Put = { id?: string; name: string; members: unknown[]; parentId?: string | null };
+  const groupBody = (await grouped).postDataJSON() as { expect: { id: string; revision: number }[]; put: Put[]; intent: string };
+  expect(groupBody.intent).toBe("group");
+  expect(groupBody.expect).toEqual([{ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", revision: 2 }]);
+  const parent = groupBody.put[0]!;
+  expect(parent).toMatchObject({ name: "Iron area", members: [] });
+  expect(groupBody.put).toContainEqual(expect.objectContaining({ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", parentId: parent.id }));
+  expect(groupBody.put).toContainEqual(expect.objectContaining({ name: "Iron Plate factory", parentId: parent.id }));
+
+  const undo = page.getByRole("button", { name: "Undo", exact: true });
+  await expect(undo).toBeFocused();
+  await expectNoAxeViolations(page, testInfo);
+  const undone = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/planner/designations/replace"));
+  await page.keyboard.press("Enter");
+  const undoBody = (await undone).postDataJSON() as { expect: { id: string; revision: number }[]; intent: string };
+  expect(undoBody.intent).toBe("undo");
+  // The static mock answers every replace alike (Rod works at revision 3), so that is what the undo expects.
+  expect(undoBody.expect).toEqual([{ id: "6f1c2a9e-3b7d-4e58-9a41-0c5d8e2f7b10", revision: 3 }]);
+  await expect(page.getByText("Undone: the factories are as they were.").first()).toBeVisible();
 });
 
 // ADR-0055 PR 10b: the canvas lasso, by pointer, under the production CSP.
@@ -539,6 +605,64 @@ test("destination caps move in the march layer under their cap, stop with Motion
   for (const run of [fitted, allInView, off]) expect(run.frames).toBeGreaterThan(10);
   // The lines' regression bound (desktop): moving caps (and lines) at the fitted view cost at most twice Motion Off's p95
   // plus a frame, which a cap animated inside the canvas would fail.
+  if (testInfo.project.name === "desktop") expect(fitted.p95, JSON.stringify(result.frameMs)).toBeLessThanOrEqual(2 * off.p95 + 17);
+});
+
+// ADR-0062 amendment build PR 4: a transport is a still double line and its glyph rides it by SVG animateMotion in the march
+// layer, never in the canvas (an animateMotion there repaints the whole canvas every frame, as a dash did, #808), at most
+// GLYPH_MOVE_MAX in view, still with Motion Off; and the frame times with everything moving at once (the caps' 48-factory
+// overview, its lines and caps, and 48 transports), under the lines' regression bound.
+test("transport glyphs move in the march layer under their cap, stop with Motion Off, and record their frame times (48 transports)", async ({ page, mockApi }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await mockApi("planner-transports-large");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Graph" }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Factories: 48 factories/ });
+  await expect(svg).toBeVisible({ timeout: 15_000 });
+  const doubles = svg.locator('[data-edge-layer="lines"] [data-edge][data-double]');
+  await expect(doubles).toHaveCount(48);
+  // Every transport's line is a double line (its gap in the canvas colour), and none of them marches.
+  await expect(svg.locator("[data-double] > [data-double-gap]")).toHaveCount(48);
+  const layer = page.locator("[data-march-layer]");
+  const moving = layer.locator("[data-march-glyphs] g[data-moving]");
+  await expect.poll(() => moving.count()).toBeGreaterThan(0);
+  expect(await moving.count()).toBeLessThanOrEqual(GLYPH_MOVE_MAX);
+  await expect(svg.locator("animateMotion, [data-march], [class*='animate-flow']")).toHaveCount(0);
+  await expect(svg.locator("[style]")).toHaveCount(0);
+  await expect(layer.locator("[style]")).toHaveCount(0);
+  const doubleEdges = new Set(await doubles.evaluateAll((gs) => gs.map((g) => g.getAttribute("data-edge"))));
+  for (const index of await layer.locator("[data-march-edge]").evaluateAll((ms) => ms.map((m) => m.getAttribute("data-march-edge")))) {
+    expect(doubleEdges.has(index), `transport ${index} marches`).toBe(false);
+  }
+
+  const fitted = frameSummary(await frameTimes(page, 2_000));
+  const fittedMoving = await moving.count();
+  await page.getByRole("group", { name: /^Graph viewport/ }).focus();
+  for (let i = 0; i < 12; i++) await page.keyboard.press("Minus");
+  await expect.poll(() => moving.count()).toBeGreaterThan(0);
+  const allInView = frameSummary(await frameTimes(page, 2_000));
+  const allInViewMoving = await moving.count();
+  expect(allInViewMoving).toBeLessThanOrEqual(GLYPH_MOVE_MAX);
+
+  await page.getByLabel("Motion").selectOption("off");
+  await expect(layer).toHaveCount(0);
+  // Still, every glyph stands at rest in its pill.
+  await expect(svg.locator('[data-moving="false"]')).toHaveCount(48);
+  const off = frameSummary(await frameTimes(page, 2_000));
+
+  const result = {
+    project: testInfo.project.name,
+    transports: await doubles.count(),
+    cap: GLYPH_MOVE_MAX,
+    moving: { fitted: fittedMoving, allInView: allInViewMoving },
+    frameMs: { fitted, allInView, off },
+  };
+  await testInfo.attach("transport-frame-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
+  console.info(`[ADR-0062 PR 4 transport frame times] ${JSON.stringify(result)}`);
+  for (const run of [fitted, allInView, off]) expect(run.frames).toBeGreaterThan(10);
+  // The lines' regression bound (desktop): glyphs, lines and caps moving at the fitted view cost at most twice Motion Off's
+  // p95 plus a frame, which a glyph animated inside the canvas would fail.
   if (testInfo.project.name === "desktop") expect(fitted.p95, JSON.stringify(result.frameMs)).toBeLessThanOrEqual(2 * off.p95 + 17);
 });
 
