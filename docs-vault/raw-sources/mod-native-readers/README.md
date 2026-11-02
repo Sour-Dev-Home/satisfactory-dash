@@ -148,3 +148,45 @@ The judge reports these as NOT EXERCISED and does not fail on them:
 - **Two failed runs are left out:** 40439238142 (linked above as the reason for both rulings) and 40433998294, a census
   dispatched outside the backend wrapper, which stopped before the game started because the backend's host file was missing. Their
   `result.json` files are not copied.
+
+## Sprint S4-B: extractors, generators, station rates and storage
+
+Evidence for ADR-0058's Sprint S4-B: the resource extractors, power generators, station transfer rates and storage contents
+readers, read from the game itself. Same folder layout, method and clean room as S1 above.
+
+Source: the mod's PRs #73 and #74 (fixes and rulings) and #75, the switch that makes these readers native by default, all
+merged on the mod's `main` (`1c26359`). The parity run is pinned to
+https://github.com/Sour-Dev-Home/satisfactory-dash-mod/commit/2875574
+
+The Sprint S4-A readers (map markers, drone routes, power lines) are in the same `native-parity` run and pass there, but no
+S4-A evidence PR exists yet, so this bundle makes no claim for them.
+
+### The S4-B runs
+
+| Run | Run id | Started (UTC) | Verdict | What it proves |
+| --- | --- | --- | --- | --- |
+| native-parity | [41340686528](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/41340686528) | 2026-11-01T19:21:32Z | pass | Mod commit `2875574`, world `Test3`, every native reader on against FRM's endpoints. Extractors: ids equal over 4,588 extractors, `isProducing` and `isPaused` equal to FRM's for 99.21% of 3,905 stable posts (need 99%). Generators: ids equal over 45,508 generators; 2,569 geothermal generators judged on the range rule. Station rates: 744 stations compared, median mod/FRM rate factor 1 over 558 stations. Storage: container ids equal over 6,820 containers, amounts exact for 100.00% of 6,232 stable container-posts (need 99%) |
+| tick-cost-native | [41357114391](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/41357114391) | 2026-11-01T22:29:07Z | pass | Mod commit `e420d6f`, `Test3`, with the step diagnostics on: no tick-rate cost (median 29.82 without the mod, 29.86 with it); the 2 ms step ceiling held (Logistics read longest step 1.77 ms); working set 9.1 MB above the baseline at the end (limit 100); S12 pass |
+
+### What the test world did not exercise (S4-B)
+
+- **Generators:** a nuclear generator.
+- **Storage:** a fluid buffer, and a container over 64 classes.
+
+### Decisions taken during the sprint (S4-B)
+
+- **Generators (owner, 2026-11-01).** Oracle fields as ruled after the gen-ext-analysis run 40717842374; a geothermal
+  generator is judged on the range rule: capacity and current within [GeoMinPower, GeoMaxPower] x clock +/- 0.1 MW.
+  `isProducing` and fuel and supplement amounts are report-only.
+- **Extractors (owner, 2026-11-01).** `isProducing` and `isPaused` are judged on stable posts, 99% as in S2. `isBackedUp` is
+  report-only (FRM has no such flag).
+- **Storage (owner, 2026-11-01, after run 41331276923).** Amounts are judged on the S2 99% share of unchanged containers;
+  contents of changed containers are report-only.
+- **Station rates (owner).** The rate factor 1.0 is verified: median mod/FRM 1 over 558 stations, inside [0.8, 1.25].
+- **S12 (owner, 2026-10-28).** A new with-mod endpoint is also accepted when its own DNS name resolves to an address the baseline contacted (a CDN serving one name from sibling addresses). In run 41357114391 the one new endpoint, api.ipify.org, matched by the existing forward lookup.
+- **Step diagnostics (owner, 2026-11-01).** Off by default via the `stepDiagnostics` config key; on only in tick-cost runs.
+
+### Notes (S4-B)
+
+- **Open:** an intermittent wait of about 9 ms in the logistics read early in the conveyor phase. It is not CPU work, and the
+  step diagnostics are on in `tick-cost-native`; the 2 ms ceiling held in the passing run above.
