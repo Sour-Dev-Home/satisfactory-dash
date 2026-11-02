@@ -125,8 +125,15 @@ contract needs to grow, not that this module should special-case a backend detai
 - Deploy: Cloudflare Workers static assets (ADR-0013 amendment), configured by
   `wrangler.jsonc`. Cloudflare's Git build runs `npx wrangler`; it's not a dependency.
   Served on the custom domain only (`workers_dev` and `preview_urls` are off).
+  A Worker (`worker/index.ts`, ADR-0021 amendment 3) runs in front of the HTML pages only: `run_worker_first` is `/*`
+  minus `/assets/*` and every static entry of `public/`, so a new file or folder in `public/` must be added there as a
+  `!` pattern (`worker/routing.test.ts` fails otherwise). It puts a fresh nonce on every script and script preload and
+  sends the security headers. `vars.ADS_ENABLED` is the ads switch, `"false"`: the CSP is then exactly `_headers`'.
+  Wrangler bundles the Worker on deploy; it is not part of the Vite build. The demo (`demo/wrangler.jsonc`) has no Worker.
 - Security headers (CSP, HSTS, etc.) live in `public/_headers` and apply in production
-  only. A new external origin (API, font, image) must be added to the CSP there. Never
+  only. The Worker sends the same rules for HTML from `worker/securityHeaders.ts` (`_headers` is not applied to Worker
+  responses); change both together, `worker/securityHeaders.test.ts` fails if they differ. A new external origin (API,
+  font, image) must be added to the CSP in both. Never
   add long-cache or `immutable` headers for `/assets/*` while `not_found_handling` is
   `single-page-application`: a missing hashed asset returns 200 `index.html`, and that
   HTML would be cached for a year.
