@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handle, loadsScript, type Env } from "./index";
+import { handle, loadsScript, type Env } from "./handle";
 import type { HTMLRewriterInstance } from "./htmlRewriter";
 import { OFF_POLICY, onPolicy, withDirectives } from "./securityHeaders";
 

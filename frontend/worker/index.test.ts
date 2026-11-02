@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import worker, { adsEnabled, handle, makeNonce, NONCE_BYTES, type Env } from "./index";
+import worker from "./index";
+import { adsEnabled, handle, makeNonce, NONCE_BYTES, type Env } from "./handle";
 import type { HTMLRewriterInstance, RewriterElement, RewriterElementHandler } from "./htmlRewriter";
 import { OFF_POLICY, onPolicy, SECURITY_HEADERS } from "./securityHeaders";
 
@@ -92,6 +93,12 @@ async function serve(body: string | null, env: Partial<Env> = {}, request = get(
 const nonceOf = (csp: string) => /'nonce-([^']+)'/.exec(csp)?.[1];
 const scriptTags = (html: string) => html.match(/<script\b[^>]*>/gi) ?? [];
 const NONCE_FORMAT = /^[A-Za-z0-9+/]{22}==$/;
+
+describe("the entry module", () => {
+  it("exports only its default handler: workerd refuses to start on any other export of the entry", async () => {
+    expect(Object.keys(await import("./index"))).toEqual(["default"]);
+  });
+});
 
 describe("makeNonce", () => {
   it("is 128 random bits in base64, which CSP's nonce grammar accepts", () => {
