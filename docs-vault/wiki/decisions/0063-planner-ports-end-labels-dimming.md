@@ -414,6 +414,10 @@ answer. No disagreement is left open.
 5. **Drop the arrowhead on lines into a left input port** (Decision 1)? **Recommended: yes**, keeping it on return lines;
    the port's side, the legend's port row and the marching dashes carry the direction.
 
+### Owner's answers, 2026-11-01
+Questions 1-4, verbatim picks: "Yes, dim them" (1), "Yes" (2), "Yes, inside a factory" (3), "Keep their colour" (4).
+Question 5 is still open; build PR 2 builds both forms behind the flag, and the owner picks on the demo (PR 6).
+
 ## Revisit when
 
 - Ports add more than 10% crossings on the dense scenes, or the owner finds the order hard to follow on a real save: try
