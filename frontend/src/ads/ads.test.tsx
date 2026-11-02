@@ -122,9 +122,10 @@ describe("AdSlot", () => {
   it("with ads on, reserves the fixed slot size, labelled Advertisements, and asks AdSense once", () => {
     setMarker();
     renderSlot("overview");
-    const slot = screen.getByRole("complementary", { name: "Advertisements" });
+    const slot = screen.getByRole("region", { name: "Advertisements" });
+    expect(slot).toHaveClass("mt-8");
     const ins = slot.querySelector("ins")!;
-    expect(ins).toHaveClass("adsbygoogle", "block", "h-ad-phone-h", "w-ad-phone-w", "sm:h-ad-mid-h", "sm:w-ad-mid-w", "lg:h-ad-wide-h", "lg:w-ad-wide-w");
+    expect(ins).toHaveClass("adsbygoogle", "block", "max-w-full", "h-ad-phone-h", "w-ad-phone-w", "sm:h-ad-mid-h", "sm:w-ad-mid-w", "lg:h-ad-wide-h", "lg:w-ad-wide-w");
     expect(ins).toHaveAttribute("data-ad-client", AD_CLIENT);
     expect(ins).toHaveAttribute("data-ad-slot", "1234567890");
     expect(ins).not.toHaveAttribute("style");
@@ -163,7 +164,7 @@ describe("AdSlot", () => {
     const { container, client } = renderSlot("overview", { data: false });
     expect(container).toBeEmptyDOMElement();
     client.setQueryData(KEY, "data");
-    await waitFor(() => expect(screen.getByRole("complementary", { name: "Advertisements" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("region", { name: "Advertisements" })).toBeInTheDocument());
   });
 });
 

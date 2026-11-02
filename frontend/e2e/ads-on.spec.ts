@@ -130,7 +130,7 @@ test("the app with ads on: the loader runs under the ads-on CSP, the consent lin
   await expect.poll(() => page.evaluate(() => window.__adsStub?.revocations)).toBe(1);
 
   // The shipped unit ids are placeholders, so no slot renders and AdSense is asked for nothing.
-  const slots = page.getByRole("complementary", { name: "Advertisements" });
+  const slots = page.getByRole("region", { name: "Advertisements" });
   if (placeholdersOnly) {
     await expect(slots).toHaveCount(0);
     expect(await page.evaluate(() => window.__adsStub?.pushes)).toBe(0);
@@ -142,15 +142,26 @@ test("the app with ads on: the loader runs under the ads-on CSP, the consent lin
 
   // The slot's reserved size in the built CSS (the --spacing-ad-* tokens and breakpoints), measured on a copy of its
   // <ins> classes: 728x90 at desktop width, 320x100 on a phone (U-E5's exact sizes).
-  const size = await page.evaluate(() => {
-    const probe = document.createElement("div");
-    probe.className = "block h-ad-phone-h w-ad-phone-w sm:h-ad-mid-h sm:w-ad-mid-w lg:h-ad-wide-h lg:w-ad-wide-w";
-    document.body.append(probe);
-    const { width, height } = probe.getBoundingClientRect();
-    probe.remove();
-    return { width, height };
-  });
-  expect(size).toEqual(testInfo.project.name === "mobile" ? { width: 320, height: 100 } : { width: 728, height: 90 });
+  const measure = () =>
+    page.evaluate(() => {
+      const probe = document.createElement("div");
+      probe.className = "block max-w-full h-ad-phone-h w-ad-phone-w sm:h-ad-mid-h sm:w-ad-mid-w lg:h-ad-wide-h lg:w-ad-wide-w";
+      document.querySelector("main")!.append(probe);
+      const { width, height } = probe.getBoundingClientRect();
+      probe.remove();
+      return { width, height, scrolls: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+    });
+  expect(await measure()).toEqual(
+    testInfo.project.name === "mobile" ? { width: 320, height: 100, scrolls: false } : { width: 728, height: 90, scrolls: false },
+  );
+  // Under 352 px the unit narrows instead of scrolling the page sideways (WCAG 1.4.10).
+  if (testInfo.project.name === "mobile") {
+    await page.setViewportSize({ width: 320, height: 640 });
+    const narrow = await measure();
+    expect(narrow.width).toBeLessThan(320);
+    expect(narrow.scrolls).toBe(false);
+    await page.setViewportSize({ width: 390, height: 844 });
+  }
 
   await expectNoAxeViolations(page, testInfo);
   expect(offOrigin, "requests off the site's origin that are not Google's (stubbed) hosts").toEqual([]);

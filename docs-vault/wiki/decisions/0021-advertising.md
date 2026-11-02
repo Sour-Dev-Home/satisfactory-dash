@@ -356,11 +356,14 @@ and the app renders no slot and no link, so the site behaves and looks as before
   supported in Ad Manager" (U-E1). Where Google places it on the page is [NEEDS VERIFICATION] once live.
 - **Slots and their placements (owner decision, see below).** One slot after the page's sections on **Overview,
   Power, Factory and Planner**, none on Map, Settings, Servers, Metrics, sign-in, pairing, the landing page, the static
-  pages or any modal. Each is an `<aside>` labelled with visible text "Advertisements" (E18) holding the AdSense
+  pages or any modal. Each is a `<section>` (a region, not a nested complementary landmark) labelled by visible text
+  "Advertisements" (E18), set `mt-8` further below the content than the page's own gap so it sits clear of the
+  controls above it (E18's accidental clicks; the Planner's are the closest), holding the AdSense
   `<ins class="adsbygoogle">` with `data-ad-client` and `data-ad-slot` (U-E5), and asks AdSense once
   (`adsbygoogle.push({})`, in a try/catch: a failure leaves it blank, no retry). Fixed size by tokens, Google's
   exact-size example (U-E5): **320x100 on a phone, 468x60 from `sm` (640 px), 728x90 from `lg` (1024 px)**
-  (`--spacing-ad-*`; 728 px does not fit `md`'s 720 px content). An unfilled unit keeps its size blank (U-E6). A slot
+  (`--spacing-ad-*`; 728 px does not fit `md`'s 720 px content), capped at the content width so a screen under 352 px
+  narrows it instead of scrolling sideways (WCAG 1.4.10). An unfilled unit keeps its size blank (U-E6). A slot
   renders, and so takes space, only when the marker is there, its placement has a unit id, and every primary query of
   its page has data (so never on a loading, empty or error-only page, E16). Power, Factory and Planner slots sit inside
   `BasicDataGate`, so the basic-data notice gets none.
@@ -390,5 +393,10 @@ and the app renders no slot and no link, so the site behaves and looks as before
   supported" (U-E5), and the project bans `style=`, so the slot is sized by Tailwind classes: check in staging that
   AdSense fills the reserved box; whether the real ad code and consent message raise any CSP report under this policy
   (staging, with the switch on there first); where Google renders the US link; Auto ads' default.
+- **Reviews.** `security-reviewer`: nothing blocking; its minor notes are the `https:` breadth of the fetch directives
+  (and `connect-src` no longer pinned to the API origin), `style-src 'unsafe-inline'`, and the loader on every HTML
+  page (intended: the consent message shows wherever the site is entered). All three are to be tightened from staging
+  data if possible. `ui-reviewer`: the 320 px overflow, the clearance below the Planner and the landmark role, all fixed
+  as above. `test-hunter`: no bugs; added edge tests (every primary query, no queries, StrictMode).
 - **Owner decisions:** the four placements above (Map, which amendment 1 allowed in a side area, is left out); manual
   units vs Auto ads; creating the units; turning the switch on after build step 6.

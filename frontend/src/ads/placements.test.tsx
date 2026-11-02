@@ -41,12 +41,12 @@ describe("ad slot placements, ads on", () => {
     window.history.pushState(null, "", path);
     renderWithClient(<App />);
     await screen.findByRole("region", { name: region }, { timeout: 5_000 });
-    const slot = await screen.findByRole("complementary", { name: "Advertisements" }, { timeout: 5_000 });
+    const slot = await screen.findByRole("region", { name: "Advertisements" }, { timeout: 5_000 });
     expect(slots()).toHaveLength(1);
     expect(slot).toHaveAttribute("data-ad-placement", placement);
     // After every panel of game data in the page, never inside one.
-    expect(slot.closest("section, [role=region], dialog")).toBeNull();
-    const regions = [...document.querySelectorAll("[role=region], section")];
+    expect(slot.parentElement!.closest("section, [role=region], dialog, [role=complementary]")).toBeNull();
+    const regions = [...document.querySelectorAll("[role=region], section")].filter((el) => el !== slot);
     for (const panel of regions) expect(panel.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING, panel.getAttribute("aria-label") ?? "").toBeTruthy();
   });
 
