@@ -22,7 +22,7 @@ const names = () =>
     .getAllByRole("rowheader")
     .map((th) => th.textContent);
 const pick = (label: string) =>
-  fireEvent.click(within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: label }));
+  fireEvent.click(within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: new RegExp(`^${label} \\d+$`) }));
 const search = (value: string) => fireEvent.change(screen.getByRole("searchbox", { name: "Search machines" }), { target: { value } });
 
 describe("FactoryPanel row cap (ADR-0062 F.5)", () => {

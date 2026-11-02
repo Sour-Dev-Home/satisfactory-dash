@@ -7,6 +7,8 @@ import {
   itemHistoryLink,
   readItem,
   readSearch,
+  readStates,
+  writeStates,
 } from "./deepLinks";
 import { hashId } from "./useHashTarget";
 
@@ -69,5 +71,27 @@ describe("deep links (#351)", () => {
     expect(hashId("")).toBeUndefined();
     expect(hashId("#")).toBeUndefined();
     expect(hashId("#%E0%A4%A")).toBeUndefined();
+  });
+});
+
+describe("the Factory page's state filters (ADR-0062 F.3)", () => {
+  it("reads a comma list in the filters' own order, without repeats", () => {
+    expect(readStates(params("state=noRecipe,backedUp,backedUp"))).toEqual(["backedUp", "noRecipe"]);
+  });
+
+  it("also reads a repeated parameter and trims each value", () => {
+    expect(readStates(params("state=paused&state=%20backedUp%20"))).toEqual(["backedUp", "paused"]);
+  });
+
+  it("drops unknown, empty and differently cased values, so no filter is a guess", () => {
+    expect(readStates(params("state=BackedUp,unpowered,,__proto__,constructor"))).toEqual([]);
+    expect(readStates(params(""))).toEqual([]);
+    expect(readStates(params("state="))).toEqual([]);
+  });
+
+  it("writes the canonical comma list, and nothing for All", () => {
+    expect(writeStates(["noRecipe", "backedUp"])).toBe("backedUp,noRecipe");
+    expect(writeStates([])).toBeUndefined();
+    expect(readStates(params(`state=${writeStates(["paused", "noRecipe"])}`))).toEqual(["paused", "noRecipe"]);
   });
 });

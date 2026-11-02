@@ -169,6 +169,33 @@ per group.
   building id (never expected) now lists its copy under "Other machines", as the flat table would, and tests for choices kept
   across a poll and a closed section staying closed while filtering.
 
+**Item 3 shipped (2026-11-01): state marks and the filter toggles.**
+
+- **Marks in the rows.** Each machine's state word in the State column wears the Planner's `StateMark` before it, for the four
+  states that have one (backed up, underfed, paused, idle), in the state's own tone from `machineState.ts` (backed up amber,
+  `--color-warn`, per the owner's 2026-10-27 answer). Producing, unpowered, an unknown state and no state keep the word alone, as
+  on the canvas. The mark is `aria-hidden`; the word stays, so the text, the stacked phone rows and every test read as before.
+  `StateMark` is the one component (`planner/graph/StateMark.tsx`), imported by the Factory page; no state token was added.
+- **The summary's counts as toggles.** The filter bar's buttons are now "All 385", "Backed up 24", "Paused 3", "No recipe 5"
+  (the count is in each name, so the visible label is in the accessible name), each a toggle (`aria-pressed`) with its state's
+  mark. **Settled here (the ADR left it open): several can be on at once, and a machine shows when it matches any of them**
+  (each toggle widens the list, the usual reading of filter chips); "All" turns every one off and is pressed when none is on.
+  "No recipe" is not a state, so it has no mark. On a pressed toggle (the accent fill) the mark takes the button's text colour
+  (`StateMark`'s `toned={false}`), since amber on the accent would not stand out. The summary line above stays as it was: it is
+  the page's plain text summary (the e2e states and the demo's checks read it), and the counts in it are the same.
+- **The deep link.** `?state=` holds the filters as one comma list in the filters' order (`?state=backedUp,paused`;
+  `lib/deepLinks.ts`, `FACTORY_STATE_PARAM`, `readStates`, `writeStates`). A repeated parameter is also read
+  (`?state=backedUp&state=paused`); unknown values are dropped. "All" removes the parameter. Each toggle replaces the URL
+  (never a back-button entry) and keeps `?q=`, `?item=` and the hash, as the search does. The view reads the filters straight
+  from the URL each render (buttons, so nothing lags the way the search box did).
+- **Pure parts.** `factory/stateFilters.ts` (`STATE_FILTERS`, a Map keyed by filter id; `matchesStates`; `toggleState`).
+- **E2E.** `factory-state-filter`: `factory-states` opened at `?state=backedUp,paused`; a keyboard user turns "No recipe" on
+  (Enter) and off (Space), and the URL follows; axe on the result.
+- **Review.** `ui-reviewer` (from the diff, no live check): tokens, names and the pressed mark's colour hold; left for the live
+  look: the toned marks' contrast on an unpressed toggle (the same tones the rows already use as text) and whether idle rows'
+  dashes read as noise in a long table. `test-hunter`: no bugs; added a test for the states and the search together (states
+  OR, search AND, and the empty result).
+
 ## Build plan (each PR from `main`, no stacking)
 
 | # | PR | Files | Proof |

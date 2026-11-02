@@ -20,8 +20,13 @@ function rowFor(recipe: string): HTMLElement {
   return row;
 }
 
+/** A state filter toggle, by its label (its name ends in its count, ADR-0062 F.3). */
+function filterButton(label: string): HTMLElement {
+  return within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: new RegExp(`^${label} \\d+$`) });
+}
+
 function pick(label: string) {
-  fireEvent.click(within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: label }));
+  fireEvent.click(filterButton(label));
 }
 
 describe("FactoryPanel", () => {
@@ -44,7 +49,7 @@ describe("FactoryPanel", () => {
     expect(within(rowFor("Stator")).getByText("Backed up")).toBeInTheDocument();
     pick("Backed up");
     expect(rows()).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Backed up" })).toHaveAttribute("aria-pressed", "true");
+    expect(filterButton("Backed up")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("filters to machines without a recipe and labels them", () => {

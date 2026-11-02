@@ -1,5 +1,5 @@
 import { StrictMode, useState } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, MemoryRouter, useLocation, useNavigate } from "react-router";
 import { delay, http, HttpResponse } from "msw";
@@ -423,6 +423,43 @@ describe("FactoryView deep links", () => {
     const picker = await screen.findByRole("combobox", { name: "Item" });
     expect(picker).toHaveValue("Desc_IronPlate_C");
   });
+
+  // ADR-0062 F.3: the state filters are toggles kept in ?state=.
+  const filterButton = (label: string) =>
+    within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: new RegExp(`^${label} \\d+$`) });
+
+  it("opens with the state filters from ?state= on, and the table filtered to them", async () => {
+    renderAt("/app/factory?state=noRecipe,backedUp");
+    await screen.findByRole("group", { name: "Filter machines" });
+    expect(filterButton("Backed up")).toHaveAttribute("aria-pressed", "true");
+    expect(filterButton("No recipe")).toHaveAttribute("aria-pressed", "true");
+    expect(filterButton("Paused")).toHaveAttribute("aria-pressed", "false");
+    expect(filterButton("All")).toHaveAttribute("aria-pressed", "false");
+    const shown = factoryMixed.data.buildings.filter((b) => ("state" in b && b.state === "backedUp") || b.recipe === null);
+    expect(within(screen.getByRole("table")).getAllByRole("rowheader").map((th) => th.textContent)).toEqual(shown.map((b) => b.name));
+  });
+
+  it("writes each toggle back to ?state= as one comma list, keeping other parameters, and drops it for All", async () => {
+    renderAt("/app/factory?scenario=default&q=a");
+    await screen.findByRole("group", { name: "Filter machines" });
+    const url = () => screen.getByRole("status", { name: "URL" });
+    fireEvent.click(filterButton("No recipe"));
+    expect(url()).toHaveTextContent(/^\/app\/factory\?scenario=default&q=a&state=noRecipe$/);
+    fireEvent.click(filterButton("Backed up"));
+    expect(url()).toHaveTextContent(/^\/app\/factory\?scenario=default&q=a&state=backedUp%2CnoRecipe$/);
+    fireEvent.click(filterButton("No recipe"));
+    expect(url()).toHaveTextContent(/^\/app\/factory\?scenario=default&q=a&state=backedUp$/);
+    fireEvent.click(filterButton("All"));
+    expect(url()).toHaveTextContent(/^\/app\/factory\?scenario=default&q=a$/);
+    expect(filterButton("All")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("ignores a ?state= it doesn't know, showing every machine", async () => {
+    renderAt("/app/factory?state=unpowered");
+    await screen.findByRole("group", { name: "Filter machines" });
+    expect(filterButton("All")).toHaveAttribute("aria-pressed", "true");
+    expect(within(screen.getByRole("table")).getAllByRole("rowheader")).toHaveLength(factoryMixed.data.buildings.length);
+  });
 });
 
 // A real BrowserRouter, not MemoryRouter: useHashTarget reads window.location/history directly
@@ -444,6 +481,22 @@ describe("FactoryView deep links + #history jump, on a real history (#351)", () 
     fireEvent.change(box, { target: { value: "iron" } });
     expect(window.location.hash).toBe("#history");
     expect(window.location.search).toContain("q=iron");
+  });
+
+  it("replaces the URL for a state toggle, never adding a back-button entry, and keeps #history (ADR-0062 F.3)", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.pushState(null, "", "/app/factory?item=Desc_Wire_C#history");
+    const before = window.history.length;
+    renderWithClient(
+      <ServerContext value={serversSingle.servers[0]}>
+        <BrowserRouter><FactoryView /></BrowserRouter>
+      </ServerContext>,
+    );
+    const group = await screen.findByRole("group", { name: "Filter machines" });
+    fireEvent.click(within(group).getByRole("button", { name: /^Paused \d+$/ }));
+    expect(window.location.search).toContain("state=paused");
+    expect(window.location.hash).toBe("#history");
+    expect(window.history.length).toBe(before);
   });
 
   // ADR-0062 F.1: the summary sits first and its link jumps down to the full list, keeping the search.

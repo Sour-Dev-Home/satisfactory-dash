@@ -7,6 +7,11 @@
 /** The Factory page's machine search, and the production history's picked item (a class name). */
 export const FACTORY_SEARCH_PARAM = "q";
 export const FACTORY_ITEM_PARAM = "item";
+/** The machine table's state filters (ADR-0062 F.3): a comma list of `FACTORY_STATE_FILTERS`, e.g. `?state=backedUp,paused`. */
+export const FACTORY_STATE_PARAM = "state";
+/** The state filters, in the order they show and are written; none on is "All". */
+export const FACTORY_STATE_FILTERS = ["backedUp", "paused", "noRecipe"] as const;
+export type FactoryStateFilter = (typeof FACTORY_STATE_FILTERS)[number];
 /** The production history section's id on the Factory page. */
 export const HISTORY_ANCHOR = "history";
 /** The machine table's section id on the Factory page (its in-page nav, ADR-0062 F.4). */
@@ -41,6 +46,21 @@ export function readSearch(params: URLSearchParams): string {
   // drop a trailing lone high surrogate rather than hand the search box half a character.
   const last = capped.charCodeAt(capped.length - 1);
   return last >= 0xd800 && last <= 0xdbff ? capped.slice(0, -1) : capped;
+}
+
+/**
+ * The state filters from the URL, in `FACTORY_STATE_FILTERS` order with no repeats. Takes a comma list and also a repeated
+ * parameter (`?state=backedUp&state=paused`, as a hand-written link might be); an unknown value is dropped, never a guess.
+ */
+export function readStates(params: URLSearchParams): FactoryStateFilter[] {
+  const asked = new Set(params.getAll(FACTORY_STATE_PARAM).flatMap((value) => value.split(",").map((s) => s.trim())));
+  return FACTORY_STATE_FILTERS.filter((state) => asked.has(state));
+}
+
+/** The `?state=` value for these filters (comma list, canonical order), or undefined for none ("All": no parameter). */
+export function writeStates(states: readonly FactoryStateFilter[]): string | undefined {
+  const on = FACTORY_STATE_FILTERS.filter((state) => states.includes(state));
+  return on.length === 0 ? undefined : on.join(",");
 }
 
 /** An item class from the URL, or undefined when absent or not a plausible class name. */
