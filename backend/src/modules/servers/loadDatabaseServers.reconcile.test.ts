@@ -166,6 +166,19 @@ describe("reconcileDatabaseServers (ADR-0054 D3)", () => {
     expect(home.workers[0]!.stop).toHaveBeenCalledTimes(1);
   });
 
+  it("ADR-0058 R7: a server in both listings (an enrolment committed between them) is never built as a polled server", async () => {
+    for (const start of [buildAgent({ publicId: "home", displayName: "Name home" }), polledEntry("home")]) {
+      const polled = vi.fn(build);
+      const runtime = runningRuntime([start]);
+      await reconcileDatabaseServers({
+        db: await fakeDb([{ publicId: "home" }], [{ publicId: "home", displayName: "Name home" }]),
+        ring, runtime, build: polled, buildAgent, policy: LAN_OK,
+      });
+      expect(runtime.describe("home")?.kind).toBe("agent");
+      expect(polled).not.toHaveBeenCalled(); // no LocalWorldPoller, so no FRM read, even for a moment
+    }
+  });
+
   it("follows a switch back to local made on the other task, which a replace would refuse", async () => {
     const runtime = runningRuntime([buildAgent({ publicId: "home", displayName: "Name home" })]);
     const result = await reconcile(await fakeDb([{ publicId: "home" }]), runtime);

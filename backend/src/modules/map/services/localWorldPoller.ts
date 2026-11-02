@@ -244,6 +244,10 @@ export function observeFactoryReads(ports: FactoryReadPorts, observe: (ids: stri
  * Implements the same plain `{start, stop}` shape server.ts's worker arrays already use
  * (telemetry/services/powerHistoryPoller.ts's `BackgroundWorker`) structurally, without importing
  * telemetry (no such module edge exists for `map`).
+ *
+ * ADR-0058 R7 step 1: this is the FRM-host path only. A server the mod feeds is an `agent` server (enrolling any sender
+ * switches the kind and deletes the stored connection), so server.ts builds it without this poller, and its markers,
+ * drone routes and power lines are the mod's own posts to `/agent/v1/world/:layer`, stored by `WorldIngestService`.
  */
 export class LocalWorldPoller {
   private readonly loops: Loop[];

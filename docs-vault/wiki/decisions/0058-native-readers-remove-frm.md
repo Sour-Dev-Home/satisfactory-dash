@@ -365,6 +365,39 @@ today 30 s). The contract (`packages/shared/src/agent.ts` `AgentPowerSchema`, `p
 
 Additive and optional (ADR-0007): old payloads still parse.
 
+## R7 step 1 in the dash: done (2026-11-02)
+The owner chose R7 scope A, "mod only", on 2026-11-02: the mod drops FRM, and the dash stops its direct FRM reads only
+where the mod already sends the data. Step 1 found that the dash already makes no FRM read for a server the mod feeds,
+so this step changed one line of runtime behaviour. The leader's reconcile (`reconcileDatabaseServers`) reads the local and
+agent listings in two queries, and an enrolment that commits between them puts a server in both. The server was then built
+as a polled one for a moment, which started its FRM poller. The agent listing now wins. The step also added tests that pin
+the rule, and comments in `localWorldPoller.ts`,
+`agent/src/worldReader.ts` and `connectionTest.ts`, the FRM readers the R7 plan named for this step.
+
+- **How the dash knows a server is mod-fed.** Enrolling any sender (an enrolment code, or device pairing) makes the server
+  an `agent` server and deletes its stored connection and tokens in the same transaction (`installAgentCredential`,
+  `switchToAgentConnection`). Each server has one credential, and a new enrolment replaces the old one. The mod reports
+  `agentVersion` `mod/<version>` (`raw-sources/mod-native-readers-s4a-headers-2026-10-27.md:145`; ADR-0039 Decision 2), which
+  the frontend already reads (`clientOf`, `frontend/src/updates/notices.ts`). So a mod-fed server is an `agent` server
+  whose sender reports `mod/`. Nothing in the backend needs the prefix: no `agent` server is ever read through FRM.
+- **Map markers, drone routes, power lines.** A mod-fed server never runs `LocalWorldPoller`, because server.ts builds
+  `agent` servers without it, and never runs the Node agent's `WorldReader`, because the mod is its sender. The three
+  layers are the mod's own posts to `/agent/v1/world/:layer`. `WorldIngestService` stores them in `map.world_layers`,
+  and the world-layer route serves them whoever sent them. The mod posts all three natively: in native-parity run
+  41340686528, `mapMarkers`, `droneRoutes` and `powerLines` are read natively and each posted layer validates against the
+  contract (`raw-sources/mod-native-readers/native-parity-2026-11-01T19-21-32-523Z/result.json:43,45,49,104`). The droneRoutes
+  `pairedId` is kept through ingest. FRM hosts are unchanged: a `local` server's poller and the Node agent's reader still
+  read FRM through `packages/game-adapter`.
+- **Test connection.** `testGameServerConnection` (the vanilla `QueryServerState` plus FRM's `getSessionInfo`) runs only
+  for `local` servers: a candidate on create or edit, a saved connection, and the switch back to local. An `agent`
+  server has no stored connection, so `testSaved` answers "not found" before any test runs, and its row shows no
+  test button. For a mod-fed server, the check is what the sender reports on every snapshot: `gameReachable`,
+  `lastGameReadAt` and `modVersion` (S4-A gate 2, #740 follow-up). The agent status serves these, and Settings shows them
+  as "Reachable" or "Not reachable" plus the last read. No wording changed.
+- **Left as is.** "Switch back to local" on a mod host still tests and polls through FRM, because that choice makes it
+  an FRM host again. The bottleneck finder's "Update FRM to 1.5.4 or newer for belt detail" note only appears after an
+  `unsupportedFrm` conveyors skip (an FRM too old for belt data). Conveyors are not one of this step's three layers.
+
 ## Build tasks (after approval; all in the mod repo unless noted, one PR each, no stacking)
 
 1. Dash repo: commit this ADR, README row, log fragment. This change.

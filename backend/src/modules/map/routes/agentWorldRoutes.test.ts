@@ -2,6 +2,7 @@ import { gzipSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { endpoints } from "@satisfactory-dash/shared";
+import { droneRoutesSampleWithPairedId, mapMarkersSample, powerLinesSample } from "@satisfactory-dash/shared/fixtures";
 import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
@@ -54,6 +55,20 @@ describe("POST /agent/v1/world/:layer", () => {
     const res = await request(app).post(endpoints.agentApi.world.path("trainRoutes")).send(body);
     expect(res.status).toBe(200);
     expect(ingest.ingest).toHaveBeenCalledWith("srv-9", "trainRoutes", body);
+  });
+
+  it("ADR-0058 R7: the mod's own map markers, drone routes (with pairedId) and power lines are forwarded as sent", async () => {
+    const { app, ingest } = build({ auth: fakeAuth("mod-fed") });
+    const bodies = [
+      ["mapMarkers", mapMarkersSample],
+      ["droneRoutes", droneRoutesSampleWithPairedId],
+      ["powerLines", powerLinesSample],
+    ] as const;
+    for (const [layer, body] of bodies) {
+      const res = await request(app).post(endpoints.agentApi.world.path(layer)).send(body);
+      expect(res.status).toBe(200);
+      expect(ingest.ingest).toHaveBeenCalledWith("mod-fed", layer, body);
+    }
   });
 
   it("a conveyors skip body (reason, no data) is forwarded to the ingest service (#577)", async () => {

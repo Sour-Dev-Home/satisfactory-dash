@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { droneRoutesSampleWithPairedId, mapMarkersSample, powerLinesSample } from "@satisfactory-dash/shared/fixtures";
 import { WorldIngestService } from "./worldIngestService.js";
 
 function fakeLogger() {
@@ -57,6 +58,21 @@ describe("WorldIngestService", () => {
     const over = await ingest(Array.from({ length: 4_001 }, (_, i) => station(i)));
     expect(over[4]).toBe(true);
     expect(over[5]).toBe(4_000);
+  });
+
+  it("ADR-0058 R7: stores the mod's map markers, drone routes and power lines as sent, keeping each port's pairedId", async () => {
+    for (const [layer, body] of [
+      ["mapMarkers", mapMarkersSample],
+      ["droneRoutes", droneRoutesSampleWithPairedId],
+      ["powerLines", powerLinesSample],
+    ] as const) {
+      const { db, calls } = fakeDb();
+      const result = await new WorldIngestService(db, fakeLogger()).ingest("mod-fed", layer, body);
+      expect(result).toEqual({ accepted: true, unchanged: false });
+      expect(calls[0]?.[1]).toBe(layer);
+      expect(calls[0]?.[4]).toBe(false); // not truncated
+      expect(JSON.parse(calls[0]?.[6] as string)).toEqual(body.data);
+    }
   });
 
   it("caps the conveyors layer at its own 50,000 edges, not the shared 5,000 (ADR-0048 amendment)", async () => {
