@@ -297,3 +297,40 @@ contradicted amendment 2's Decisions 2 and 3 (see the note above). The owner cho
 - An XSS finding or a `security-reviewer` objection lands on the ads-on policy.
 - The owner's legal view on limited ads before consent changes: turn limited ads off (Brand Safety > Blocking controls >
   Ad serving, E13).
+
+### Build note, 2026-11-01: step 2, the nonce Worker (switch off)
+Cloudflare's config keys are cited to
+[`cloudflare-workers-assets-worker-2026-11-01.md`](../../raw-sources/cloudflare-workers-assets-worker-2026-11-01.md)
+(W-E1 to W-E7 below, to keep them apart from the AdSense capture's E numbers).
+- **Routing.** `frontend/wrangler.jsonc` gains `main: ./worker/index.ts`, `assets.binding: ASSETS` and
+  `assets.run_worker_first`: `/*` minus negative patterns for `/assets/*` and every static file or folder in `public/`
+  (W-E1). Excluded paths are served as static assets directly, with `_headers` (W-E2); everything else (`/`, `/app/*`,
+  every SPA deep link, `/privacy`, `/terms`) reaches the Worker, which forwards it to the assets binding (W-E3). An
+  array turns off the navigation-request shortcut that would otherwise skip the Worker for page loads (W-E2).
+  `worker/routing.test.ts` fails when a new `public/` entry is not excluded, so a static file never goes through the
+  Worker by accident. The demo's `demo/wrangler.jsonc` is untouched (Decision 6).
+- **The Worker** (`frontend/worker/index.ts`). For a `text/html` response it makes a 128-bit random nonce, sets it on
+  every `<script>` and every script preload (`<link rel="modulepreload">`, `rel="preload" as="script"`; Vite writes
+  modulepreload links, and under `'strict-dynamic'` a preload without the nonce is blocked) with HTMLRewriter (W-E6),
+  and sends the security headers and the CSP. It drops the asset's `ETag` and sends `Cache-Control: private, no-cache`,
+  since the body now differs per response and no shared cache may reuse a nonce. A 304 for an HTML page is asked again
+  without its conditional headers, so the browser never keeps a page with an old nonce. Anything that isn't HTML (a
+  redirect such as `/privacy.html` to `/privacy`, W-E5, or a 304) keeps its status, body and own headers and gets
+  today's `_headers` rules, CSP included, as static serving gave it before (`security-reviewer`'s finding: without
+  this, HSTS on those redirects would rest on undocumented behaviour).
+- **The switch.** `vars.ADS_ENABLED` (W-E7), `"false"` in the file. Only the exact string `"true"` turns the ads-on
+  policy on. Flip it in `wrangler.jsonc`, not the dashboard: Wrangler overrides dashboard vars on deploy (W-E7).
+- **Off is today's policy, exactly.** Off sends `public/_headers`' CSP byte for byte. Nonces are still added while off:
+  the policy names no nonce, so they do nothing, and the rewriting is proven in production before step 4 flips only
+  the header. The cost while off: HTML is never answered 304 (it is small).
+- **One policy.** `_headers` is not applied to responses a Worker returns (W-E4), so the Worker sends the headers
+  itself from `worker/securityHeaders.ts`. `_headers` stays the source for static assets and for `vite preview` (so
+  e2e is unchanged), and `worker/securityHeaders.test.ts` fails unless the module holds exactly `_headers`' `/*` rules,
+  names, values and order. Whether `env.ASSETS.fetch` responses already carry `_headers` is not documented
+  ([NEEDS VERIFICATION]); the Worker overwrites them either way.
+- **The ads-on policy is not yet used.** It is today's policy with `script-src` replaced by E1's strict policy (a test
+  compares it with the capture word for word) and `object-src 'none'`, `base-uri 'none'` kept. Its other directives,
+  and E1's `report-uri`, are build step 4's.
+- **Owner checks after the merge deploys:** the HTML responses carry the CSP and HSTS and the scripts a `nonce`
+  (`curl -sI https://satis-manager.com/app` and view source), and the Workers plan covers one Worker request per page
+  load (static files are not Worker requests).

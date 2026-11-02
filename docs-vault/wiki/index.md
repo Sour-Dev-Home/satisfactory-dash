@@ -130,3 +130,7 @@ added or removed.
   amendment 2 build step 1: Google's pages on AdSense and CSP (strict nonce CSP only, no domain list), the Privacy &
   messaging CMP (certified, deployed by the AdSense tag, revocation call, US state message), limited ads, the crawler
   login and placement limits, as verbatim excerpts E1-E18.
+- [`../raw-sources/cloudflare-workers-assets-worker-2026-11-01.md`](../raw-sources/cloudflare-workers-assets-worker-2026-11-01.md)
+  — ADR-0021 amendment 3 build step 2: Cloudflare's pages on a Worker in front of static assets (`run_worker_first`
+  patterns, the assets binding, `_headers` not applied to Worker responses, HTML handling, HTMLRewriter, `vars`), as
+  verbatim excerpts E1-E7.

@@ -1,16 +1,47 @@
-// Cloudflare Workers static assets (ADR-0013 amendment, 2026-09-23). No `main`: there is
-// no Worker script, only the built SPA. `name` must match the Cloudflare project.
+// Cloudflare Workers static assets (ADR-0013 amendment, 2026-09-23) with a Worker in front of the HTML pages only
+// (ADR-0021 amendment 3, build step 2): worker/index.ts sets a per-response script nonce and the CSP.
+// `name` must match the Cloudflare project. Keys: docs-vault/raw-sources/cloudflare-workers-assets-worker-2026-11-01.md.
 {
   "name": "satisfactory-dash",
   "compatibility_date": "2026-09-01",
+  // Bundled by `wrangler deploy` itself; not part of the Vite build.
+  "main": "./worker/index.ts",
   // Serve only on the custom domain; no *.workers.dev copy or preview URLs. With no
   // `routes` key, the custom domains attached in the dashboard are kept.
   "workers_dev": false,
   "preview_urls": false,
+  "vars": {
+    // The ads switch (ADR-0021 amendment 3, Decision 3). "false": the CSP is exactly public/_headers' policy.
+    // Only "true" sends the ads-on policy, which build step 4 finishes; the owner turns it on after step 6.
+    // Change it here, not in the dashboard: Wrangler overrides dashboard vars on every deploy (E7).
+    "ADS_ENABLED": "false"
+  },
   "assets": {
     // Relative to this file. Produced by `npm run build -w frontend`.
     "directory": "./dist/",
+    "binding": "ASSETS",
     // Unknown paths serve index.html, so deep links load the app.
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // The Worker runs first for every path except the static files below, which are served directly with
+    // public/_headers' rules (E1, E2). Every top-level entry of public/ that isn't an HTML page must be listed
+    // here: worker/routing.test.ts fails otherwise. "/*" covers the root "/" too (Wrangler rejects listing both).
+    "run_worker_first": [
+      "/*",
+      "!/assets/*",
+      "!/fonts/*",
+      "!/game-assets/*",
+      "!/demo/*",
+      "!/ads.txt",
+      "!/apple-touch-icon.png",
+      "!/favicon.svg",
+      "!/icon-192.png",
+      "!/icon-512.png",
+      "!/icons.svg",
+      "!/legal.css",
+      "!/og-image.png",
+      "!/overview-preview.png",
+      "!/push-sw.js",
+      "!/site.webmanifest"
+    ]
   }
 }
