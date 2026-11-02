@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Privacy Policy · Satis Manager</title>
-    <meta name="description" content="What Satis Manager collects, why, who else processes it, how long it's kept, and your rights." />
+    <meta name="description" content="What Satis Manager collects, why, who else processes it, the ads it shows, how long it's kept, and your rights." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/legal.css" />
   </head>
@@ -12,15 +12,25 @@
     <header><a href="/">Satis Manager</a></header>
     <main>
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: 27 October 2026</p>
+      <!-- DRAFT for ADR-0021 amendment 3 build step 6: the text for when ads are switched on. It must
+           not merge before the ads switch goes on (the owner turns it on after this step). Every
+           "OWNER:" comment is a decision the owner makes; every "OWNER/VERIFY:" comment marks a sentence
+           that rests on something Google's captured pages don't state
+           (docs-vault/raw-sources/adsense-privacy-disclosures-2026-11-01.md and
+           adsense-csp-and-cmp-2026-11-01.md). Remove the comments once each is settled. -->
+      <p class="updated">Last updated: 1 November 2026</p>
 
       <p>
         Satis Manager, the hosted Satisfactory Dash service, is a free dashboard for a Satisfactory
-        dedicated server. This page says what it collects, why, who else handles it, how long it's
-        kept, and what you can ask for. It describes what the service actually does. It offers the
-        same rights to everyone, wherever you live, and it doesn't claim compliance with any
-        particular law.
+        dedicated server, paid for by ads. This page says what it collects, why, who else handles it,
+        what the ads do, how long it's kept, and what you can ask for. It describes what the service
+        actually does. It offers the same rights to everyone, wherever you live. For visitors in the
+        European Economic Area (EEA), the UK and Switzerland it also gives the details their data
+        protection law (the GDPR) asks for: who is responsible, the legal basis for each use, and where
+        to complain. It doesn't claim any certification.
       </p>
+      <!-- OWNER: confirm the page may name the GDPR (EU and UK) as the law it gives details for, and
+           whether Swiss law (the revFADP) needs anything beyond this. No compliance claim is made. -->
 
       <h2>Who runs this</h2>
       <!-- The operator's name: the one place in the repository besides LICENSE where it may
@@ -30,11 +40,16 @@
         Satis Manager is run by an individual, Leonardo Nunez, who decides how its data is used.
         Contact: <a href="mailto:privacy@satis-manager.com">privacy@satis-manager.com</a>.
       </p>
+      <p>
+        In GDPR terms, the operator is the controller of the data this page describes, except the data
+        Google collects for itself through the ads (see "Advertising").
+      </p>
 
       <h2>What we collect, and why</h2>
       <p>
         Each kind of data is used for one of two reasons, named at the end of its row: to run the
-        service you asked for, or to keep the service safe.
+        service you asked for, or to keep the service safe. "Legal bases" below says what each reason
+        means under the GDPR. What Google collects for the ads is under "Advertising".
       </p>
       <table>
         <thead>
@@ -149,22 +164,195 @@
 
       <h2>What we don't do</h2>
       <ul>
-        <li>No advertising, and no analytics or tracking scripts.</li>
-        <li>No selling of your data, and no sharing of it for marketing.</li>
+        <li>No analytics of our own: we don't run scripts that measure how you use the site.</li>
         <li>
-          No third party tracks you on this site, and we don't track you across other sites. So a
-          browser's "Do Not Track" signal changes nothing here: there's no tracking for it to turn off.
+          We don't sell the data we hold about you (your account, your servers, your game data), and we
+          don't give it to anyone for marketing. Google's ad script collects data on our pages by
+          itself, as "Advertising" below describes.
         </li>
+        <!-- OWNER: under some US state laws, letting an ad network collect data for personalised ads
+             can count as "selling" or "sharing" personal information. Decide whether this line needs a
+             US-specific sentence (see the commented-out US state option under "Your consent choices"). -->
         <li>
-          Cookies: only the ones the service needs to work. The session cookie keeps you signed in,
-          and a short-lived cookie (10 minutes) protects the Google sign-in. No cookie banner,
-          because there's nothing optional to accept.
+          We don't track you across other sites ourselves. Google and its partners can, for
+          personalised ads, if you allow them (see "Advertising"). We don't respond to a browser's
+          "Do Not Track" signal; use the choices under "Your consent choices" instead.
         </li>
       </ul>
+
+      <h2>Cookies and similar storage</h2>
+      <ul>
+        <li>
+          Ours: only the ones the service needs to work. The session cookie keeps you signed in, and a
+          short-lived cookie (10 minutes) protects the Google sign-in. They need no consent.
+        </li>
+        <li>
+          Google's, for the ads: Google and its partners may place and read cookies in your browser,
+          and use your IP address, web beacons, local storage and similar technologies, to show ads,
+          limit how often you see the same one, count and report them, and detect fraud. Google sets its
+          cookies from its own domains, such as google.com, doubleclick.net and googlesyndication.com.
+          Which of these are used depends on your consent choice, below.
+        </li>
+        <li>
+          Your consent choice itself is stored in your browser by Google's consent message, so it isn't
+          asked again on every page.
+          <!-- OWNER/VERIFY: where and how long Google's consent message stores the choice (cookie name,
+               domain, lifetime) is not on the captured pages. The EU user consent policy (E3) says the
+               publisher must keep records of consent; whether Google's consent message keeps them for
+               us is not stated either. -->
+        </li>
+      </ul>
+
+      <h2>Advertising</h2>
+      <p>
+        Satis Manager shows ads from Google AdSense. They pay for running the service.
+      </p>
+      <h3>Where ads appear</h3>
+      <ul>
+        <li>On the public pages: the home page, and guides and the changelog once they exist.</li>
+        <li>
+          In the app, in a few fixed places beside the content, such as below a page's content or in a
+          side area. Never over the factory graph, the map or a table of game data, and never in a
+          pop-up.
+        </li>
+        <li>
+          Never on the sign-in, error, pairing, account or settings screens, and never on this page or
+          the Terms of Use.
+        </li>
+        <li>The demo site (demo.satis-manager.com) shows no ads.</li>
+      </ul>
+      <!-- OWNER: "never on this page or the Terms of Use" follows from these pages being script-free
+           (frontend/e2e/legal.spec.ts). Drop the clause if ads are ever planned for them. -->
+      <h3>What Google's ad script can see</h3>
+      <p>
+        To show ads, a script from Google runs in the page itself, on the public pages and in the app.
+        Like any script in a page, it can read what the page shows. In the app that includes your
+        servers' names, your factories, the names players give things in the game, the names of
+        players who are online, and anything else on your screen. We don't send Google your account
+        details, but we can't stop its script from reading the page.
+      </p>
+      <p>
+        Your browser also sends Google the address of the page you're on and your IP address. Google
+        may use the IP address to work out your general location, to measure how well ads work and,
+        depending on your settings, to pick more relevant ads. Google keeps a record of the ads it
+        serves, with your IP address, browser details and cookies; it says it removes part of the IP
+        address after 9 months and the cookie information after 18 months.
+      </p>
+      <p>
+        Google decides for itself how it uses what it collects through its ads. Under its advertising
+        data protection terms, it is an independent controller of that data, not someone acting on our
+        behalf.
+        <!-- OWNER/VERIFY: AdSense is listed as a "Controller Service" under the Google Ads
+             Controller-Controller Data Protection Terms, under which each party is an independent
+             controller (E6). Confirm in the AdSense account that these terms are accepted for it; the
+             capture couldn't see that without signing in. -->
+        How Google uses that data is explained in
+        <a href="https://policies.google.com/technologies/partner-sites">How Google uses information
+        from sites or apps that use our services</a>, and in
+        <a href="https://policies.google.com/technologies/ads">Google's advertising page</a>.
+      </p>
+      <h3>Personalised, non-personalised and limited ads</h3>
+      <ul>
+        <li>
+          Personalised ads: Google and its partners use cookies to pick ads based on your visits to this
+          site and other sites on the internet. In the EEA, the UK and Switzerland, only with your
+          consent.
+        </li>
+        <li>
+          Non-personalised ads: picked from the page's topic and your general location, not from a
+          profile of you. They still use cookies to limit how often you see the same ad and to report
+          on ads in total, so in the EEA, the UK and Switzerland they need your consent to cookies too.
+        </li>
+        <li>
+          Limited ads: shown when you haven't consented, including before you've made a choice. Google's
+          script loads before you choose, so a limited ad can appear while the consent message is
+          still open. Limited ads use no personal data to personalise ads, but your IP address is
+          still used to deliver the ad, and Google uses cookies, local storage and the browser's Shared
+          Storage, only to detect invalid traffic and fraud. Google doesn't ask for consent for this.
+        </li>
+      </ul>
+      <!-- OWNER: limited ads are on (ADR-0021 amendment 3, Decision 4). Google leaves the legal
+           judgement on using their invalid-traffic cookies and local storage without consent to the
+           publisher (adsense-csp-and-cmp E13). The legal basis given for it under "Legal bases" is the
+           owner's call. -->
+      <p>
+        Other ad companies that Google works with may also place and read cookies to show ads here.
+        <!-- OWNER/VERIFY: AdSense's "Required content" page (E1) says that unless third-party ad
+             serving is turned off, the policy must name the other vendors and ad networks serving ads,
+             link to them, and say users can opt out there. Which vendors serve on this account is an
+             AdSense setting the capture can't see. Either turn third-party ad serving off, or list
+             them here (or confirm that Google's consent message's vendor list covers this). -->
+        You can opt out of their use of cookies for personalised advertising on the industry pages
+        below.
+      </p>
+      <h3>Opting out of personalised ads</h3>
+      <ul>
+        <li>
+          Google: turn off ad personalisation in
+          <a href="https://adssettings.google.com">Google's Ad Settings</a>. This works on every site that
+          uses Google's ads, not just this one.
+        </li>
+        <li>
+          Other ad companies: <a href="https://www.aboutads.info/choices/">aboutads.info</a> (US-based)
+          and <a href="https://www.youronlinechoices.com/">Your Online Choices</a> (EU-based).
+        </li>
+        <!-- OWNER/VERIFY: Google's pages link Your Online Choices as
+             https://www.youronlinechoices.com/uk/your-ad-choices (E5); the site root used here is not on
+             a captured page. Pick one. AdSense itself names only Ads Settings and aboutads.info (E1). -->
+        <li>
+          Your browser: most browsers can block third-party cookies or clear the ones they hold. Google
+          notes that even then it may use other advertising technologies to personalise ads unless you
+          turn personalisation off in Ad Settings.
+        </li>
+      </ul>
+
+      <h2>Your consent choices</h2>
+      <p>
+        If you visit from the EEA, the UK or Switzerland, Google's consent message asks you first
+        whether Google and its partners may use cookies and your data for ads. You can consent, decline,
+        or pick what to allow. Declining doesn't stop you using any part of the service; you'll see
+        limited ads instead.
+      </p>
+      <!-- OWNER/VERIFY: the first message shows "Do not consent" only if that option is turned on for
+           the visitor's country when the message is published (adsense-csp-and-cmp E6); the
+           re-opened message always shows it (E11). "decline" above assumes it is on for every EEA, UK
+           and Swiss country. -->
+      <p>
+        You can change or withdraw your choice at any time with the "Privacy and cookie settings" link in
+        the footer of the home page and of the app. It reopens the consent message with all three
+        options: consent, decline, or manage options. Withdrawing doesn't affect what was done with
+        your consent before. This page loads no scripts, so the link isn't here.
+      </p>
+      <!-- OWNER: optional US state regulations message (ADR-0021 amendment 3 Decision 5, E12 of
+           adsense-csp-and-cmp). Only if it is published in Privacy & messaging, add as live text:
+      <p>
+        If you're in a US state with its own privacy law (such as California), a "Do Not Sell or Share
+        My Personal Information" link in the footer of the home page and the app lets you opt out of
+        the sale or sharing of your personal information for ads.
+      </p>
+      -->
+
+      <h2>Google's ad crawler</h2>
+      <p>
+        Google needs to see the pages its ads appear on, including in the app. So its ad crawler gets
+        its own account: a viewer on one server that holds only demo data. It can't see any real
+        user's server, factory or game data. Its password is kept in Google's AdSense settings and in
+        our secret store, never in the source code.
+      </p>
+      <!-- OWNER/VERIFY: ADR-0021 amendment 2 Decision 5 and build step 3. Which demo-data server (the
+           ADR-0026 demo world through the API, or a fixed fake server) and whether the app's sign-in
+           fits Google's crawler-login form (adsense-csp-and-cmp E15) are still open. Keep this
+           section only once build step 3 has shipped it as described. -->
 
       <h2>Who else handles data</h2>
       <ul>
         <li>Google: signing in. It tells us your Google account id (and your email address, which we don't keep for accounts created by signing up).</li>
+        <li>
+          Google, again: the ads (Google AdSense) and the consent message. Its script runs in our pages
+          and collects data for itself, as an independent controller, as described under "Advertising".
+          Other ad companies Google works with may receive data through it too.
+          <!-- OWNER/VERIFY: "independent controller" rests on E6; see the comment under "Advertising". -->
+        </li>
         <li>Cloudflare: hosting, DNS, the network tunnel and the firewall. It sees every request's IP address and metadata.</li>
         <li>Backblaze: stores our encrypted backups.</li>
         <li>
@@ -192,6 +380,16 @@
         before that feature goes live.
       </p>
       <p>These providers are based in the United States, so your data is processed there.</p>
+      <p>
+        For visitors in the EEA, the UK and Switzerland, that is a transfer of personal data outside
+        Europe. Each of these providers offers its own legal safeguard for such transfers (for example
+        an adequacy decision or the European Commission's standard contractual clauses), and you can
+        ask us which one applies to a provider.
+      </p>
+      <!-- OWNER/VERIFY: the transfer mechanism for each provider (Google, Cloudflare, Backblaze, Amazon
+           Web Services, Discord, the browser push services) is not captured. For Google's ads, the
+           controller terms point to business.safety.google/adsdatatransfers (E6), which was not
+           captured. Name the mechanisms, or keep the "ask us" wording, once checked. -->
 
       <h2>Abuse, and removing servers</h2>
       <p>
@@ -266,6 +464,49 @@
         <li>Commands sent to a server's agent: 7 days after they finish.</li>
         <li>Pairing requests (the server's session name and agent version): deleted about an hour after they expire.</li>
         <li>Push-notification subscriptions: until you remove them, or your browser's push service drops them.</li>
+        <li>
+          Data Google collects through the ads: Google keeps it under its own policies (see
+          "Advertising"); we don't hold a copy.
+        </li>
+      </ul>
+
+      <h2>Legal bases</h2>
+      <p>
+        Under the GDPR, every use of personal data needs a legal basis. These are ours:
+      </p>
+      <ul>
+        <li>
+          To run the service you asked for (each table row marked so, above): performance of our
+          contract with you, the <a href="/terms">Terms of Use</a>.
+          <!-- OWNER: confirm -->
+        </li>
+        <li>
+          To keep the service safe (security, rate limiting, sign-in security logs, the operator's server
+          lists, and the audit events, kept for a year even after an account is deleted): our
+          legitimate interest in protecting the service and its users from abuse.
+          <!-- OWNER: confirm -->
+        </li>
+        <li>
+          Personalised ads, and the cookies and similar storage that non-personalised ads use: your
+          consent, through Google's consent message. You can withdraw it at any time (see "Your consent
+          choices").
+          <!-- OWNER: confirm -->
+        </li>
+        <li>
+          Limited ads' invalid-traffic cookies and local storage, used before or without consent: the
+          legitimate interest in detecting fraud and invalid traffic on the ads that pay for the service.
+          You can object to it, as below.
+          <!-- OWNER: confirm. This is the judgement Google leaves to the publisher (adsense-csp-and-cmp
+               E13). If the owner's view is that it needs consent, turn limited ads off (ADR-0021
+               amendment 3, "Revisit when") and drop this item and the limited-ads lines above. -->
+        </li>
+        <li>
+          Showing ads at all, on pages where Google's script runs: our legitimate interest in paying for
+          a free service. What Google itself does with the data rests on Google's own legal bases,
+          explained in its privacy policy.
+          <!-- OWNER: confirm. Google's partner-sites page says its Privacy Policy explains the legal
+               grounds Google relies on (E4); that policy was not captured. -->
+        </li>
       </ul>
 
       <h2>Your choices and rights</h2>
@@ -276,6 +517,21 @@
         the request comes from the account's owner before acting on it, and we'll answer within 30
         days.
       </p>
+      <!-- OWNER: the GDPR also gives a right to restrict processing and to data portability. Decide
+           whether to name them here; the line above doesn't promise them by name. -->
+      <p>
+        Where we rely on your consent, you can withdraw it at any time, as easily as you gave it (see
+        "Your consent choices"). For the data Google collects through the ads, you can also use
+        Google's own controls, or contact Google directly.
+      </p>
+      <p>
+        If you're in the EEA, the UK or Switzerland and think we've handled your data wrongly, you can
+        complain to a data protection authority, for example the one where you live or work (in the UK,
+        the Information Commissioner's Office). We'd like the chance to put it right first, so please
+        email us too.
+      </p>
+      <!-- OWNER: which authority to name, if any (the operator's location is left off this page by the
+           owner's decision), and whether Swiss visitors get a named authority (the FDPIC). -->
       <!-- ADR-0047 (#556, #564): the deletion itself, in the app's Settings (frontend/src/account/). -->
       <p>
         You can delete your account yourself, in Settings, under "Delete my account". It asks for a
@@ -296,10 +552,17 @@
       <p>
         User accounts sign in with Google, so we don't store passwords for them. Session ids are stored hashed;
         the database gives each part of the service
-        only the access it needs; the site runs under a strict Content Security Policy; and the API
+        only the access it needs; the site runs under a Content Security Policy; and the API
         can only be reached through Cloudflare. No system is perfectly secure, but these are the
         efforts we make. If a breach affects your data, we'll tell you without undue delay.
       </p>
+      <p>
+        One trade-off to know about: to show ads, the pages that carry them let Google's script run and
+        load further scripts, so their Content Security Policy is looser than it would be without ads.
+        This page and the Terms of Use load no scripts at all.
+      </p>
+      <!-- ADR-0021 amendment 3 Decision 1: the ads-on script policy is Google's strict nonce policy with
+           'unsafe-eval' and 'strict-dynamic' (adsense-csp-and-cmp E1). -->
 
       <h2>Children</h2>
       <p>
