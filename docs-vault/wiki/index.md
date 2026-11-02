@@ -130,3 +130,7 @@ added or removed.
   amendment 2 build step 1: Google's pages on AdSense and CSP (strict nonce CSP only, no domain list), the Privacy &
   messaging CMP (certified, deployed by the AdSense tag, revocation call, US state message), limited ads, the crawler
   login and placement limits, as verbatim excerpts E1-E18.
+- [`../raw-sources/adsense-privacy-disclosures-2026-11-01.md`](../raw-sources/adsense-privacy-disclosures-2026-11-01.md) —
+  ADR-0021 amendment 3 build step 6: what Google says a publisher's privacy policy must disclose for AdSense (third-party
+  cookies, opt-out links, the partner-sites page), the EU user consent policy's duties, Google's advertising cookies and
+  log retention, and AdSense as an independent-controller service, as verbatim excerpts E1-E6.
