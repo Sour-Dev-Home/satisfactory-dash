@@ -183,7 +183,7 @@ S4-A evidence PR exists yet, so this bundle makes no claim for them.
 - **Storage (owner, 2026-11-01, after run 41331276923).** Amounts are judged on the S2 99% share of unchanged containers;
   contents of changed containers are report-only.
 - **Station rates (owner).** The rate factor 1.0 is verified: median mod/FRM 1 over 558 stations, inside [0.8, 1.25].
-- **S12 (owner, 2026-10-28).** A new endpoint is matched by reverse DNS lookup.
+- **S12 (owner, 2026-10-28).** A new with-mod endpoint is also accepted when its own DNS name resolves to an address the baseline contacted (a CDN serving one name from sibling addresses). In run 41357114391 the one new endpoint, api.ipify.org, matched by the existing forward lookup.
 - **Step diagnostics (owner, 2026-11-01).** Off by default via the `stepDiagnostics` config key; on only in tick-cost runs.
 
 ### Notes (S4-B)
