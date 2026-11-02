@@ -62,7 +62,7 @@ function AdUnit({ placement, unit }: { placement: AdPlacement; unit: string }) {
     // inspector is already the page's complementary one. mt-8 adds to the page's gap, so the ad sits well clear of the
     // controls above it (E18's accidental clicks; ui-reviewer). max-w-full: on a screen under 352 px the 320 px unit
     // narrows rather than scroll the page (WCAG 1.4.10).
-    <section aria-labelledby={labelId} data-ad-placement={placement} className="mt-8 grid min-w-0 justify-items-center gap-1">
+    <section aria-labelledby={labelId} data-ad-placement={placement} className="mt-8 grid min-w-0 grid-cols-1 justify-items-center gap-1">
       <p id={labelId} className="m-0 text-xs text-muted">
         Advertisements
       </p>
