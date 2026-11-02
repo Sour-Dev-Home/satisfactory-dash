@@ -158,8 +158,8 @@ Source: the mod's PRs #73 and #74 (fixes and rulings) and #75, the switch that m
 merged on the mod's `main` (`1c26359`). The parity run is pinned to
 https://github.com/Sour-Dev-Home/satisfactory-dash-mod/commit/2875574
 
-The Sprint S4-A readers (map markers, drone routes, power lines) are in the same `native-parity` run and pass there, but no
-S4-A evidence PR exists yet, so this bundle makes no claim for them.
+The Sprint S4-A readers (map markers, drone routes, power lines) are in the same `native-parity` run and pass there; their
+own evidence is in the S4-A section below.
 
 ### The S4-B runs
 
@@ -190,3 +190,33 @@ S4-A evidence PR exists yet, so this bundle makes no claim for them.
 
 - **Open:** an intermittent wait of about 9 ms in the logistics read early in the conveyor phase. It is not CPU work, and the
   step diagnostics are on in `tick-cost-native`; the 2 ms ceiling held in the passing run above.
+
+## Sprint S4-A: map markers, drone routes and power lines
+
+Evidence for ADR-0058's Sprint S4-A: the map markers (R8), drone routes (R9) and power lines (R10) readers, read from the
+game itself. Same folder layout, method and clean room as S1 above.
+
+Source: the mod's PR #68 (the readers) and #69 (the switch that makes them native by default, merge `8b96188`). The
+parity run is pinned to
+https://github.com/Sour-Dev-Home/satisfactory-dash-mod/commit/c4e7662
+
+### The S4-A runs
+
+| Run | Run id | Started (UTC) | Verdict | What it proves |
+| --- | --- | --- | --- | --- |
+| native-parity | [40528626676](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/40528626676) | 2026-10-27T15:12:53Z | pass | Mod commit `c4e7662`, world `Test3`, all 13 readers on against FRM's endpoints. Map markers: ids equal, 6 markers compared, kind, icon, color and name hash equal, x/y equal Math.round(FRM). Drone routes: port ids equal over 21 ports, name hash and paired equal, x/y within 1 m. Power lines: wire ids equal over 1,498 wires, each end within 1 m, in index order or swapped |
+| tick-cost-native | [40567693408](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/actions/runs/40567693408) | 2026-10-27T19:21:31Z | pass | Mod commit `fc61a4e`, `Test3`: no tick-rate cost (median 29.99 without the mod, 29.99 with it); S12: the one new endpoint is the recorder's; working set 4.1 MB above the baseline at the end (limit 100); the Logistics read's longest step was 1.99 ms against the 2 ms ceiling |
+
+The later `native-parity` run 41340686528 (S4-B section above) also passes R8, R9 and R10.
+
+### What the test world did not exercise (S4-A)
+
+- **Map markers:** a name the dash rule changes (trim or cut).
+- **Drone routes:** two ports sharing a name (pairing ambiguous).
+- **Power lines:** a wire with swapped ends.
+
+### Notes (S4-A)
+
+- **Drone routes, reported not failed:** `pairedId` was judged on 2 ports and only reported on 5 (ambiguous or unpaired in
+  FRM). One cargo item-set difference was reported (a drone port's input: mod empty, FRM one item), under a provisional
+  controller ruling that mirrors the train-routes cargo ruling of 2026-10-27; the owner is to confirm it.
