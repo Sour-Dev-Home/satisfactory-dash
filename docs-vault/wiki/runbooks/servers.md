@@ -122,8 +122,8 @@ Rules the routes enforce:
   `QueryServerState` and FRM's `getSessionInfo`. The result carries codes only (`unreachable`, `unauthorized`,
   `invalid_response`), never a message from the game server. The test is for servers this backend reads itself: a server
   reached through an agent (the Node agent or the mod) has no stored connection and is never tested this way. Its sender
-  reports its own game connection (`gameReachable`, `lastGameReadAt`), shown in the agent status on Settings, so a mod
-  host needs no FRM for it (ADR-0058, R7 step 1).
+  reports its own game connection (`gameReachable`, `lastGameReadAt`), shown in the agent status on Settings, so the dash
+  needs no FRM on a mod host (ADR-0058, R7 step 1). A mod release before the removal release may still use FRM itself.
 - **At most 8 servers** (`server_limit_reached`, 409), and an id that is taken is `server_exists` (409). Create never
   overwrites; edits go through `PATCH`.
 - **Tokens are write-only.** A request may carry them; no response ever does. A token must be printable ASCII without

@@ -368,7 +368,11 @@ Additive and optional (ADR-0007): old payloads still parse.
 ## R7 step 1 in the dash: done (2026-11-02)
 The owner chose R7 scope A, "mod only", on 2026-11-02: the mod drops FRM, and the dash stops its direct FRM reads only
 where the mod already sends the data. Step 1 found that the dash already makes no FRM read for a server the mod feeds,
-so this step changed no runtime code. It added tests that pin the rule and comments at the three places the R7 plan names.
+so this step changed one line of runtime behaviour. The leader's reconcile (`reconcileDatabaseServers`) reads the local and
+agent listings in two queries, and an enrolment that commits between them puts a server in both. The server was then built
+as a polled one for a moment, which started its FRM poller. The agent listing now wins. The step also added tests that pin
+the rule, and comments in `localWorldPoller.ts`,
+`agent/src/worldReader.ts` and `connectionTest.ts`, the FRM readers the R7 plan named for this step.
 
 - **How the dash knows a server is mod-fed.** Enrolling any sender (an enrolment code, or device pairing) makes the server
   an `agent` server and deletes its stored connection and tokens in the same transaction (`installAgentCredential`,

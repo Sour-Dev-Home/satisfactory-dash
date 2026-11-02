@@ -149,7 +149,11 @@ export async function reconcileDatabaseServers<TServices>(deps: {
     if (!wanted.has(id) && !unopenable.has(id) && (await deps.runtime.remove(id))) result.removed.push(id);
   }
 
+  // ADR-0058 R7: an enrolment that commits between the two listings puts a server in both. The agent listing was read
+  // last, so it wins: the server is never built as a polled one, whose poller would read FRM on the mod's host.
+  const enrolled = new Set(agentServers.map((a) => a.publicId));
   for (const connection of connections) {
+    if (enrolled.has(connection.publicId)) continue;
     const current = deps.runtime.describe(connection.publicId);
     if (current === undefined) {
       deps.runtime.add(deps.build(connection));

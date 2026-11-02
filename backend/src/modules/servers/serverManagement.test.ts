@@ -653,6 +653,7 @@ describe("testCandidate and testSaved", () => {
 
   it("ADR-0058 R7: testSaved on an agent server (the mod's, which has no stored connection) is not found, and no FRM test runs", async () => {
     const { service, testConnection } = setup();
+    // An agent server has no connection row: enrolment deletes it (switchToAgentConnection, covered by its own tests).
     repo.getConnectionMetaByPublicId.mockResolvedValue(undefined);
     await expect(service.testSaved("mod-fed")).rejects.toBeInstanceOf(ServerNotFoundError);
     expect(testConnection).not.toHaveBeenCalled();
