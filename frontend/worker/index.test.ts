@@ -2,57 +2,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "./index";
-import { adsEnabled, handle, makeNonce, NONCE_BYTES, type Env } from "./handle";
-import type { HTMLRewriterInstance, RewriterElement, RewriterElementHandler } from "./htmlRewriter";
+import { AD_CLIENT, ADS_MARKER_CONTENT, ADS_MARKER_NAME, ADSENSE_LOADER_URL } from "../src/ads/config";
+import { adsEnabled, adsHead, handle, makeNonce, NONCE_BYTES, type Env } from "./handle";
 import { OFF_POLICY, onPolicy, SECURITY_HEADERS } from "./securityHeaders";
-
-/**
- * A stand-in for Cloudflare's HTMLRewriter (not available in Node): finds start tags by name and lets the handlers
- * read and set attributes, as the real one does for a tag-name selector (E6). Enough for the double-quoted attributes
- * Vite and the static pages write; which elements get a nonce is decided by the Worker, not by this.
- */
-class FakeRewriter implements HTMLRewriterInstance {
-  private handlers: [string, RewriterElementHandler][] = [];
-
-  on(selector: string, handler: RewriterElementHandler): HTMLRewriterInstance {
-    this.handlers.push([selector, handler]);
-    return this;
-  }
-
-  transform(response: Response): Response {
-    const handlers = this.handlers;
-    const body = response.text().then((html) =>
-      html.replace(/<([a-zA-Z][\w-]*)((?:\s+[^\s=>/]+(?:="[^"]*")?)*)\s*(\/?)>/g, (tag, name: string, rawAttrs: string, selfClose: string) => {
-        const matching = handlers.filter(([selector]) => selector === name.toLowerCase());
-        if (matching.length === 0) return tag;
-        const attrs: [string, string | null][] = [...rawAttrs.matchAll(/\s+([^\s=>/]+)(?:="([^"]*)")?/g)].map((m) => [m[1], m[2] ?? null]);
-        const element: RewriterElement = {
-          tagName: name.toLowerCase(),
-          getAttribute: (attr) => {
-            const found = attrs.find(([key]) => key.toLowerCase() === attr);
-            return found ? (found[1] ?? "") : null;
-          },
-          setAttribute(attr, value) {
-            const found = attrs.find(([key]) => key.toLowerCase() === attr);
-            if (found) found[1] = value;
-            else attrs.push([attr, value]);
-            return element;
-          },
-        };
-        for (const [, handler] of matching) handler.element(element);
-        const rebuilt = attrs.map(([key, value]) => (value === null ? ` ${key}` : ` ${key}="${value}"`)).join("");
-        return `<${name}${rebuilt}${selfClose ? " /" : ""}>`;
-      }),
-    );
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        controller.enqueue(new TextEncoder().encode(await body));
-        controller.close();
-      },
-    });
-    return new Response(stream, response);
-  }
-}
+import { FakeRewriter } from "./testRewriter";
 
 /** What Vite writes into dist/index.html: an entry module script and modulepreload links. */
 const VITE_HTML = `<!doctype html>
@@ -133,11 +86,12 @@ describe("HTML responses", () => {
     const nonce = nonceOf(response.headers.get("Content-Security-Policy") ?? "");
     expect(nonce).toMatch(NONCE_FORMAT);
     const scripts = scriptTags(html);
-    expect(scripts).toHaveLength(3);
+    // The page's three, plus the AdSense loader the Worker inserts with ads on.
+    expect(scripts).toHaveLength(4);
     for (const tag of scripts) expect(tag).toContain(`nonce="${nonce}"`);
     expect(html).toContain(`<link rel="modulepreload" crossorigin href="/assets/zod-XyZ789.js" nonce="${nonce}">`);
     expect(html).toContain(`<link rel="preload" as="script" href="/assets/extra-1.js" nonce="${nonce}">`);
-    expect(html.match(/nonce="/g)).toHaveLength(5);
+    expect(html.match(/nonce="/g)).toHaveLength(6);
   });
 
   it("send exactly today's policy while off, still nonced (harmless: the policy names no nonce)", async () => {
@@ -209,8 +163,72 @@ describe("HTML responses", () => {
     const source = readFileSync(join(import.meta.dirname, path), "utf8");
     const { response, html } = await serve(source, { ADS_ENABLED: "true" });
     const nonce = nonceOf(response.headers.get("Content-Security-Policy") ?? "");
-    expect(scriptTags(html)).toHaveLength(scriptTags(source).length);
+    // Every page has a <head>, so each gets the AdSense loader too while ads are on.
+    expect(scriptTags(html)).toHaveLength(scriptTags(source).length + 1);
     for (const tag of scriptTags(html)) expect(tag).toContain(`nonce="${nonce}"`);
+  });
+});
+
+/** The AdSense loader's tag in a page, if any. */
+const loaderTags = (html: string) => scriptTags(html).filter((tag) => tag.includes("googlesyndication"));
+const MARKER = `<meta name="${ADS_MARKER_NAME}" content="${ADS_MARKER_CONTENT}">`;
+
+describe("the AdSense loader and the ads marker (build step 4)", () => {
+  it("are inserted once, at the end of <head>, with the page's nonce, async and crossorigin as Google documents (E1)", async () => {
+    const { response, html } = await serve(VITE_HTML, { ADS_ENABLED: "true" });
+    const nonce = nonceOf(response.headers.get("Content-Security-Policy") ?? "")!;
+    expect(loaderTags(html)).toEqual([`<script nonce="${nonce}" async src="${ADSENSE_LOADER_URL}" crossorigin="anonymous">`]);
+    expect(html.split(MARKER)).toHaveLength(2);
+    const head = html.slice(html.indexOf("<head>"), html.indexOf("</head>"));
+    expect(head.endsWith(adsHead(nonce))).toBe(true);
+    // After the page's own head: the charset and the stylesheet stay first.
+    expect(html.indexOf(MARKER)).toBeGreaterThan(html.indexOf('rel="stylesheet"'));
+  });
+
+  it("load Google's documented loader for this site's publisher", () => {
+    expect(ADSENSE_LOADER_URL).toBe(`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${AD_CLIENT}`);
+    const capture = readFileSync(join(import.meta.dirname, "../../docs-vault/raw-sources/adsense-csp-and-cmp-2026-11-01.md"), "utf8");
+    expect(capture).toContain("//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-");
+  });
+
+  it("name the same publisher as index.html's verification tag and ads.txt", () => {
+    const html = readFileSync(join(import.meta.dirname, "../index.html"), "utf8");
+    expect(html).toContain(`<meta name="google-adsense-account" content="${AD_CLIENT}" />`);
+    const adsTxt = readFileSync(join(import.meta.dirname, "../public/ads.txt"), "utf8");
+    expect(adsTxt).toContain(`google.com, ${AD_CLIENT.replace(/^ca-/, "")}, DIRECT`);
+  });
+
+  it.each([undefined, "false", "TRUE", "1"])("are not inserted with the switch at %j: no loader, no marker, no Google host", async (value) => {
+    const { html } = await serve(VITE_HTML, { ADS_ENABLED: value });
+    expect(html).not.toMatch(/googlesyndication|adsbygoogle/);
+    expect(html).not.toContain(ADS_MARKER_NAME);
+    expect(scriptTags(html)).toHaveLength(3);
+  });
+
+  it("leave the page as it was while off, apart from the nonces", async () => {
+    const { html } = await serve(VITE_HTML, { ADS_ENABLED: "false" });
+    expect(html.replace(/ nonce="[^"]*"/g, "")).toBe(VITE_HTML);
+  });
+
+  it("are inserted into the static pages too (privacy, terms), which carry no slots", async () => {
+    for (const path of ["../public/privacy.html", "../public/terms.html"]) {
+      const { html } = await serve(readFileSync(join(import.meta.dirname, path), "utf8"), { ADS_ENABLED: "true" });
+      expect(loaderTags(html), path).toHaveLength(1);
+      expect(html, path).toContain(MARKER);
+    }
+  });
+
+  it("are not inserted into a page without a <head>, nor into anything that isn't HTML", async () => {
+    expect(loaderTags((await serve("<p>fragment</p>", { ADS_ENABLED: "true" })).html)).toEqual([]);
+    const env: Env = { ASSETS: { fetch: async () => new Response("<head></head>", { headers: { "Content-Type": "text/plain" } }) }, ADS_ENABLED: "true" };
+    expect(await (await handle(get("/x.txt"), env, FakeRewriter)).text()).toBe("<head></head>");
+  });
+
+  it("get a nonce in the base64 alphabet, safe inside the double-quoted attribute", async () => {
+    for (let i = 0; i < 50; i++) {
+      const { html } = await serve(VITE_HTML, { ADS_ENABLED: "true" });
+      expect(loaderTags(html)[0]).toMatch(/^<script nonce="[A-Za-z0-9+/]{22}==" async /);
+    }
   });
 });
 

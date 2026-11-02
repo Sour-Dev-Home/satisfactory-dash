@@ -334,3 +334,61 @@ Cloudflare's config keys are cited to
 - **Owner checks after the merge deploys:** the HTML responses carry the CSP and HSTS and the scripts a `nonce`
   (`curl -sI https://satis-manager.com/app` and view source), and the Workers plan covers one Worker request per page
   load (static files are not Worker requests).
+
+### Build note, 2026-11-01: step 4, the AdSense script, consent link, slots and ads-on CSP (switch still off)
+New captures: [`adsense-ad-units-and-us-states-link-2026-11-01.md`](../../raw-sources/adsense-ad-units-and-us-states-link-2026-11-01.md)
+(U-E1 to U-E6) and [`cloudflare-workers-htmlrewriter-content-2026-11-01.md`](../../raw-sources/cloudflare-workers-htmlrewriter-content-2026-11-01.md)
+(HR-E1). `ADS_ENABLED` stays `"false"`: with it off the Worker inserts nothing, the CSP is `_headers`' byte for byte,
+and the app renders no slot and no link, so the site behaves and looks as before (no screenshot changes).
+- **How the switch reaches the page.** Only through the Worker, never a build flag. With `"true"` it appends to
+  `<head>` (HTMLRewriter `append` with `{ html: true }`, HR-E1) a marker, `<meta name="satis-ads" content="on">`, and
+  Google's loader, `<script nonce="…" async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2932631210238768" crossorigin="anonymous">`
+  (E1), writing the nonce itself. It does so on every HTML page it serves, the app, the landing page and the static
+  privacy and terms pages, so Google's consent message (deployed by that tag, E5-E7) shows wherever the site is entered.
+  The app reads the marker (`frontend/src/ads/google.ts`); the publisher id, loader URL, marker and ad unit ids live in
+  one module, `frontend/src/ads/config.ts`, which the Worker imports too. The demo has no Worker, and `adsOn` is false
+  in the demo build anyway.
+- **Consent links.** The shared footer (landing page and app) shows "Privacy and cookie settings" only with the marker.
+  It pushes onto `googlefc.callbackQueue` a call to `googlefc.showRevocationMessage` (E7, E10). It is a `<button>`,
+  not E10's `javascript:` link: under a nonce policy browsers ignore `'unsafe-inline'`, which blocks `javascript:` URLs.
+  **No "Do Not Sell or Share" link of our own:** on AdSense, Google's US state regulations message shows the link
+  itself, "using the formatting and settings you selected" (U-E2); a site's own link (`overrideDnsLink`) "is only
+  supported in Ad Manager" (U-E1). Where Google places it on the page is [NEEDS VERIFICATION] once live.
+- **Slots and their placements (owner decision, see below).** One slot after the page's sections on **Overview,
+  Power, Factory and Planner**, none on Map, Settings, Servers, Metrics, sign-in, pairing, the landing page, the static
+  pages or any modal. Each is an `<aside>` labelled with visible text "Advertisements" (E18) holding the AdSense
+  `<ins class="adsbygoogle">` with `data-ad-client` and `data-ad-slot` (U-E5), and asks AdSense once
+  (`adsbygoogle.push({})`, in a try/catch: a failure leaves it blank, no retry). Fixed size by tokens, Google's
+  exact-size example (U-E5): **320x100 on a phone, 468x60 from `sm` (640 px), 728x90 from `lg` (1024 px)**
+  (`--spacing-ad-*`; 728 px does not fit `md`'s 720 px content). An unfilled unit keeps its size blank (U-E6). A slot
+  renders, and so takes space, only when the marker is there, its placement has a unit id, and every primary query of
+  its page has data (so never on a loading, empty or error-only page, E16). Power, Factory and Planner slots sit inside
+  `BasicDataGate`, so the basic-data notice gets none.
+- **Ad unit ids are placeholders** (`null` in `AD_UNITS`): a placement without one renders nothing, even with ads on.
+  Owner: create one Responsive display unit per placement (Ads > By ad unit > Display ads, U-E4) and put its id in
+  `config.ts`, or decide on Auto ads instead. Auto ads would let Google place ads anywhere, including the sign-in,
+  settings and error screens this ADR bans, so this build assumes manual units and Auto ads **off** for the site
+  (whether they are on for a newly approved site is [NEEDS VERIFICATION]).
+- **The ads-on policy, verbatim** (`worker/securityHeaders.ts` `onPolicy`; a test pins it):
+  `default-src 'self'; script-src 'nonce-{random}' 'unsafe-inline' 'unsafe-eval' 'strict-dynamic' https: http:; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' https:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'; frame-src https:; media-src 'self' https:; worker-src 'self'`.
+  `script-src` is E1's, word for word. Google documents no host for the rest and its hosts change (E1), so every fetch
+  type the ad code makes is opened to any https origin (styles inline, images also `data:`) instead of a host list;
+  `default-src 'self'` stays for the rest, `worker-src 'self'` keeps the push service worker first-party, and
+  `object-src`, `base-uri`, `form-action` and `frame-ancestors` keep today's locks. This is tighter than E1's example
+  (which sets no `default-src`); one that breaks in staging is loosened (Decision 1). **No `report-uri`:** the site has
+  no endpoint to receive reports; add both together if wanted. The other headers (HSTS, `X-Frame-Options`...) are
+  unchanged.
+- **Proof.** Worker unit tests (insertion on and off, the nonce on the inserted tag, nothing for any value but
+  `"true"`, the publisher matching `index.html` and `ads.txt`), the policy test above, component tests (slot and
+  link render only with the marker, reserved size classes, one request, placements per route) and
+  `e2e/ads-on.spec.ts`: pages go through the Worker's own `handle` with ads on and Google's hosts answered by a stub
+  that loads a second script, uses `eval`, writes inline styles, opens https frames and sends a beacon and a fetch;
+  the suite still fails on any CSP violation and runs axe. With the shipped placeholders it sees no slot; it measures
+  the slot size from the built CSS (728x90 desktop, 320x100 phone). Every other spec runs with the switch off and is
+  unchanged.
+- Still [NEEDS VERIFICATION]: Google says sizing an ad unit "via CSS in external style sheets is not officially
+  supported" (U-E5), and the project bans `style=`, so the slot is sized by Tailwind classes: check in staging that
+  AdSense fills the reserved box; whether the real ad code and consent message raise any CSP report under this policy
+  (staging, with the switch on there first); where Google renders the US link; Auto ads' default.
+- **Owner decisions:** the four placements above (Map, which amendment 1 allowed in a side area, is left out); manual
+  units vs Auto ads; creating the units; turning the switch on after build step 6.

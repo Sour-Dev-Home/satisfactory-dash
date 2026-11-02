@@ -66,8 +66,8 @@ test.describe("production build", () => {
     expect(allFiles(DIST)).toContain(join(DIST, image.pathname));
   });
 
-  // ADR-0021 amendment 2: AdSense verifies the site by its meta tag and ads.txt. Its script waits for the consent gate
-  // (build step 2) and the CSP change (step 4), so no AdSense script ships yet.
+  // ADR-0021 amendment 2: AdSense verifies the site by its meta tag and ads.txt. The AdSense script is never in the
+  // built HTML: the Worker inserts it per response, only while ADS_ENABLED is "true" (amendment 3, build step 4).
   test("carries the AdSense verification tag and ads.txt for the same publisher, and no AdSense script", () => {
     const html = readFileSync(join(DIST, "index.html"), "utf8");
     const account = /<meta\s+name="google-adsense-account"\s+content="ca-(pub-\d{16})"/.exec(html)?.[1];

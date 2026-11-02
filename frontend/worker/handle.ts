@@ -1,7 +1,9 @@
-// The main site's Worker logic (ADR-0021 amendment 3, build step 2; the entry is index.ts): runs in front of the HTML pages only (wrangler.jsonc's
+// The main site's Worker logic (ADR-0021 amendment 3, build steps 2 and 4; the entry is index.ts): runs in front of the HTML pages only (wrangler.jsonc's
 // `run_worker_first` leaves the static files out), gives each HTML response a fresh nonce on every script, and sends
-// the CSP. With ADS_ENABLED anything but "true" (the default, "false"), the CSP is exactly today's `_headers` policy.
+// the CSP. With ADS_ENABLED anything but "true" (the default, "false"), the CSP is exactly today's `_headers` policy
+// and nothing is inserted; with "true", the ads-on policy and the AdSense loader plus its marker in <head> (adsHead).
 // Not used by the demo site (demo/wrangler.jsonc has no Worker). Citations: cloudflare-workers-assets-worker-2026-11-01.md.
+import { ADS_MARKER_CONTENT, ADS_MARKER_NAME, ADSENSE_LOADER_URL } from "../src/ads/config";
 import { OFF_POLICY, onPolicy, SECURITY_HEADERS } from "./securityHeaders";
 import type { HTMLRewriterConstructor, RewriterElement } from "./htmlRewriter";
 
@@ -29,7 +31,7 @@ function isHtml(response: Response): boolean {
 }
 
 /** Elements that load script and so carry the nonce: every `<script>`, and script preloads (Vite's modulepreload). */
-export function loadsScript(element: RewriterElement): boolean {
+export function loadsScript(element: Pick<RewriterElement, "tagName" | "getAttribute">): boolean {
   if (element.tagName.toLowerCase() === "script") return true;
   const rel = (element.getAttribute("rel") ?? "").toLowerCase().split(/\s+/);
   if (rel.includes("modulepreload")) return true;
@@ -81,5 +83,27 @@ export async function handle(request: Request, env: Env, Rewriter: HTMLRewriterC
       if (loadsScript(element)) element.setAttribute("nonce", nonce);
     },
   };
-  return new Rewriter().on("script", addNonce).on("link", addNonce).transform(response);
+  const rewriter = new Rewriter().on("script", addNonce).on("link", addNonce);
+  // Ads on: the AdSense loader (which also deploys Google's consent messages) and the marker the app reads, at the end
+  // of <head>. Ads off: nothing is inserted, so the page is byte for byte what it was, nonces aside.
+  if (adsEnabled(env)) {
+    rewriter.on("head", {
+      element(element: RewriterElement) {
+        element.append(adsHead(nonce), { html: true });
+      },
+    });
+  }
+  return rewriter.transform(response);
+}
+
+/**
+ * What the Worker inserts into <head> while ads are on: the marker (`src/ads/config.ts`), then Google's loader with the
+ * page's nonce, `async` and `crossorigin="anonymous"` as E1 shows (adsense-csp-and-cmp-2026-11-01.md). The nonce is
+ * written here, not by the script handler: inserted HTML may not pass through the handlers (HR-E1's NOT FOUND).
+ */
+export function adsHead(nonce: string): string {
+  return (
+    `<meta name="${ADS_MARKER_NAME}" content="${ADS_MARKER_CONTENT}">` +
+    `<script nonce="${nonce}" async src="${ADSENSE_LOADER_URL}" crossorigin="anonymous"></script>`
+  );
 }

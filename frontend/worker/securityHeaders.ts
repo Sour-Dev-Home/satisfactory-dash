@@ -33,16 +33,35 @@ export function strictScriptSrc(nonce: string): string {
 }
 
 /**
- * NOT YET USED: the ads-on policy is a starting point only. Build step 4 sets its other directives (frames, images,
- * connections for the ads), proves them in e2e and staging, and has `security-reviewer` review them. Until then it is
- * today's policy with `script-src` replaced by Google's, and `object-src 'none'` and `base-uri 'none'` (E1) kept.
+ * The directives the ads-on policy changes from today's (ADR-0021 amendment 3, Decision 1; build step 4). Google
+ * supports only its strict script policy and documents no host for frames, images, styles or connections (E1, E2; its
+ * example sets no `default-src`, so those are unrestricted there), and the hosts "change over time" (E1). So each
+ * fetch the ad code makes from the page is opened to any https origin, and nothing else is loosened:
+ * - `script-src`: Google's policy, word for word (E1).
+ * - `style-src`: the ad code and Google's consent message write inline styles; Google's example does not restrict them.
+ * - `img-src`, `connect-src`, `frame-src`, `font-src`, `media-src`: any https origin (creatives, beacons, ad and consent
+ *   iframes, fenced frames). `data:` images for creatives. The API origin is covered by `https:`.
+ * - `worker-src 'self'`: kept explicit (it fell back to `default-src`), so the push service worker stays first-party.
+ * `default-src 'self'` stays for anything not listed (`manifest-src`, `child-src`...), with `object-src 'none'` and
+ * `base-uri 'none'` (E1), `form-action 'self'` and `frame-ancestors 'none'`. A directive that breaks the ads in staging
+ * is loosened, not worked around (Decision 1). No `report-uri`: E1's example has one, but this site has no endpoint to
+ * receive reports, so it is left out until one exists.
  */
+export const ON_POLICY_OVERRIDES: readonly (readonly [string, string])[] = [
+  ["style-src", "'self' 'unsafe-inline'"],
+  ["img-src", "'self' https: data:"],
+  ["font-src", "'self' https:"],
+  ["connect-src", "'self' https:"],
+  ["frame-src", "https:"],
+  ["media-src", "'self' https:"],
+  ["worker-src", "'self'"],
+  ["object-src", "'none'"],
+  ["base-uri", "'none'"],
+];
+
+/** The CSP sent while ads are on: today's policy with Google's strict `script-src` and the overrides above. */
 export function onPolicy(nonce: string): string {
-  return withDirectives(OFF_POLICY, [
-    ["script-src", strictScriptSrc(nonce)],
-    ["object-src", "'none'"],
-    ["base-uri", "'none'"],
-  ]);
+  return withDirectives(OFF_POLICY, [["script-src", strictScriptSrc(nonce)], ...ON_POLICY_OVERRIDES]);
 }
 
 /** `policy` with each named directive's value replaced, or appended when the policy lacks it. */

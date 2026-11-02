@@ -1,4 +1,6 @@
+import { adsOn, showPrivacySettings } from "../ads/google";
 import { IS_DEMO } from "../demo/mode";
+import { cn } from "../lib/cn";
 import { sourceUrl } from "../source";
 
 /**
@@ -13,7 +15,13 @@ export const TERMS_URL = `${LEGAL_ORIGIN}/terms`;
 // so the tap target grows without moving anything.
 const link = "-my-touch-bleed inline-flex min-h-touch items-center";
 
-/** Always rendered, outside the auth gate, so it's reachable from the login screen too. */
+/**
+ * Always rendered, outside the auth gate, so it's reachable from the login screen too. The landing page and the app
+ * share it. With ads on (ADR-0021 amendment 3, build step 4) it adds "Privacy and cookie settings", which opens
+ * Google's consent message again (E10). It is a button, not E10's `javascript:` link, which the ads-on CSP blocks, and
+ * it opens a dialog rather than going anywhere. The US "Do Not Sell or Share" link is not here: on an AdSense site
+ * Google's US state regulations message renders it itself (a site's own link is Ad Manager only, U-E1, U-E2).
+ */
 export function SourceFooter({ commitSha = __COMMIT_SHA__ }: { commitSha?: string }) {
   return (
     <footer className="flex flex-wrap gap-x-6 border-t border-line py-6 text-sm text-muted">
@@ -26,6 +34,15 @@ export function SourceFooter({ commitSha = __COMMIT_SHA__ }: { commitSha?: strin
       <a href={TERMS_URL} className={link}>
         Terms
       </a>
+      {adsOn() && (
+        <button
+          type="button"
+          onClick={() => showPrivacySettings()}
+          className={cn(link, "rounded-control border-0 bg-transparent p-0 font-normal text-accent underline underline-offset-2")}
+        >
+          Privacy and cookie settings
+        </button>
+      )}
     </footer>
   );
 }
