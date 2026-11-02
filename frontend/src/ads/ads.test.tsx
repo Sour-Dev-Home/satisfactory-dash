@@ -150,11 +150,12 @@ describe("AdSlot", () => {
     expect(window.adsbygoogle).toBeUndefined();
   });
 
-  it("renders nothing with the shipped config: every unit is a placeholder until the owner creates them", () => {
+  it("renders one slot per placement with the shipped config: every unit is the owner's real AdSense id", () => {
     setMarker();
     for (const [placement, unit] of Object.entries(AD_UNITS) as [AdPlacement, string | null][]) {
+      expect(isAdUnitId(unit), placement).toBe(true);
       const { container, unmount } = renderSlot(placement, { units: AD_UNITS });
-      if (unit === null) expect(container, placement).toBeEmptyDOMElement();
+      expect(container.querySelector(`ins[data-ad-slot="${unit}"]`), placement).not.toBeNull();
       unmount();
     }
   });

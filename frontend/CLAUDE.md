@@ -133,7 +133,7 @@ contract needs to grow, not that this module should special-case a backend detai
   `<meta name="satis-ads" content="on">` marker to `<head>` (`adsHead`). The app never loads an ad script itself: it
   reads the marker (`src/ads/google.ts` `adsOn`), and without it renders no slot and no consent link (no element, no
   space, no request). `src/ads/config.ts` is the one place for the publisher id, the loader URL, the marker and the ad
-  unit ids (placeholders until the owner creates the units). Slots (`src/ads/AdSlot.tsx`) go only after a page's
+  unit ids (the owner's four Display units, 2026-11-02). Slots (`src/ads/AdSlot.tsx`) go only after a page's
   sections on Overview, Power, Factory and Planner (never on Map, Settings, Servers, Metrics, login, pairing, a modal or
   a page without data), fixed size by the `--spacing-ad-*` tokens. The footer's "Privacy and cookie settings" is a
   button (a `javascript:` link breaks under the strict CSP); the US "Do Not Sell or Share" link is Google's own.

@@ -367,7 +367,7 @@ and the app renders no slot and no link, so the site behaves and looks as before
   renders, and so takes space, only when the marker is there, its placement has a unit id, and every primary query of
   its page has data (so never on a loading, empty or error-only page, E16). Power, Factory and Planner slots sit inside
   `BasicDataGate`, so the basic-data notice gets none.
-- **Ad unit ids are placeholders** (`null` in `AD_UNITS`): a placement without one renders nothing, even with ads on.
+- **Ad unit ids**: the owner created one Display unit per placement on 2026-11-02, and `AD_UNITS` holds them; a placement without a numeric id would render nothing, even with ads on.
   Owner: create one Responsive display unit per placement (Ads > By ad unit > Display ads, U-E4) and put its id in
   `config.ts`, or decide on Auto ads instead. Auto ads would let Google place ads anywhere, including the sign-in,
   settings and error screens this ADR bans, so this build assumes manual units and Auto ads **off** for the site
@@ -386,7 +386,7 @@ and the app renders no slot and no link, so the site behaves and looks as before
   link render only with the marker, reserved size classes, one request, placements per route) and
   `e2e/ads-on.spec.ts`: pages go through the Worker's own `handle` with ads on and Google's hosts answered by a stub
   that loads a second script, uses `eval`, writes inline styles, opens https frames and sends a beacon and a fetch;
-  the suite still fails on any CSP violation and runs axe. With the shipped placeholders it sees no slot; it measures
+  the suite still fails on any CSP violation and runs axe. With the owner's unit ids it sees one filled slot on the Overview (the stub fills it); it measures
   the slot size from the built CSS (728x90 desktop, 320x100 phone). Every other spec runs with the switch off and is
   unchanged.
 - Still [NEEDS VERIFICATION]: Google says sizing an ad unit "via CSS in external style sheets is not officially

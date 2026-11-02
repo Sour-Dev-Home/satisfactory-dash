@@ -28,10 +28,11 @@ export type AdPlacement = "overview" | "power" | "factory" | "planner";
  * can go on before the units exist (only the consent message then shows).
  */
 export const AD_UNITS: Readonly<Record<AdPlacement, string | null>> = {
-  overview: null, // OWNER: ad unit id for the Overview slot
-  power: null, // OWNER: ad unit id for the Power slot
-  factory: null, // OWNER: ad unit id for the Factory slot
-  planner: null, // OWNER: ad unit id for the Planner slot
+  // The owner's Display ad units in AdSense, created 2026-11-02 (one per placement).
+  overview: "8812818145",
+  power: "6601375748",
+  factory: "8837315983",
+  planner: "3975212406",
 };
 
 /** An ad unit id as AdSense shows it: digits only. Anything else is never written into the page. */
