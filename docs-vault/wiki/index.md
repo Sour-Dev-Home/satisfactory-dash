@@ -138,3 +138,10 @@ added or removed.
   — ADR-0021 amendment 3 build step 2: Cloudflare's pages on a Worker in front of static assets (`run_worker_first`
   patterns, the assets binding, `_headers` not applied to Worker responses, HTML handling, HTMLRewriter, `vars`), as
   verbatim excerpts E1-E7.
+- [`../raw-sources/adsense-ad-units-and-us-states-link-2026-11-01.md`](../raw-sources/adsense-ad-units-and-us-states-link-2026-11-01.md)
+  — ADR-0021 amendment 3 build step 4: the US "Do Not Sell or Share" link (rendered by Google's message on AdSense
+  sites; a custom link is Ad Manager only), creating display ad units, exact-size responsive ad code, and unfilled
+  units, as verbatim excerpts U-E1 to U-E6.
+- [`../raw-sources/cloudflare-workers-htmlrewriter-content-2026-11-01.md`](../raw-sources/cloudflare-workers-htmlrewriter-content-2026-11-01.md)
+  — ADR-0021 amendment 3 build step 4: HTMLRewriter's `append`/`prepend` and the `{ html: true }` content option,
+  as verbatim excerpt HR-E1.

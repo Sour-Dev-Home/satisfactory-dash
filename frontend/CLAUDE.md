@@ -128,12 +128,22 @@ contract needs to grow, not that this module should special-case a backend detai
   A Worker (`worker/index.ts`, ADR-0021 amendment 3) runs in front of the HTML pages only: `run_worker_first` is `/*`
   minus `/assets/*` and every static entry of `public/`, so a new file or folder in `public/` must be added there as a
   `!` pattern (`worker/routing.test.ts` fails otherwise). It puts a fresh nonce on every script and script preload and
-  sends the security headers. `vars.ADS_ENABLED` is the ads switch, `"false"`: the CSP is then exactly `_headers`'.
+  sends the security headers. `vars.ADS_ENABLED` is the ads switch, `"false"`: the CSP is then exactly `_headers`' and
+  nothing is inserted. `"true"` sends `onPolicy` and appends the AdSense loader (with the nonce) and the
+  `<meta name="satis-ads" content="on">` marker to `<head>` (`adsHead`). The app never loads an ad script itself: it
+  reads the marker (`src/ads/google.ts` `adsOn`), and without it renders no slot and no consent link (no element, no
+  space, no request). `src/ads/config.ts` is the one place for the publisher id, the loader URL, the marker and the ad
+  unit ids (the owner's four Display units, 2026-11-02). Slots (`src/ads/AdSlot.tsx`) go only after a page's
+  sections on Overview, Power, Factory and Planner (never on Map, Settings, Servers, Metrics, login, pairing, a modal or
+  a page without data), fixed size by the `--spacing-ad-*` tokens. The footer's "Privacy and cookie settings" is a
+  button (a `javascript:` link breaks under the strict CSP); the US "Do Not Sell or Share" link is Google's own.
+  `e2e/ads-on.spec.ts` runs pages through the Worker's `handle` with Google's hosts stubbed.
   Wrangler bundles the Worker on deploy; it is not part of the Vite build. The demo (`demo/wrangler.jsonc`) has no Worker.
 - Security headers (CSP, HSTS, etc.) live in `public/_headers` and apply in production
   only. The Worker sends the same rules for HTML from `worker/securityHeaders.ts` (`_headers` is not applied to Worker
   responses); change both together, `worker/securityHeaders.test.ts` fails if they differ. A new external origin (API,
-  font, image) must be added to the CSP in both. Never
+  font, image) must be added to the CSP in both. The ads-on policy (`onPolicy`: Google's strict `script-src` plus
+  `ON_POLICY_OVERRIDES`) is the Worker's only; a change to it needs `security-reviewer`. Never
   add long-cache or `immutable` headers for `/assets/*` while `not_found_handling` is
   `single-page-application`: a missing hashed asset returns 200 `index.html`, and that
   HTML would be cached for a year.

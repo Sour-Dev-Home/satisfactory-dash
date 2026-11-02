@@ -168,6 +168,16 @@
   --spacing-since-yesterday-mid: 304px; /* 640-1023 px: the lists' long lines wrap */
   --spacing-since-yesterday-wide: 236px; /* from 1024 px */
 
+  /* An ad slot's fixed size (ADR-0021 amendment 3, build step 4; src/ads/AdSlot.tsx), Google's exact-size responsive
+     example (adsense-ad-units-and-us-states-link-2026-11-01.md, U-E5): 320x100 on a phone, 468x60 from sm, 728x90
+     from lg (728 px doesn't fit md's 720 px content). Reserved only while ads are on and the slot has a unit. */
+  --spacing-ad-phone-w: 320px;
+  --spacing-ad-phone-h: 100px;
+  --spacing-ad-mid-w: 468px;
+  --spacing-ad-mid-h: 60px;
+  --spacing-ad-wide-w: 728px;
+  --spacing-ad-wide-h: 90px;
+
   /* Below this the Factory table stacks its rows (index.css and FactoryPanel). */
   --breakpoint-table-rows: 601px;
 

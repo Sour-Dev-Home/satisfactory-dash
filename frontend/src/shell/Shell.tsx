@@ -13,6 +13,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, useLocation, useMatch } from "react-router";
 import { AccountSettings } from "../account/AccountSettings";
+import { AdSlot } from "../ads/AdSlot";
 import { AgentSettings } from "../agent/AgentSettings";
 import { YourServersSection } from "../selfServe/YourServersSection";
 import { useYourServer } from "../selfServe/useYourServer";
@@ -425,6 +426,8 @@ export function Shell() {
               <Section label="Server status" probe="status">
                 <StatusView />
               </Section>
+              {/* ADR-0021 amendment 3: one ad slot below the panels, nothing while ads are off (ads/AdSlot.tsx). */}
+              <AdSlot placement="overview" queries={pageQueries("/app", server.id)} />
             </Page>
           }
         />
@@ -440,6 +443,7 @@ export function Shell() {
                   {/* Keyed by server: its polls must never carry over to another server's chart. */}
                   <PowerHistorySection key={server.id} />
                 </Section>
+                <AdSlot placement="power" queries={pageQueries("/app/power", server.id)} />
               </BasicDataGate>
             </Page>
           }
@@ -452,6 +456,7 @@ export function Shell() {
                 <Section label="Factory" probe="factory">
                   <FactoryView />
                 </Section>
+                <AdSlot placement="factory" queries={pageQueries("/app/factory", server.id)} />
               </BasicDataGate>
             </Page>
           }
@@ -466,6 +471,7 @@ export function Shell() {
                   {/* Keyed by server: a site opened on one server must not follow the user to another. */}
                   <PlannerView key={server.id} />
                 </Section>
+                <AdSlot placement="planner" queries={pageQueries("/app/planner", server.id)} />
               </BasicDataGate>
             </Page>
           }

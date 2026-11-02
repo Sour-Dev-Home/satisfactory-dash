@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { OFF_POLICY, onPolicy, SECURITY_HEADERS, strictScriptSrc, withDirectives } from "./securityHeaders";
+import { OFF_POLICY, ON_POLICY_OVERRIDES, onPolicy, SECURITY_HEADERS, strictScriptSrc, withDirectives } from "./securityHeaders";
 
 const read = (path: string) => readFileSync(join(import.meta.dirname, path), "utf8");
 
@@ -44,7 +44,7 @@ describe("the Worker's security headers", () => {
   });
 });
 
-describe("the ads-on policy (not yet used)", () => {
+describe("the ads-on policy", () => {
   const nonce = "AAECAwQFBgcICQoLDA0ODw==";
 
   it("has Google's documented script-src, word for word, with the nonce filled in (E1)", () => {
@@ -61,12 +61,39 @@ describe("the ads-on policy (not yet used)", () => {
     expect(on.get("base-uri")).toBe("'none'");
   });
 
-  it("changes nothing else yet: build step 4 sets the other directives", () => {
+  it("is exactly this policy (build step 4; ADR-0021's build note quotes it)", () => {
+    expect(onPolicy(nonce)).toBe(
+      "default-src 'self'; " +
+        `script-src 'nonce-${nonce}' 'unsafe-inline' 'unsafe-eval' 'strict-dynamic' https: http:; ` +
+        "style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self' https:; connect-src 'self' https:; " +
+        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'; " +
+        "frame-src https:; media-src 'self' https:; worker-src 'self'",
+    );
+  });
+
+  it("changes only the directives it lists, and never the framing, form, base or plugin locks", () => {
     const off = directives(OFF_POLICY);
     const on = directives(onPolicy(nonce));
-    off.delete("script-src");
-    on.delete("script-src");
-    expect(on).toEqual(off);
+    const changed = new Set(["script-src", ...ON_POLICY_OVERRIDES.map(([name]) => name)]);
+    for (const [name, value] of off) if (!changed.has(name)) expect(on.get(name), name).toBe(value);
+    for (const [name, value] of [["frame-ancestors", "'none'"], ["form-action", "'self'"], ["base-uri", "'none'"], ["object-src", "'none'"], ["default-src", "'self'"], ["worker-src", "'self'"]]) {
+      expect(on.get(name), name).toBe(value);
+    }
+  });
+
+  it("opens no directive to http: or a wildcard except Google's own script-src fallbacks (E1)", () => {
+    for (const [name, value] of directives(onPolicy(nonce))) {
+      if (name === "script-src") continue;
+      expect(value, name).not.toMatch(/(^|\s)(http:|\*|'unsafe-eval')(\s|$)/);
+    }
+  });
+
+  it("sends no report-uri: the site has no endpoint to receive reports yet", () => {
+    expect(directives(onPolicy(nonce)).has("report-uri")).toBe(false);
+  });
+
+  it("puts each nonce only in script-src, once", () => {
+    expect(onPolicy(nonce).split(`'nonce-${nonce}'`)).toHaveLength(2);
   });
 });
 

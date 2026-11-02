@@ -29,7 +29,8 @@
       content="The Satis Manager Overview: all systems operational, with the server, power and factory each marked operational."
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <!-- AdSense site verification only (ADR-0021 amendment 2): it loads nothing. The ad script waits for the consent gate. -->
+    <!-- AdSense site verification only (ADR-0021 amendment 2): it loads nothing. The ad script is never in this file: the
+         Worker inserts it with the page's nonce only while ADS_ENABLED is "true" (worker/handle.ts, amendment 3). -->
     <meta name="google-adsense-account" content="ca-pub-2932631210238768" />
   </head>
   <body>

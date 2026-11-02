@@ -5,6 +5,13 @@ export interface RewriterElement {
   readonly tagName: string;
   getAttribute(name: string): string | null;
   setAttribute(name: string, value: string): RewriterElement;
+  /**
+   * Inserts content right before the element's end tag; `{ html: true }` inserts it as raw HTML, otherwise it is
+   * escaped as text (cloudflare-workers-htmlrewriter-content-2026-11-01.md, HR-E1). Whether inserted content goes
+   * through the rewriter's handlers again is not documented, so anything it needs (a nonce) is written into it by the
+   * caller.
+   */
+  append(content: string, options?: { html: boolean }): RewriterElement;
 }
 
 export interface RewriterElementHandler {
