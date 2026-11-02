@@ -95,6 +95,8 @@ interface LayerState {
  *    `Retry-After`, without re-reading the game; a 4xx is not retried, and since its hash is not recorded the layer is tried
  *    again at its next read (an older backend may not know the route yet); a 401 stops the reader;
  *  - logs are codes and counts only, once per streak, never the data.
+ * It reads FRM, so it serves hosts without the mod (ADR-0058 Decision 5: the Node agent stays on FRM, frozen). A server the
+ * mod feeds has the mod as its one enrolled sender, which posts these layers itself; this reader never runs for it (R7).
  */
 export class WorldReader {
   private readonly stop = new AbortController();

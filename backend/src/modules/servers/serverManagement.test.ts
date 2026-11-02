@@ -651,6 +651,14 @@ describe("testCandidate and testSaved", () => {
     expect((refused as ApiFailure).code).toBe("address_not_allowed");
   });
 
+  it("ADR-0058 R7: testSaved on an agent server (the mod's, which has no stored connection) is not found, and no FRM test runs", async () => {
+    const { service, testConnection } = setup();
+    repo.getConnectionMetaByPublicId.mockResolvedValue(undefined);
+    await expect(service.testSaved("mod-fed")).rejects.toBeInstanceOf(ServerNotFoundError);
+    expect(testConnection).not.toHaveBeenCalled();
+    expect(repo.getConnection).not.toHaveBeenCalled();
+  });
+
   it("testSaved on an unreadable row is connection_unreadable, not a 500", async () => {
     repo.getConnection.mockRejectedValue(new SecretsError("Could not decrypt a stored secret."));
     const err = await setup().service.testSaved("home").catch((e: unknown) => e);

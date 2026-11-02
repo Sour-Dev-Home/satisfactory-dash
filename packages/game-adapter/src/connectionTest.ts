@@ -7,6 +7,10 @@ import { SatisfactoryServerAdapter } from "./satisfactoryServerAdapter.js";
  * reads every server needs: the vanilla API's QueryServerState and FRM's getSessionInfo. The result is
  * a set of stable codes only: a message from the game server (or from anything pretending to be it)
  * never reaches the caller, and neither does the address.
+ *
+ * It tests a server the backend reads itself (a `local` server, an FRM host). A server the mod feeds is an `agent`
+ * server with no stored connection, so it is never tested here (ADR-0058 R7): its sender reports its own game
+ * connection on every snapshot (`gameReachable`, `lastGameReadAt`, `modVersion`), shown in the agent status.
  */
 export type ConnectionCheckError = "unreachable" | "unauthorized" | "invalid_response";
 
