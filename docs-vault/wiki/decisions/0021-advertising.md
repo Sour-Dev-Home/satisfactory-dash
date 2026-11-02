@@ -315,7 +315,9 @@ Cloudflare's config keys are cited to
   and sends the security headers and the CSP. It drops the asset's `ETag` and sends `Cache-Control: private, no-cache`,
   since the body now differs per response and no shared cache may reuse a nonce. A 304 for an HTML page is asked again
   without its conditional headers, so the browser never keeps a page with an old nonce. Anything that isn't HTML (a
-  redirect such as `/privacy.html` to `/privacy`, W-E5) is returned untouched.
+  redirect such as `/privacy.html` to `/privacy`, W-E5, or a 304) keeps its status, body and own headers and gets
+  today's `_headers` rules, CSP included, as static serving gave it before (`security-reviewer`'s finding: without
+  this, HSTS on those redirects would rest on undocumented behaviour).
 - **The switch.** `vars.ADS_ENABLED` (W-E7), `"false"` in the file. Only the exact string `"true"` turns the ads-on
   policy on. Flip it in `wrangler.jsonc`, not the dashboard: Wrangler overrides dashboard vars on deploy (W-E7).
 - **Off is today's policy, exactly.** Off sends `public/_headers`' CSP byte for byte. Nonces are still added while off:

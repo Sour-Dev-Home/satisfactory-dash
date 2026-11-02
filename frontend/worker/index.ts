@@ -50,14 +50,24 @@ async function fetchAsset(request: Request, env: Env): Promise<Response> {
   return isHtml(full) ? full : response;
 }
 
-export async function handle(request: Request, env: Env, Rewriter: HTMLRewriterConstructor): Promise<Response> {
-  const asset = await fetchAsset(request, env);
-  // Anything that isn't HTML (a redirect, a file the run_worker_first list missed) goes back untouched.
-  if (!isHtml(asset)) return asset;
-
-  const nonce = makeNonce();
+/**
+ * The asset response with `_headers`' rules set on it, exactly as static serving would send them: whether a response
+ * the Worker returns from `env.ASSETS.fetch` still carries them is not documented (E4), so they are set either way.
+ */
+function withSecurityHeaders(asset: Response): Response {
   const response = new Response(asset.body, asset);
   for (const [name, value] of SECURITY_HEADERS) response.headers.set(name, value);
+  return response;
+}
+
+export async function handle(request: Request, env: Env, Rewriter: HTMLRewriterConstructor): Promise<Response> {
+  const asset = await fetchAsset(request, env);
+  // Anything that isn't HTML (a redirect such as /privacy.html to /privacy, a 304, a file the run_worker_first list
+  // missed) keeps its status and body, and gets today's headers, CSP included, as `_headers` gave it before the Worker.
+  if (!isHtml(asset)) return withSecurityHeaders(asset);
+
+  const nonce = makeNonce();
+  const response = withSecurityHeaders(asset);
   response.headers.set("Content-Security-Policy", adsEnabled(env) ? onPolicy(nonce) : OFF_POLICY);
   // The body now differs per response: the asset's ETag and length no longer describe it, and no shared cache may
   // hand one visitor's nonce to another.

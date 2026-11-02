@@ -235,9 +235,17 @@ describe("conditional requests", () => {
         },
       },
     };
-    expect(await handle(get("/x.json", { headers: { "If-None-Match": '"abc"' } }), env, FakeRewriter)).toBe(notModified);
+    const response = await handle(get("/x.json", { headers: { "If-None-Match": '"abc"' } }), env, FakeRewriter);
+    expect(response.status).toBe(304);
+    expect(response.body).toBeNull();
+    for (const [name, value] of SECURITY_HEADERS) expect(response.headers.get(name)).toBe(value);
   });
 });
+
+/** Today's headers (public/_headers, CSP included), as static serving put them on every response before the Worker. */
+function expectTodaysHeaders(response: Response) {
+  for (const [name, value] of SECURITY_HEADERS) expect(response.headers.get(name), name).toBe(value);
+}
 
 describe("anything that isn't HTML", () => {
   it.each([
@@ -246,19 +254,31 @@ describe("anything that isn't HTML", () => {
     ["application/manifest+json", "{}"],
     ["text/plain", "<script>not html</script>"],
     ["", "no type"],
-  ])("passes through untouched (%s)", async (type, body) => {
-    const original = new Response(body, { headers: type ? { "Content-Type": type, ETag: '"e"' } : { ETag: '"e"' } });
+  ])("keeps its status, body and own headers, with today's security headers added (%s)", async (type, body) => {
+    const original = new Response(body, { status: 200, headers: type ? { "Content-Type": type, ETag: '"e"' } : { ETag: '"e"' } });
     const env: Env = { ASSETS: { fetch: async () => original } };
     const response = await handle(get("/new-file"), env, FakeRewriter);
-    expect(response).toBe(original);
-    expect(response.headers.get("Content-Security-Policy")).toBeNull();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("ETag")).toBe('"e"');
+    expect(response.headers.get("Cache-Control")).toBeNull();
+    if (type) expect(response.headers.get("Content-Type")).toBe(type);
+    expectTodaysHeaders(response);
+    expect(response.headers.get("Content-Security-Policy")).toBe(OFF_POLICY);
     expect(await response.text()).toBe(body);
   });
 
-  it("includes redirects (/privacy.html is a 307 to /privacy, E5)", async () => {
+  it("includes redirects (/privacy.html is a 307 to /privacy, E5), which keep HSTS and the rest", async () => {
     const redirect = new Response(null, { status: 307, headers: { Location: "/privacy" } });
     const env: Env = { ASSETS: { fetch: async () => redirect } };
-    expect(await handle(get("/privacy.html"), env, FakeRewriter)).toBe(redirect);
+    const response = await handle(get("/privacy.html"), env, FakeRewriter);
+    expect(response.status).toBe(307);
+    expect(response.headers.get("Location")).toBe("/privacy");
+    expectTodaysHeaders(response);
+  });
+
+  it("gets today's CSP even with ads on: only HTML carries a nonce", async () => {
+    const env: Env = { ASSETS: { fetch: async () => new Response("{}", { headers: { "Content-Type": "application/json" } }) }, ADS_ENABLED: "true" };
+    expect((await handle(get("/x.json"), env, FakeRewriter)).headers.get("Content-Security-Policy")).toBe(OFF_POLICY);
   });
 });
 
