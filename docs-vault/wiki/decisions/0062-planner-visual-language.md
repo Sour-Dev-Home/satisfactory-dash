@@ -5,7 +5,9 @@ Status: **Accepted** (owner, 2026-10-27), with the owner's answers below. Propos
 `frontend/src/` unless they say otherwise. The owner's words: "Instead of '1 flow to storage' ... use an animation or other design
 language", "Instead of text 'backed up' use some kind of design language element ... (and be toggleable)", "Tables seems
 unhelpful", "The factory tab feels difficult to use and is a bit unwieldy to look at". **Amended 2026-10-27 (accepted, owner):
-every line shows its rate; see "Amendment, 2026-10-27" at the end.**
+every line shows its rate; see "Amendment, 2026-10-27" at the end.** **Amended by ADR-0063 (2026-11-01):** with item
+ports on, a line into a left input port drops its arrowhead (the stop bar stays), dimmed lines, caps and glyphs do not
+move (the march caps go to lit things), and the legend gains port and dimmed rows.
 
 ## Owner answers (2026-10-27)
 

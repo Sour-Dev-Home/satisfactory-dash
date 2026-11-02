@@ -116,6 +116,10 @@ added or removed.
 - [`decisions/0051-public-release-plan.md`](./decisions/0051-public-release-plan.md) — public release plan (accepted
   2026-10-24): device-code pairing, FRM as a dependency (blocked on legal clearance), the ordered milestones to a
   public beta, hosting after the AWS Free plan, and no email.
+- [`decisions/0063-planner-ports-end-labels-dimming.md`](./decisions/0063-planner-ports-end-labels-dimming.md) — planner
+  item ports, end labels and dimming (accepted 2026-11-01, five open questions): one item port per card side, one line
+  per item, a name-and-rate label at each end with the middle bubble as the fallback, dimming by colour over a pure focus
+  set, nothing new focusable, seven build PRs behind `planner.ports`.
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
   containers, backend modules, target) with rendered SVGs and re-render instructions, and the
   [overview cards brief](./architecture/overview-cards.md) (Players, Tick rate, Health).

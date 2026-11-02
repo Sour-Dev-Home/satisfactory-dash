@@ -4,6 +4,9 @@ Status: **Accepted** (owner, 2026-10-26; see "Owner's answers"). First proposed 
 (#711); the owner declined ELK's licence, kept the design and asked for "a different method to get somewhere close".
 This ADR is that method, chosen on measurements of four engines.
 
+**Amended by ADR-0063 (2026-11-01):** with item ports on, an end's height comes from its item's port instead of the even
+spread (Decision 1), card boxes widen by end-label bands, and the 2026-10-27 bundling is per card pair **and item**.
+
 ## Context
 
 The owner's screenshots of the planner canvas (2026-10-26) showed edges running under cards, long edges taking

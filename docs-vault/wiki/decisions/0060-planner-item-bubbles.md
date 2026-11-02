@@ -4,6 +4,10 @@ Status: **Accepted** (owner, 2026-10-27, #726), with the owner's answers below. 
 independent `architecture-advisor` review of the planner code on `main` after #732. Paths below are relative to
 `frontend/src/planner/graph/` unless they say otherwise.
 
+**Amended by ADR-0063 (2026-11-01):** with item ports on, a line carries one item and draws its bubble only as the
+fallback when its two end labels do not fit (Decision 1; the box stays reserved, the "+k" chip goes with the flag);
+dimming is by colour tokens, not `--opacity-graph-dim` (Decision 2's look; the hop-1 rule is unchanged).
+
 ## Owner answers (2026-10-27)
 
 The owner answered the six open questions of the proposal on 2026-10-27:
