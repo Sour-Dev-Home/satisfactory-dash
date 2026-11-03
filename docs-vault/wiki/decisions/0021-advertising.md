@@ -400,3 +400,52 @@ and the app renders no slot and no link, so the site behaves and looks as before
   as above. `test-hunter`: no bugs; added edge tests (every primary query, no queries, StrictMode).
 - **Owner decisions:** the four placements above (Map, which amendment 1 allowed in a side area, is left out); manual
   units vs Auto ads; creating the units; turning the switch on after build step 6.
+
+### Build note, 2026-11-03: step 5, first part: the public pages as real HTML (AdSense review)
+**Why.** AdSense rejected the site for "Google-served ads on screens without publisher-content". The served HTML of `/`
+was `index.html`'s empty `<div id="root"></div>`: every word of the landing page came from JavaScript, and everything
+else is behind sign-in. The owner approved (2026-11-03) making the public pages real HTML at build time and adding
+guides, as the first part of step 5 (the public pages' slots come after).
+- **The landing page is prerendered and hydrated.** After the client build, `frontend/site/plugin.ts` loads
+  `src/landing/prerender.tsx` through a Vite server in middleware mode (no port) and renders the app's tree at `/`
+  (`AppFrame` under `StaticRouter`, the same providers as `main.tsx`) with `react-dom/server`'s `renderToString`. The
+  markup goes into the built `index.html`'s root and is written as `dist/landing.html`, with React's image preload moved
+  to `<head>`, a canonical link to `https://satis-manager.com/`, and without the "needs JavaScript" notice. `main.tsx`
+  hydrates when the root has content and renders from scratch otherwise. Hydration, not a script-free landing, so
+  nothing changes for visitors: the Sign in link stays a client-side route and the footer's consent button still works
+  with ads on. To keep it mismatch-free, the footer reads the Worker's ads marker through `useSyncExternalStore` with an
+  "off" server snapshot (the build can't know the switch), and `e2e/landing.spec.ts` fails on any console error while
+  `/` hydrates. A visitor without JavaScript, or a crawler that runs none, gets the whole page as HTML.
+- **`/` is that file; the app keeps the empty shell.** `index.html` can't be the landing page: `not_found_handling`
+  serves it for every app path, so app routes would flash landing content. The Worker (`worker/handle.ts`
+  `assetRequest`) asks the assets for `/landing` when the request is exactly `/` (only the pathname matters to the
+  binding, E3; `/landing` serves `landing.html`, E5 and
+  [`cloudflare-workers-html-handling-2026-11-03.md`](../../raw-sources/cloudflare-workers-html-handling-2026-11-03.md)
+  HH-E2), and redirects `/landing` itself to `/` (301, keeping the query), so the page has one URL. `vite preview`
+  does the same for e2e (`staticPagesPreview`).
+- **Guides and the changelog** (`/guides/*` and `/changelog`, reserved by the original Decision). Markdown in
+  `frontend/content/guides/*.md` (front matter `title`, `description`, `order`, `updated` as YYYY-MM-DD) and
+  `frontend/content/changelog.md`, rendered at build time by markdown-it (a dev dependency; nothing ships to the
+  browser) with raw HTML off, into `dist/guides/<slug>.html` (`/guides/<slug>`), `dist/guides.html` (`/guides`, the
+  index in `order`) and `dist/changelog.html` (`/changelog`): slash-free URLs from HH-E2's `/file` row. A file
+  `guides.html` beside a folder `guides/` without an index is not in Cloudflare's table: [NEEDS VERIFICATION] on the
+  first deploy (`curl -I https://satis-manager.com/guides` should be 200, not a 307). The pages are script-free like
+  the privacy page, styled by `public/legal.css` (extended with the nav, the guide list and Markdown elements; still
+  token colours only), with a title, meta description, canonical URL, one `h1`, a site nav (Home, Guides, Changelog,
+  Demo, Sign in) and the footer links. The build fails on a guide with a `#` heading, a skipped heading level, an
+  image from another origin, fewer than 80 words, or bad front matter. One placeholder guide (`getting-started`)
+  proves the pipeline; the real guides are written separately in the same format.
+- **Crawling.** The landing page links Guides and Changelog in its body and its footer (plain links: they're outside
+  the SPA). The build writes `sitemap.xml` (`/`, `/guides`, each guide, `/changelog`, `/privacy`, `/terms`; not
+  `/app`) and `robots.txt` (allow all, the sitemap's URL). `/app` is not disallowed: the AdSense crawler's sign-in
+  (amendment 2 Decision 5) needs it.
+- **Routing and headers.** The new HTML pages go through the Worker like privacy and terms (nonce, CSP, security
+  headers; with ads on, the loader, as on every HTML page). `robots.txt` and `sitemap.xml` are excluded in
+  `run_worker_first` and served directly with `_headers`' rules; `worker/routing.test.ts` checks both lists against
+  `site/paths.ts`. The demo build writes none of these files (the plugins don't run in demo mode, and `MAIN_SITE_ONLY`
+  lists them anyway); its `/` stays "Enter demo".
+- **Proof.** Unit tests for front matter, slugs, dates, ordering, raw HTML off and the structure rules
+  (`site/content.test.ts`), the page templates, sitemap, robots and landing assembly (`site/pages.test.ts`), and the
+  Worker's `/` and `/landing` (`worker/landing.test.ts`); e2e: `e2e/guides.spec.ts` (index, a guide, the changelog: no
+  script, no off-origin request, axe, no sideways scroll at 390 px), `/` serving its text without JavaScript and
+  hydrating without a mismatch (`e2e/landing.spec.ts`), and the files in `e2e/build-output.spec.ts`.

@@ -3,6 +3,7 @@
 // the CSP. With ADS_ENABLED anything but "true" (the default, "false"), the CSP is exactly today's `_headers` policy
 // and nothing is inserted; with "true", the ads-on policy and the AdSense loader plus its marker in <head> (adsHead).
 // Not used by the demo site (demo/wrangler.jsonc has no Worker). Citations: cloudflare-workers-assets-worker-2026-11-01.md.
+import { LANDING_ASSET_PATH } from "../site/paths";
 import { ADS_MARKER_CONTENT, ADS_MARKER_NAME, ADSENSE_LOADER_URL } from "../src/ads/config";
 import { OFF_POLICY, onPolicy, SECURITY_HEADERS } from "./securityHeaders";
 import type { HTMLRewriterConstructor, RewriterElement } from "./htmlRewriter";
@@ -62,8 +63,33 @@ function withSecurityHeaders(asset: Response): Response {
   return response;
 }
 
+/**
+ * Which asset answers a request (the 2026-11-03 build note in ADR-0021): `/` is the prerendered landing page
+ * (dist/landing.html, written by site/plugin.ts), asked for by the path the assets serve it at (`/landing`, E5); index.html
+ * stays the empty shell that `not_found_handling` serves for every app path. Only the pathname matters to the
+ * binding (E3), so the request keeps its method and headers, conditional ones included.
+ */
+export function assetRequest(request: Request): Request {
+  const url = new URL(request.url);
+  if (url.pathname !== "/") return request;
+  url.pathname = LANDING_ASSET_PATH;
+  return new Request(url, request);
+}
+
+/**
+ * The landing page has one URL, `/`: its file's own paths (`/landing`; `/landing.html` redirects there first, E5)
+ * redirect to it, keeping the query, so no second copy of the page is served.
+ */
+function landingRedirect(request: Request): Response | null {
+  const url = new URL(request.url);
+  if (url.pathname !== LANDING_ASSET_PATH) return null;
+  return withSecurityHeaders(new Response(null, { status: 301, headers: { Location: `/${url.search}` } }));
+}
+
 export async function handle(request: Request, env: Env, Rewriter: HTMLRewriterConstructor): Promise<Response> {
-  const asset = await fetchAsset(request, env);
+  const redirect = landingRedirect(request);
+  if (redirect) return redirect;
+  const asset = await fetchAsset(assetRequest(request), env);
   // Anything that isn't HTML (a redirect such as /privacy.html to /privacy, a 304, a file the run_worker_first list
   // missed) keeps its status and body, and gets today's headers, CSP included, as `_headers` gave it before the Worker.
   if (!isHtml(asset)) return withSecurityHeaders(asset);

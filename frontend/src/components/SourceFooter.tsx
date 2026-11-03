@@ -1,7 +1,21 @@
+import { useSyncExternalStore } from "react";
+import { CHANGELOG_PATH, GUIDES_PATH } from "../../site/paths";
 import { adsOn, showPrivacySettings } from "../ads/google";
 import { IS_DEMO } from "../demo/mode";
 import { cn } from "../lib/cn";
 import { sourceUrl } from "../source";
+
+const noSubscription = () => () => {};
+const adsOffOnServer = () => false;
+
+/**
+ * The Worker's ads marker, read so hydration matches: the build prerenders the landing page without it (the Worker adds
+ * it per response), so hydration starts from the server snapshot (off) and React re-renders with the marker's value,
+ * rather than reporting a mismatch. The marker never changes while a page is open.
+ */
+function useAdsOn(): boolean {
+  return useSyncExternalStore(noSubscription, adsOn, adsOffOnServer);
+}
 
 /**
  * The privacy and terms pages are static files on the main site (public/privacy.html,
@@ -22,9 +36,21 @@ const link = "-my-touch-bleed inline-flex min-h-touch items-center";
  * it opens a dialog rather than going anywhere. The US "Do Not Sell or Share" link is not here: on an AdSense site
  * Google's US state regulations message renders it itself (a site's own link is Ad Manager only, U-E1, U-E2).
  */
-export function SourceFooter({ commitSha = __COMMIT_SHA__ }: { commitSha?: string }) {
+export function SourceFooter({ commitSha = __COMMIT_SHA__, publicPages = false }: { commitSha?: string; publicPages?: boolean }) {
+  const ads = useAdsOn();
   return (
     <footer className="flex flex-wrap gap-x-6 border-t border-line py-6 text-sm text-muted">
+      {/* The landing page's footer only (App): plain links, since these are static pages outside the SPA. */}
+      {publicPages && (
+        <>
+          <a href={GUIDES_PATH} className={link}>
+            Guides
+          </a>
+          <a href={CHANGELOG_PATH} className={link}>
+            Changelog
+          </a>
+        </>
+      )}
       <a href={sourceUrl(commitSha)} className={link}>
         Source code (AGPL-3.0)
       </a>
@@ -34,7 +60,7 @@ export function SourceFooter({ commitSha = __COMMIT_SHA__ }: { commitSha?: strin
       <a href={TERMS_URL} className={link}>
         Terms
       </a>
-      {adsOn() && (
+      {ads && (
         <button
           type="button"
           onClick={() => showPrivacySettings()}
