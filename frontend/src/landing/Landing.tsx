@@ -1,11 +1,12 @@
 import { Link } from "react-router";
+import { CHANGELOG_PATH, DEMO_URL, GUIDES_PATH } from "../../site/paths";
 import { cn } from "../lib/cn";
 import { REPO_URL } from "../source";
 import { chipButton, primaryButton } from "../ui/chip";
 import { Hero } from "./Hero";
 
 /** The live demo (ADR-0026): its own site, so it's a plain link, not a route. */
-export const DEMO_URL = "https://demo.satis-manager.com";
+export { DEMO_URL };
 const DOCS_URL = `${REPO_URL}/blob/main/docs-vault/wiki`;
 /** `npm run demo:video`, encoded by CI's demo-video workflow (ADR-0026 item 5). */
 export const VIDEO_URL = "/demo/walkthrough.mp4";
@@ -30,6 +31,8 @@ const FEATURES = [
  * The public front page at / (main site only; the demo build keeps / for "Enter demo").
  * Static: no queries, no auth, no API calls, so it works while the game server's PC is off.
  * Its link-preview tags are static in index.html, since previews don't run JavaScript.
+ * The build prerenders it to HTML (site/plugin.ts) and the browser hydrates it: render nothing that differs between
+ * the build and the browser (no time, no random value, no browser-only read during render).
  */
 export function Landing() {
   return (
@@ -115,6 +118,22 @@ export function Landing() {
             <a href={`${DOCS_URL}/architecture/README.md`} className="inline-flex min-h-touch items-center">
               Architecture diagrams
             </a>
+          </li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="guides-heading" className="grid max-w-3xl gap-3">
+        <h2 id="guides-heading">Guides and changes</h2>
+        <p className="text-muted">
+          Short guides to setting up Satis Manager and reading each page, and a changelog of what each release added.
+        </p>
+        {/* Plain links: the guides and the changelog are static pages outside the app (site/plugin.ts). */}
+        <ul className="flex flex-wrap gap-x-6 gap-y-2">
+          <li>
+            <a href={GUIDES_PATH} className="inline-flex min-h-touch items-center">Guides</a>
+          </li>
+          <li>
+            <a href={CHANGELOG_PATH} className="inline-flex min-h-touch items-center">Changelog</a>
           </li>
         </ul>
       </section>

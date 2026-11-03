@@ -26,7 +26,7 @@ export interface MembersRouterOptions {
 
 const LEAVE_LIMIT = { max: 30, windowMs: 15 * 60 * 1000 };
 const RATE_LIMITED_MESSAGE = "Too many requests. Try again later.";
-export const LAST_OWNER_MESSAGE = "You own this server. Remove it from Satisfactory Dash instead of leaving it.";
+export const LAST_OWNER_MESSAGE = "You own this server. Remove it from Satis Manager instead of leaving it.";
 
 /**
  * ADR-0047: POST /api/servers/:serverId/members/me/leave. Mount AFTER the servers router: its membership check answers a

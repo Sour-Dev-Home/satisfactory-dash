@@ -23,7 +23,7 @@ type Mode = "idle" | "renaming" | "confirming";
 
 /**
  * The owner's controls for a server they added (ADR-0046): its name and status, the note about the 24-hour
- * removal while it is unenrolled, rename, and "Remove from Satisfactory Dash" behind a typed confirmation that says what
+ * removal while it is unenrolled, rename, and "Remove from Satis Manager" behind a typed confirmation that says what
  * goes (never "delete": the player's game and its saves are never touched, ADR-0047 amendment). Only
  * mounted for the owner of a `self_serve` server (`isSelfServeOwner`); the backend answers 403 to anyone else.
  * It renders a fragment so its `dl` is a direct child of the section's `.panel` and takes the agent panel's style.
@@ -100,7 +100,7 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
         <form
           onSubmit={confirmDelete}
           onKeyDown={escapeCancels}
-          aria-label={`Confirm removing ${server.displayName} from Satisfactory Dash`}
+          aria-label={`Confirm removing ${server.displayName} from Satis Manager`}
           className="grid animate-reveal gap-2 text-sm"
         >
           <div id={explainId} ref={focusIn} tabIndex={-1} className="grid gap-1">
@@ -132,7 +132,7 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
               Cancel
             </button>
             <button type="submit" className={DANGER_BUTTON} disabled={!matches || remove.isPending}>
-              {remove.isPending ? "Removing…" : "Remove from Satisfactory Dash"}
+              {remove.isPending ? "Removing…" : "Remove from Satis Manager"}
             </button>
           </div>
           {remove.error != null &&
@@ -161,7 +161,7 @@ export function OwnedServerPanel({ server }: { server: ServerSummary }) {
           <button
             ref={returnTo === "remove" ? focusIn : undefined}
             type="button"
-            aria-label={`Remove ${server.displayName} from Satisfactory Dash`}
+            aria-label={`Remove ${server.displayName} from Satis Manager`}
             className={DANGER_BUTTON_QUIET}
             onClick={() => {
               setMode("confirming");

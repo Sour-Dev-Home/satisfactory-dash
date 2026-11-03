@@ -4,7 +4,7 @@ import type { ClientKind, SecurityNotice, UpdateNotices } from "./notices";
 /** The agent's install and update steps (docs-vault/wiki/runbooks/agent-app.md). The mod has no page of ours: ficsit.app is its home. */
 export const AGENT_RUNBOOK_URL = `${REPO_URL}/blob/main/docs-vault/wiki/runbooks/agent-app.md`;
 
-export const componentName = (kind: ClientKind): string => (kind === "mod" ? "the Satisfactory Dash mod" : "the game PC agent");
+export const componentName = (kind: ClientKind): string => (kind === "mod" ? "the Satis Manager mod" : "the game PC agent");
 
 /** Says what an update does and does not do. The dashboard never pushes one (ADR-0057 Decision 7). */
 export const applyText = (kind: ClientKind): string =>

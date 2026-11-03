@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { GENERATED_PAGES, GENERATED_STATIC_FILES } from "../site/paths";
 
 const read = (path: string) => readFileSync(join(import.meta.dirname, path), "utf8");
 
@@ -49,9 +50,23 @@ describe("the main site's wrangler.jsonc", () => {
     }
   });
 
+  it("serves the build's own non-HTML files directly (robots.txt, sitemap.xml)", () => {
+    for (const file of GENERATED_STATIC_FILES) expect(negatives, `${file} is not in run_worker_first's exclusions`).toContain(`/${file}`);
+  });
+
+  it("runs the Worker for the build's HTML pages: the landing page, the guides and the changelog", () => {
+    const pages = GENERATED_PAGES.map((name) => `/${name.replace(/\.html$/, "")}`);
+    expect(pages).toEqual(["/landing", "/guides", "/guides", "/changelog"]);
+    for (const page of [...pages, "/guides/getting-started"]) {
+      const excludedBy = negatives.filter((pattern) => (pattern.endsWith("/*") ? page.startsWith(pattern.slice(0, -1)) : page === pattern));
+      expect(excludedBy, `${page} would skip the Worker`).toEqual([]);
+    }
+  });
+
   it("never excludes an HTML page, and every exclusion names something that ships", () => {
     const shipped = new Set(publicEntries.map((entry) => (entry.isDirectory() ? `/${entry.name}/*` : `/${entry.name}`)));
     shipped.add("/assets/*");
+    for (const file of GENERATED_STATIC_FILES) shipped.add(`/${file}`);
     for (const pattern of negatives) {
       expect(pattern).not.toMatch(/\.html$|^\/\*$|^\/$/);
       expect(shipped, `${pattern} names nothing in public/ or the build`).toContain(pattern);

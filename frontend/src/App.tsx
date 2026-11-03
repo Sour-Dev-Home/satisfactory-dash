@@ -22,51 +22,66 @@ function PairedServerGate({ children }: { children: ReactNode }) {
   return <ServerGate initialId={id}>{children}</ServerGate>;
 }
 
+/**
+ * Everything inside the router. The browser wraps it in BrowserRouter (App); the build prerenders the landing page
+ * from it under a StaticRouter at "/" (src/landing/prerender.tsx) and the browser hydrates that markup, so the two
+ * must render the same tree.
+ */
+export function AppFrame() {
+  return (
+    <div className="mx-auto flex min-h-svh max-w-6xl flex-col px-4 sm:px-6">
+      <header className="grid gap-3 pt-4 pb-5">
+        <h1 className="m-0 flex">
+          <Logo />
+        </h1>
+        <HazardStripe />
+        {/* Outside every boundary and gate: the demo says so on every screen, even a crash. */}
+        {IS_DEMO && <DemoBanner />}
+      </header>
+      <main className="flex-1 pb-10">
+        {/* The outer boundary keeps the title and the footer's source link on any crash,
+            and offers Sign out, since the crash takes the top bar's account menu with it. */}
+        <ErrorBoundary label="The dashboard" actions={<LogoutButton />}>
+          <CrashProbe section="app" />
+          <Routes>
+            {/* ADR-0051 section 1: signed in, but outside ServerGate, since a player with no server pairs their first one here. */}
+            <Route
+              path="/app/pair"
+              element={
+                <AuthGate>
+                  <PairPage />
+                </AuthGate>
+              }
+            />
+            <Route
+              path="/app/*"
+              element={
+                <AuthGate>
+                  <PairedServerGate>
+                    <Shell />
+                  </PairedServerGate>
+                </AuthGate>
+              }
+            />
+            {/* The public front page, main site only: the demo's / is "Enter demo". */}
+            {!IS_DEMO && <Route path="/" element={<Landing />} />}
+            <Route path="*" element={<ToApp />} />
+          </Routes>
+        </ErrorBoundary>
+      </main>
+      <Routes>
+        {/* The landing page's footer also links the static guides and changelog, so a crawler finds them. */}
+        {!IS_DEMO && <Route path="/" element={<SourceFooter publicPages />} />}
+        <Route path="*" element={<SourceFooter />} />
+      </Routes>
+    </div>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
-      <div className="mx-auto flex min-h-svh max-w-6xl flex-col px-4 sm:px-6">
-        <header className="grid gap-3 pt-4 pb-5">
-          <h1 className="m-0 flex">
-            <Logo />
-          </h1>
-          <HazardStripe />
-          {/* Outside every boundary and gate: the demo says so on every screen, even a crash. */}
-          {IS_DEMO && <DemoBanner />}
-        </header>
-        <main className="flex-1 pb-10">
-          {/* The outer boundary keeps the title and the footer's source link on any crash,
-              and offers Sign out, since the crash takes the top bar's account menu with it. */}
-          <ErrorBoundary label="The dashboard" actions={<LogoutButton />}>
-            <CrashProbe section="app" />
-            <Routes>
-              {/* ADR-0051 section 1: signed in, but outside ServerGate, since a player with no server pairs their first one here. */}
-              <Route
-                path="/app/pair"
-                element={
-                  <AuthGate>
-                    <PairPage />
-                  </AuthGate>
-                }
-              />
-              <Route
-                path="/app/*"
-                element={
-                  <AuthGate>
-                    <PairedServerGate>
-                      <Shell />
-                    </PairedServerGate>
-                  </AuthGate>
-                }
-              />
-              {/* The public front page, main site only: the demo's / is "Enter demo". */}
-              {!IS_DEMO && <Route path="/" element={<Landing />} />}
-              <Route path="*" element={<ToApp />} />
-            </Routes>
-          </ErrorBoundary>
-        </main>
-        <SourceFooter />
-      </div>
+      <AppFrame />
     </BrowserRouter>
   );
 }

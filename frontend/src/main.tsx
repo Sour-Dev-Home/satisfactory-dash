@@ -2,7 +2,7 @@
 // never probes `new Function("")`, which the strict CSP reports. main.test.ts enforces this.
 import '@satisfactory-dash/shared/browser'
 import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
+import { createRoot, hydrateRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import App from './App.tsx'
@@ -22,11 +22,16 @@ async function startMocksIfEnabled(): Promise<void> {
 
 void startMocksIfEnabled().then(() => {
   const queryClient = createQueryClient()
-  createRoot(document.getElementById('root')!).render(
+  const container = document.getElementById('root')!
+  const tree = (
     <StrictMode>
       <QueryClientProvider client={queryClient}>
         <App />
       </QueryClientProvider>
-    </StrictMode>,
+    </StrictMode>
   )
+  // The landing page (/) arrives prerendered (site/plugin.ts, src/landing/prerender.tsx): hydrate it. Every other
+  // path is index.html's empty shell, rendered from scratch.
+  if (container.firstElementChild) hydrateRoot(container, tree)
+  else createRoot(container).render(tree)
 })

@@ -98,7 +98,7 @@ describe("Delete my account", () => {
     for (const item of ["Your account and your sign-in", "Every session, on every device", "Your membership of every server", "Your alert notification sign-ups"]) {
       expect(removed.getByText(item)).toBeInTheDocument();
     }
-    expect(removed.getByText("Servers you added are removed from Satisfactory Dash.")).toBeInTheDocument();
+    expect(removed.getByText("Servers you added are removed from Satis Manager.")).toBeInTheDocument();
     const kept = section.getByRole("group", { name: "Kept, or never touched" });
     const keptLines = within(kept).getAllByText(/./, { selector: "p" });
     expect(keptLines[0]).toHaveTextContent(/^Your game and its saves are never touched/);
@@ -122,7 +122,7 @@ describe("Delete my account", () => {
     expect(within(form).getByText("This can't be undone.")).toBeInTheDocument();
     expect(within(form).getByText("My first world")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Removed with your account" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Servers you added are removed from Satisfactory Dash.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Servers you added are removed from Satis Manager.")).not.toBeInTheDocument();
     fireEvent.click(within(form).getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Delete my account…" })).toHaveFocus();
     expect(screen.getByRole("group", { name: "Removed with your account" })).toBeInTheDocument();
@@ -137,7 +137,7 @@ describe("Delete my account", () => {
     serveList({ servers: [operatorServer] });
     renderAccount();
     await openDelete();
-    expect(screen.queryByText(/removed from Satisfactory Dash with it/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/removed from Satis Manager with it/)).not.toBeInTheDocument();
   });
 
   it("deletes once on a double click, then signs out to the sign-in screen with a short confirmation", async () => {
@@ -238,7 +238,7 @@ describe("Leave this server", () => {
     serveList({ servers: [enrolledServer] });
     renderAccount();
     expect(
-      await screen.findByText(/You own My first world, so you can't leave it\. To stop using it, remove it from Satisfactory Dash/),
+      await screen.findByText(/You own My first world, so you can't leave it\. To stop using it, remove it from Satis Manager/),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Leave/ })).not.toBeInTheDocument();
     // One line needs no card of its own.

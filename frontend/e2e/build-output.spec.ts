@@ -96,6 +96,58 @@ test.describe("production build", () => {
   });
 });
 
+// The public pages as real HTML (site/plugin.ts; ADR-0021's 2026-11-03 build note): a crawler without JavaScript must
+// find the landing page's text, the guides and the changelog.
+test.describe("static public pages (production build)", () => {
+  const read = (path: string) => readFileSync(join(DIST, path), "utf8");
+
+  test("landing.html carries the landing page's text, index.html stays the empty shell", () => {
+    const landing = read("landing.html");
+    const root = /<body>\s*<div id="root">([\s\S]*)<\/div>\s*<!--/.exec(landing)?.[1] ?? "";
+    expect(root).toContain("A live dashboard for your Satisfactory dedicated server");
+    expect(root).toContain('href="https://demo.satis-manager.com"');
+    expect(root).toContain('href="/guides"');
+    expect(root).toContain('href="/changelog"');
+    expect(landing).toContain('<link rel="canonical" href="https://satis-manager.com/" />');
+    expect(landing).not.toContain("<noscript>");
+    // The same head and scripts as the shell: link previews, the AdSense verification tag, the app bundle.
+    const head = (html: string) => /<head>([\s\S]*)<\/head>/.exec(html)![1];
+    const shell = read("index.html");
+    for (const line of head(shell).split("\n").map((l) => l.trim()).filter(Boolean)) expect(head(landing)).toContain(line);
+    expect(shell).toContain('<div id="root"></div>');
+    expect(shell).not.toContain("canonical");
+  });
+
+  test("writes each guide, the guides index and the changelog, script-free", () => {
+    const files = allFiles(DIST).map((f) => f.slice(DIST.length + 1).replaceAll("\\", "/"));
+    const guides = files.filter((f) => /^guides\/[a-z0-9-]+\.html$/.test(f));
+    expect(guides).toContain("guides/getting-started.html");
+    for (const page of [...guides, "guides.html", "changelog.html"]) {
+      const html = read(page);
+      expect(html, page).not.toMatch(/<script|\sstyle=|\son[a-z]+=/i);
+      expect(html.match(/<h1>/g), page).toHaveLength(1);
+      expect(html, page).toMatch(/<link rel="canonical" href="https:\/\/satis-manager\.com\/[a-z0-9/-]+" \/>/);
+      expect(html, page).toContain('<link rel="stylesheet" href="/legal.css" />');
+    }
+    for (const guide of guides) expect(read("guides.html")).toContain(`href="/${guide.replace(/\.html$/, "")}"`);
+  });
+
+  test("ships sitemap.xml with every public page (not the app) and robots.txt pointing at it", () => {
+    const sitemap = read("sitemap.xml");
+    const locs = [...sitemap.matchAll(/<loc>https:\/\/satis-manager\.com([^<]*)<\/loc>/g)].map((m) => m[1]);
+    expect(locs).toEqual(expect.arrayContaining(["/", "/guides", "/guides/getting-started", "/changelog", "/privacy", "/terms"]));
+    expect(locs.filter((loc) => loc.startsWith("/app"))).toEqual([]);
+    expect(read("robots.txt")).toContain("Sitemap: https://satis-manager.com/sitemap.xml");
+    expect(read("robots.txt")).not.toMatch(/Disallow/i);
+  });
+
+  test("the demo build ships none of them", () => {
+    const demoFiles = allFiles(DIST_DEMO).map((f) => f.slice(DIST_DEMO.length + 1).replaceAll("\\", "/"));
+    for (const name of ["landing.html", "guides.html", "changelog.html", "sitemap.xml", "robots.txt"]) expect(demoFiles).not.toContain(name);
+    expect(demoFiles.filter((f) => f.startsWith("guides/"))).toEqual([]);
+  });
+});
+
 // ADR-0050 Decision 3: dagre lives in the planner graph's lazy chunk only, and that chunk stays under 100 kB gzip.
 const GRAPH_CHUNK_GZIP_BUDGET = 100 * 1024;
 /** A string only dagre's source carries (its ranker names); the entry chunk must never hold it. */

@@ -130,7 +130,7 @@ export function DeleteAccountPanel() {
             <p className="mb-0 font-semibold text-bad-on-soft">This can't be undone.</p>
             {removed.length > 0 && (
               <div className="grid gap-1">
-                <p className="mb-0">These servers you added are removed from Satisfactory Dash with it:</p>
+                <p className="mb-0">These servers you added are removed from Satis Manager with it:</p>
                 <ul className="mb-0 list-disc pl-5">
                   {removed.map((name, i) => (
                     <li key={i}>{name}</li>

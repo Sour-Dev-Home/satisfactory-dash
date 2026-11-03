@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
+import { GENERATED_PAGES, GENERATED_STATIC_FILES } from './site/paths.ts'
+import { staticPagesBuild, staticPagesPreview } from './site/plugin.ts'
+
+const FRONTEND_ROOT = fileURLToPath(new URL('.', import.meta.url))
 
 const PRODUCTION_HEADERS = new URL('./public/_headers', import.meta.url)
 /** The demo site's own headers (ADR-0026): the production ones, with connect-src 'self' only. */
@@ -56,9 +60,11 @@ function mockServiceWorker(): Plugin {
  * - demo/_headers replaces public/_headers in the output, after Vite copies public/;
  * - public/demo/ (the landing page's walkthrough video) is dropped: the demo has no landing;
  * - so are the privacy and terms pages: the demo links to the main site's (SourceFooter);
- * - and the web push service worker (public/push-sw.js): the demo registers no service worker (ADR-0044).
+ * - and the web push service worker (public/push-sw.js): the demo registers no service worker (ADR-0044);
+ * - the static public pages (site/plugin.ts) never run in demo mode; their names are listed too, so they can't ship
+ *   there by accident.
  */
-const MAIN_SITE_ONLY = ['demo', 'privacy.html', 'terms.html', 'legal.css', 'push-sw.js']
+const MAIN_SITE_ONLY = ['demo', 'privacy.html', 'terms.html', 'legal.css', 'push-sw.js', ...GENERATED_PAGES, ...GENERATED_STATIC_FILES]
 function demoBuild(): Plugin {
   const demoTransport = fileURLToPath(new URL('./src/demo/transport.ts', import.meta.url))
   let outDir = ''
@@ -99,6 +105,9 @@ export default defineConfig(({ command, mode }) => {
       tailwindcss(),
       ...(mode === 'mock' ? [mockServiceWorker()] : []),
       ...(mode === 'demo' ? [demoBuild()] : []),
+      // The main site's public pages as real HTML (ADR-0021, 2026-11-03 build note): the prerendered landing page,
+      // the guides, the changelog, the sitemap and robots.txt. Not in the demo (its / is "Enter demo") or mock mode.
+      ...(mode === 'demo' || mode === 'mock' ? [] : [staticPagesBuild(FRONTEND_ROOT), staticPagesPreview()]),
     ],
     build: {
       // The demo build lands next to the production one, never over it.

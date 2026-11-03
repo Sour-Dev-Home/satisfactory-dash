@@ -71,7 +71,7 @@ describe("UpdateBanners", () => {
     reports("mod/1.1.5");
     renderBanners();
     const banner = await screen.findByRole("status");
-    expect(banner).toHaveTextContent("the Satisfactory Dash mod is 1.1.5, the newest is 1.2.0");
+    expect(banner).toHaveTextContent("the Satis Manager mod is 1.1.5, the newest is 1.2.0");
     expect(banner).toHaveTextContent("applies at the next server restart");
     expect(banner).toHaveTextContent("ficsit.app");
     expect(screen.queryByRole("link")).not.toBeInTheDocument();

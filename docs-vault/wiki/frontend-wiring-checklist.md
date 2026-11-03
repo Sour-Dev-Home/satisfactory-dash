@@ -5,6 +5,11 @@ that must change, in order, so nothing is found missing by CI (#289). `frontend/
 behind each step; this page is the order and the files. The worked example is the agent section (#262):
 `frontend/src/agent/`, `api/agentWrites.ts`, and the `agent*` entries in each file below.
 
+Not for a public static page (a guide, the changelog, anything outside `/app` that a crawler must read without
+JavaScript): those are Markdown in `frontend/content/` built by `frontend/site/`, with no endpoint, query or mock. See
+"Public pages as real HTML" in `frontend/CLAUDE.md`. A change to the landing page (`src/landing/`) also changes the
+prerendered `/`: keep it free of anything that differs between the build and the browser.
+
 ## 0. Before you start
 
 - [ ] **Your worktree has its own install.** Run `npm ci` in the worktree root, then check that

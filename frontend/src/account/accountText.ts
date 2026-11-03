@@ -2,7 +2,7 @@ import type { ServerSummary } from "@satisfactory-dash/shared";
 import { ApiError } from "../api/errors";
 
 // ADR-0047 (#311 task 3): the words and rules of "Delete my account" and "Leave this server". Removing a server is
-// always "removed from Satisfactory Dash", never "deleted": the player's game and its saves are never touched.
+// always "removed from Satis Manager", never "deleted": the player's game and its saves are never touched.
 
 /** What deleting the account removes, in the order a person thinks of it. */
 export const DELETE_GOES = [
@@ -14,7 +14,7 @@ export const DELETE_GOES = [
 
 export const REMOVED_HEADING = "Removed with your account";
 export const KEPT_HEADING = "Kept, or never touched";
-export const DELETE_SERVERS_GO = "Servers you added are removed from Satisfactory Dash.";
+export const DELETE_SERVERS_GO = "Servers you added are removed from Satis Manager.";
 export const GAME_UNTOUCHED = "Your game and its saves are never touched: nothing on your game PC changes.";
 export const DELETE_KEPT =
   "The audit records of what was done stay for their normal year. They name only a random id, which nothing links back to you once your account is gone.";
@@ -28,11 +28,11 @@ export const OPERATOR_SERVERS_LEAD = "You own servers the operator set up, so yo
 export const OPERATOR_SERVERS_THEN = "They need a new owner first. Contact the operator.";
 
 export const OWNER_CANNOT_LEAVE = "You own this server, so you can't leave it.";
-export const OWNER_REMOVE_INSTEAD = "To stop using it, remove it from Satisfactory Dash under Your server.";
+export const OWNER_REMOVE_INSTEAD = "To stop using it, remove it from Satis Manager under Your server.";
 export const LEAVE_EFFECT =
   "You'll stop seeing it here and stop getting its alert notifications. The server and its game are not changed. To come back, you'll need a new invitation.";
 
-/** The servers deleting this account removes from Satisfactory Dash: the self-serve ones it owns. */
+/** The servers deleting this account removes from Satis Manager: the self-serve ones it owns. */
 export function serversRemovedWithAccount(servers: readonly ServerSummary[]): string[] {
   return servers.filter((s) => s.role === "owner" && s.createdVia === "self_serve").map((s) => s.displayName);
 }

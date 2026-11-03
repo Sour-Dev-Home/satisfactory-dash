@@ -19,7 +19,7 @@ const RATE_LIMITED_MESSAGE = "Too many requests. Try again later.";
 export const REAUTH_MESSAGE = "Sign in again to delete your account.";
 export const OPERATOR_ACCOUNT_MESSAGE = "The operator's account can't be deleted.";
 export const LAST_OWNER_MESSAGE =
-  "You just became the owner of a server, so your account was not deleted. Try again, or remove that server from Satisfactory Dash first.";
+  "You just became the owner of a server, so your account was not deleted. Try again, or remove that server from Satis Manager first.";
 export const OPERATOR_SERVERS_MESSAGE =
   "You own servers the operator set up. They need a new owner before your account can be deleted: contact the operator.";
 

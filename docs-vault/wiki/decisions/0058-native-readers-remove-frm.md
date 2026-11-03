@@ -398,6 +398,31 @@ the rule, and comments in `localWorldPoller.ts`,
   an FRM host again. The bottleneck finder's "Update FRM to 1.5.4 or newer for belt detail" note only appears after an
   `unsupportedFrm` conveyors skip (an FRM too old for belt data). Conveyors are not one of this step's three layers.
 
+## Mod only for players (owner, 2026-11-03)
+The owner: "we will only release the actual mod and not the agent + satis manager electron app. Just for development."
+Nothing is removed: the Node agent (`agent/`), the server manager (`server-manager/`), the agent routes and pairing stay,
+and enrolment by code works the same for the mod. What changed is what the dashboard offers.
+
+- **Who sees the agent.** `offersDevAgent` (`frontend/src/agent/agentText.ts`) is true only for the operator (the server
+  list's `canManageServers`). Players, owners and admins of their own servers included, are not. The operator keeps it
+  because they develop and run the agent against this backend in the production build too. That rules out
+  `import.meta.env.DEV`, and `AgentSettings` stays free of build flags.
+- **For players**, Settings' connection section is "Satis Manager mod": the rows "Mod" and "Mod version", "Through the
+  Satis Manager mod", "Revoke the mod's access". A new code says to paste it as `enrollmentCode` in
+  `FactoryGame/Configs/SatisDashAgent.cfg`, with no agent command. The enrolment guide drops the agent-app step and the
+  "Tell your players" notice, which only the agent needs because the mod sends player counts, not names. It no longer says
+  to start the server after pasting: the mod re-reads its config when it changes (ADR-0051 Context, citing the mod's
+  `Agent.cpp:51-81`). "Add your server" says to paste the code into the mod's config.
+- **For the operator**, the old wording stays ("Game PC agent", "Agent", "Revoke the agent"), and the mod's steps come
+  first, then the agent's command marked for development.
+- **The FRM note.** "Update FRM to 1.5.4 or newer" appears only when the stored conveyors skip is `unsupportedFrm`.
+  Only the game adapter's FRM conveyors mapper (`packages/game-adapter/src/map/conveyorsMapper.ts`, used by the local
+  poller and the Node agent) produces that skip, so a native mod sender doesn't reach it, and the note stays as it is.
+  Whether a mod build with an FRM bridge still sends the skip is [NEEDS VERIFICATION]. If it does, the advice is true for
+  that host.
+- **Product name.** User-facing text says "Satis Manager" (the site's brand), not "Satisfactory Dash". Code identifiers,
+  packages, the mod's file names (`SatisDashAgent.cfg`) and the legal pages are unchanged.
+
 ## Build tasks (after approval; all in the mod repo unless noted, one PR each, no stacking)
 
 1. Dash repo: commit this ADR, README row, log fragment. This change.
