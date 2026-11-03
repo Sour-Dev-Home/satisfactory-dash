@@ -33,7 +33,7 @@ export const LAST_OWNER_MESSAGE = "You own this server. Remove it from Satis Man
  * non-member with the unknown-server 404 and lets any member, a viewer included, make this write (the contract's
  * `memberSelfService`). The handler acts on the signed-in user only (no user id in the path or the body). The owner is
  * refused with 409 `would_orphan`, reason `last_owner`, and nothing changes. No fresh sign-in is needed: leaving is
- * reversible by an invite and touches nobody else's data.
+ * reversible (the operator can add the member back; there is no invitation flow) and touches nobody else's data.
  */
 export function createMembersRouter(service: MemberSelfService, options: MembersRouterOptions = {}): Router {
   const limiter = options.limiter ?? new UserRateLimiter(LEAVE_LIMIT);

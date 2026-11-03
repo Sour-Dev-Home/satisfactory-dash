@@ -620,7 +620,7 @@ export function PlannerPanel({
           {graph.beltData === "unsupported" || graph.beltData === "tooLarge"
             ? "No sites to show: the planner needs belt data, and this server has none to read."
             : graph.beltData === "notReceived"
-              ? "No sites to show yet: the planner needs belt data, and the agent hasn't sent any."
+              ? "No sites to show yet: the planner needs belt data, and none has arrived from the game server."
               : "No sites yet: no machines are connected by conveyors."}
         </p>
       ) : model !== undefined ? (

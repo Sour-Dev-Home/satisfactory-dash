@@ -56,7 +56,7 @@ describe("LatestSnapshotStore hunt", () => {
     rec(s, true, T0, { status: { sessionName: "x" } });
     rec(s, false, T0 + 500);
     expect(snapshot("s", s.read("status")).stale).toBe(true);
-    expect(() => s.read("power")).toThrow(/could not be reached/);
+    expect(() => s.read("power")).toThrow("The game PC could not reach the game server");
     expect(() => s.read("power", { circuits: [] } as never)).toThrow();
   });
 

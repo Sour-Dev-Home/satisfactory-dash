@@ -397,7 +397,17 @@ describe("stale, unconnected and missing belt data", () => {
     const b = [machine("a")];
     expect(run(b, "unsupported")).toMatchObject({ nodes: [], edges: [], sites: [], beltData: "unsupported" });
     expect(run(b, "tooLarge")).toMatchObject({ nodes: [], beltData: "tooLarge", notes: [{ code: "beltDataTooLarge" }] });
-    expect(run(b, "notReceived")).toMatchObject({ nodes: [], sites: [], beltData: "notReceived", notes: [{ code: "beltDataNotReceived" }] });
+    expect(run(b, "notReceived")).toMatchObject({
+      nodes: [],
+      sites: [],
+      beltData: "notReceived",
+      notes: [
+        {
+          code: "beltDataNotReceived",
+          text: "No production graph. No belt data has arrived from the game server yet. If this stays, update the Satis Manager mod; belts are read every 10 minutes.",
+        },
+      ],
+    });
     expect(run(b, [])).toMatchObject({ beltData: "stale", unconnectedMachineIds: ["a"] });
   });
 

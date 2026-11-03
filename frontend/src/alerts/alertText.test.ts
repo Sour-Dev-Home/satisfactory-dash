@@ -18,7 +18,9 @@ describe("alert words", () => {
   it("names every known kind, and spells out one a newer backend adds", () => {
     expect(kindLabel("power_outage")).toBe("Power outage");
     expect(kindLabel("server_unreachable")).toBe("Game server unreachable");
-    expect(kindLabel("agent_offline")).toBe("Agent offline");
+    // Owner, 2026-11-03: players connect only through the Satis Manager mod, so the kind never reads "Agent offline".
+    expect(kindLabel("agent_offline")).toBe("Game PC offline");
+    expect(kindLabel("train_derailed")).toBe("Train derailed");
   });
 
   it("names severities and transitions, with a readable fallback", () => {
@@ -33,6 +35,7 @@ describe("alert words", () => {
   it("names what an alert is about, including an item only the summary or rule knows", () => {
     expect(subjectLabel("circuit:3")).toBe("Circuit 3");
     expect(subjectLabel("server")).toBe("The game server");
+    expect(subjectLabel("agent")).toBe("The game PC");
     expect(subjectLabel("group")).toBe("Machines");
     expect(subjectLabel("item", "Desc_IronPlate_C")).toBe("Iron Plate");
     expect(subjectLabel("item")).toBe("An item");
@@ -44,7 +47,9 @@ describe("alert words", () => {
     expect(alertTitle("server_unreachable", "server")).toBe("Game server unreachable");
     expect(alertTitle("power_outage", "circuit:3")).toBe("Power outage: Circuit 3");
     expect(alertTitle("production_below_target", "item", "Desc_IronPlate_C")).toBe("Production below target: Iron Plate");
-    expect(alertTitle("agent_offline", "agent:pc-1")).toBe("Agent offline: agent:pc-1");
+    // The backend's agent_offline subject is "agent" (serverAlertEvaluator): the title is the kind alone.
+    expect(alertTitle("agent_offline", "agent")).toBe("Game PC offline");
+    expect(alertTitle("agent_offline", "agent:pc-1")).toBe("Game PC offline: agent:pc-1");
   });
 
   it("finds the item in a rule's params or an event's summary, and nothing else", () => {

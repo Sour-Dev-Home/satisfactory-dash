@@ -422,6 +422,11 @@ and enrolment by code works the same for the mod. What changed is what the dashb
   that host.
 - **Product name.** User-facing text says "Satis Manager" (the site's brand), not "Satisfactory Dash". Code identifiers,
   packages, the mod's file names (`SatisDashAgent.cfg`) and the legal pages are unchanged.
+- **Follow-up (owner, 2026-11-03: "yes follow up").** The texts that can't tell the mod from the agent name neither: the
+  belt-data note and planner empty state say none has arrived from the game server and to update the Satis Manager mod;
+  auto-pause failures, the backend's command and snapshot refusals and the `agent_offline` alert's titles, footer and
+  label say "the game PC". The kind and its `agent` subject are unchanged. Leaving a server no longer promises an
+  invitation: none exists, and only the operator can add a member back.
 
 ## Build tasks (after approval; all in the mod repo unless noted, one PR each, no stacking)
 

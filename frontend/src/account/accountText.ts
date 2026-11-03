@@ -29,8 +29,10 @@ export const OPERATOR_SERVERS_THEN = "They need a new owner first. Contact the o
 
 export const OWNER_CANNOT_LEAVE = "You own this server, so you can't leave it.";
 export const OWNER_REMOVE_INSTEAD = "To stop using it, remove it from Satis Manager under Your server.";
+// There is no invitation: the backend grants membership only to whoever creates a server (as its owner) and through the
+// operator's own tooling, so a member who leaves can't rejoin alone (checked 2026-11-03: every addMember caller).
 export const LEAVE_EFFECT =
-  "You'll stop seeing it here and stop getting its alert notifications. The server and its game are not changed. To come back, you'll need a new invitation.";
+  "You'll stop seeing it here and stop getting its alert notifications. The server and its game are not changed. You can't rejoin it yourself: only the operator can add you back.";
 
 /** The servers deleting this account removes from Satis Manager: the self-serve ones it owns. */
 export function serversRemovedWithAccount(servers: readonly ServerSummary[]): string[] {

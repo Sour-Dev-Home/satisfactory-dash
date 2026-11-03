@@ -118,7 +118,7 @@ export function createCommandsService(deps: CommandsServiceDeps): CommandsServic
           const status = await getAgentStatus(client, serverId);
           if (server.connectionKind !== "agent" || status === undefined || !status.enrolled) throw new NotEditableError();
           if ((await countOpenCommands(client, server.id)) >= MAX_OPEN_COMMANDS) {
-            throw new RateLimitedError(30, "Too many changes are waiting for this server's agent. Try again in a minute.");
+            throw new RateLimitedError(30, "Too many changes are waiting for this server's game PC. Try again in a minute.");
           }
           const created = await insertCommand(client, { serverUuid: server.id, type: SET_AUTO_PAUSE, params: { enabled }, createdBy: actorUserId });
           // Ids and codes only: the target value is not needed to know who asked for what.
@@ -156,7 +156,8 @@ export function createCommandsService(deps: CommandsServiceDeps): CommandsServic
           return observed({ autoPause: reported.autoPause, pending: open !== undefined || reported.pending === true, editable }, { observedAt: new Date(reported.observedAtMs).toISOString(), stale: reported.stale });
         }
         if (confirmedValue === undefined) {
-          throw new ApiFailure("upstream_unreachable", "This server's auto-pause setting is not known yet: the agent has not reported it or confirmed a change");
+          // Player-visible; the sender may be the Satis Manager mod or the Node agent, so the text names neither (2026-11-03).
+          throw new ApiFailure("upstream_unreachable", "This server's auto-pause setting is not known yet: the game PC has not reported it or confirmed a change");
         }
         return { autoPause: confirmedValue, pending: open !== undefined, editable };
       }),

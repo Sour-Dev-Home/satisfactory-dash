@@ -167,10 +167,10 @@ function words(input: AlertMessageInput, clean: Sanitise): { title: string; line
       return {
         title:
           input.transition === "resolved"
-            ? "Agent reporting again"
+            ? "Game PC reporting again"
             : input.transition === "renotify"
-              ? "Still offline: the agent on the game PC"
-              : "Agent offline: the game PC has stopped reporting",
+              ? "Still not reporting: the game PC"
+              : "Game PC offline: it has stopped reporting",
         lines: silent > 0 && input.transition !== "resolved" ? [`No snapshot for about ${Math.max(1, Math.round(silent / 60))} min.`] : [],
       };
     }
@@ -276,6 +276,12 @@ export function formatPushTestMessage(nowMs: number): Buffer {
   );
 }
 
+/**
+ * A footer word where the kind's name would mislead a player. `agent_offline` fires for any sender, and players connect
+ * only through the Satis Manager mod (owner, 2026-11-03), so its footer says what stopped, not "agent".
+ */
+const FOOTER_KIND: ReadonlyMap<string, string> = new Map([["agent_offline", "game PC offline"]]);
+
 export function formatAlertMessage(input: AlertMessageInput): DiscordPayload {
   const { title, lines } = words(input, escapeDiscordText);
   const server = escapeDiscordText(input.serverName, 60) || "server";
@@ -289,7 +295,7 @@ export function formatAlertMessage(input: AlertMessageInput): DiscordPayload {
         description,
         color: input.transition === "resolved" ? COLORS.resolved : (ownValue(COLORS, input.severity) ?? COLORS.info),
         timestamp: at.toISOString(),
-        footer: { text: `${input.kind.replace(/_/g, " ")} · ${input.severity}` },
+        footer: { text: `${FOOTER_KIND.get(input.kind) ?? input.kind.replace(/_/g, " ")} · ${input.severity}` },
       },
     ],
     allowed_mentions: { parse: [] },

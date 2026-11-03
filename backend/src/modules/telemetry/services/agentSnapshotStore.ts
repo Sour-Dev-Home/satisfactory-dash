@@ -241,14 +241,15 @@ export class LatestSnapshotStore {
    */
   read<K extends SnapshotPart>(part: K, fallback?: NonNullable<StoredParts[K]>["data"]): NonNullable<StoredParts[K]>["data"] {
     if (this.reachable === undefined) {
-      throw new ApiFailure("upstream_unreachable", "This server's agent has not reported yet");
+      // Player-visible, and the sender may be the Satis Manager mod or the Node agent: name neither (owner, 2026-11-03).
+      throw new ApiFailure("upstream_unreachable", "This server's game PC has not reported yet");
     }
     const kept = this.parts[part] as { data: NonNullable<StoredParts[K]>["data"]; observedAtMs: number } | undefined;
     // S4-B: the power part is served with the kept generator list, which is held apart from it (see generatorsRead).
     const stored = kept !== undefined && part === "power" ? { ...kept, data: this.withGenerators(kept.data as Power) as NonNullable<StoredParts[K]>["data"] } : kept;
     if (!this.reachable) {
       if (stored === undefined) {
-        throw new ApiFailure("upstream_unreachable", "The game server could not be reached by its agent");
+        throw new ApiFailure("upstream_unreachable", "The game PC could not reach the game server");
       }
       return observed(stored.data as object, {
         observedAt: new Date(stored.observedAtMs).toISOString(),
@@ -260,7 +261,7 @@ export class LatestSnapshotStore {
       if (fallback !== undefined) {
         return observed(fallback as object, { observedAt: new Date(this.lastReceivedAtMs ?? this.now()).toISOString(), stale: false }) as NonNullable<StoredParts[K]>["data"];
       }
-      throw new ApiFailure("upstream_unreachable", "This server's agent has not reported that yet");
+      throw new ApiFailure("upstream_unreachable", "This server's game PC has not reported that yet");
     }
     const cadenceKey = ownValue(CADENCE_KEY, part);
     if (cadenceKey === undefined) {

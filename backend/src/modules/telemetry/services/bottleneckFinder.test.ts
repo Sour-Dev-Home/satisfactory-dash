@@ -443,12 +443,14 @@ describe("beltData modes and notes", () => {
     expect(r.findings[0].rootCause.cappedBy).toBeUndefined();
   });
 
-  it("notReceived: item level only, says the agent has sent nothing and never mentions FRM", () => {
+  it("notReceived: item level only, says no belt data has arrived, points players at the mod and never mentions FRM or the agent", () => {
     const r = run([P, M], "notReceived");
     expect(r.beltData).toBe("notReceived");
     expect(r.notes.map((n) => n.code)).toEqual(["beltDataNotReceived"]);
-    expect(r.notes[0].text).toMatch(/agent hasn't sent belt data/);
-    expect(r.notes[0].text).not.toMatch(/FRM/);
+    expect(r.notes[0].text).toBe(
+      "Item-level results only. No belt data has arrived from the game server yet. If this stays, update the Satis Manager mod; belts are read every 10 minutes.",
+    );
+    expect(r.notes[0].text).not.toMatch(/FRM|agent/i);
     expect(r.findings[0].rootCause.cappedBy).toBeUndefined();
   });
 

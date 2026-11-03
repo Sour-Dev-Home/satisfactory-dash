@@ -110,7 +110,10 @@ describe.skipIf(!available)("agent commands against a real Postgres", () => {
       const { publicId } = await newAgentServer();
       const made = [];
       for (let i = 0; i < MAX_OPEN_COMMANDS; i++) made.push(await commands.requestAutoPause(publicId, i % 2 === 0, ACTOR));
-      expect(await failureOf(commands.requestAutoPause(publicId, true, ACTOR))).toBeInstanceOf(RateLimitedError);
+      const refused = await failureOf(commands.requestAutoPause(publicId, true, ACTOR));
+      expect(refused).toBeInstanceOf(RateLimitedError);
+      // Player-visible: names the game PC, never the agent (players connect only through the mod, 2026-11-03).
+      expect((refused as Error).message).toBe("Too many changes are waiting for this server's game PC. Try again in a minute.");
       await expireNow(made[0]!.id);
       await expect(commands.requestAutoPause(publicId, true, ACTOR)).resolves.toHaveProperty("id");
     });
@@ -271,7 +274,9 @@ describe.skipIf(!available)("agent commands against a real Postgres", () => {
   describe("the auto-pause setting of an agent server", () => {
     it("is unknown until the agent has confirmed a change, then the last confirmed value, and pending while one is on its way", async () => {
       const { publicId, agent } = await newAgentServer();
-      expect(codeOf(await failureOf(commands.readAutoPause(publicId)))).toBe("upstream_unreachable");
+      const unknown = await failureOf(commands.readAutoPause(publicId));
+      expect(codeOf(unknown)).toBe("upstream_unreachable");
+      expect((unknown as Error).message).toBe("This server's auto-pause setting is not known yet: the game PC has not reported it or confirmed a change");
       const first = await commands.requestAutoPause(publicId, false, ACTOR);
       expect(await commands.readAutoPause(publicId)).toEqual({ autoPause: false, pending: true, editable: true });
       await commands.report(agent, first.id, { ok: true });

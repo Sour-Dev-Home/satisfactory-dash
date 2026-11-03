@@ -35,10 +35,12 @@ export function msUntilGiveUp(command: Pick<Command, "expiresAt">, now: number):
 
 export const EXPIRED_TEXT = "The game PC didn't answer in time; the setting didn't change.";
 
+// Players connect only through the Satis Manager mod (owner, 2026-11-03; ADR-0058), and this page can't tell the mod
+// from the development agent, so the words name the game PC and give the players' fix.
 const FAILURE_TEXT: Record<string, string> = {
-  unsupported: "The agent on the game PC can't change this setting. Update the agent and try again.",
+  unsupported: "The game PC can't change this setting yet. Update the Satis Manager mod and try again.",
   upstream_unreachable: "The game PC couldn't reach the game server, so the setting didn't change.",
-  upstream_auth_rejected: "The game server refused the agent's admin token, so the setting didn't change.",
+  upstream_auth_rejected: "The game server refused the admin token, so the setting didn't change.",
   upstream_error: "The game server reported an error, so the setting didn't change.",
 };
 

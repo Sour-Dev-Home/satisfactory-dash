@@ -21,6 +21,8 @@ const KIND_LABEL: Record<string, string> = {
   stopped_machines: "Stopped machines",
   server_unreachable: "Game server unreachable",
   production_below_target: "Production below target",
+  // Fires for any sender; players connect only through the Satis Manager mod (owner, 2026-11-03), so not "Agent offline".
+  agent_offline: "Game PC offline",
 };
 
 /** "power_outage" -> "Power outage"; an unknown kind is spelled out from its name. */
@@ -61,6 +63,7 @@ export function subjectLabel(subject: string, item?: string): string {
   const circuit = /^circuit:(\d+)$/.exec(subject);
   if (circuit) return `Circuit ${circuit[1]}`;
   if (subject === "server") return "The game server";
+  if (subject === "agent") return "The game PC";
   if (subject === "group") return "Machines";
   if (subject === "item") return item ? labelFor(new Map(), item).name : "An item";
   return subject;
@@ -68,11 +71,11 @@ export function subjectLabel(subject: string, item?: string): string {
 
 /**
  * An alert's one-line title: "Power outage: Circuit 3", "Production below target: Iron Plate". A
- * subject that only repeats the kind (the stopped-machines group, the game server) is left out:
+ * subject that only repeats the kind (the stopped-machines group, the game server, the game PC) is left out:
  * "Stopped machines", not "Stopped machines: Machines".
  */
 export function alertTitle(kind: string, subject: string, item?: string): string {
-  if (subject === "group" || subject === "server") return kindLabel(kind);
+  if (subject === "group" || subject === "server" || subject === "agent") return kindLabel(kind);
   return `${kindLabel(kind)}: ${subjectLabel(subject, item)}`;
 }
 
