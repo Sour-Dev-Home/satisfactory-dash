@@ -115,7 +115,7 @@ describe("the delete confirmation as a form", () => {
       }),
     );
     renderSection();
-    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satisfactory Dash" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satis Manager" }));
     return { input: screen.getByLabelText(/Type My first world to confirm/), deletes: () => deletes };
   }
 
@@ -132,7 +132,7 @@ describe("the delete confirmation as a form", () => {
   it("cancels on Escape and puts focus back on Delete", async () => {
     const { input, deletes } = await openConfirm();
     fireEvent.keyDown(input, { key: "Escape" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Remove My first world from Satisfactory Dash" })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove My first world from Satis Manager" })).toHaveFocus());
     expect(screen.queryByRole("form", { name: /Confirm removing/ })).not.toBeInTheDocument();
     expect(deletes()).toBe(0);
   });

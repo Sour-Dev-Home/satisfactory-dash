@@ -1,5 +1,8 @@
 # Runbook: the edge agent on Linux (ADR-0057 Decision 2, step 4)
 
+> **Developer-only (owner, 2026-11-03).** Only the mod is released to players; the edge agent is for development
+> (ADR-0058, "Mod only for players"). Players connect with the Satis Manager mod.
+
 The same agent program as [`agent-app.md`](./agent-app.md) (read that for what it does, what it sends and the log events),
 run as a hardened systemd service on the Linux machine that hosts the Satisfactory server. It reads the game over loopback and
 pushes snapshots **out**; it opens no port. This page covers only what differs on Linux. The unit file is

@@ -1,5 +1,9 @@
 # Runbook: the edge agent program (ADR-0031 PR 6)
 
+> **Developer-only (owner, 2026-11-03).** Only the mod is released to players; the edge agent and the server manager
+> stay for development. The dashboard shows the agent's enrol command only to the operator (ADR-0058, "Mod only for
+> players"). Players connect with the Satis Manager mod. "A player" below means the owner's own development setup.
+
 The program a player runs on the PC that hosts their Satisfactory server. It reads the game over loopback, pushes
 snapshots **out** to the backend, and runs the commands the dashboard asks for (today: the auto-pause setting). It opens
 no port: the backend never reaches into the player's network. The backend side is in [`agents.md`](./agents.md).

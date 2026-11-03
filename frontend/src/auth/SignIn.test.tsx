@@ -57,7 +57,7 @@ describe("the sign-in screen", () => {
     server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(withGoogle)));
     const { container } = renderGate();
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This Google account hasn't been invited yet. Ask the server's owner for an invitation.",
+      "This Google account hasn't been invited. Sign-in is invite-only during the beta.",
     );
     expect(container.textContent).not.toContain("owned");
     expect(container.querySelector("b")).toBeNull();

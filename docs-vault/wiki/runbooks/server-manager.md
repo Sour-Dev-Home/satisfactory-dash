@@ -1,5 +1,8 @@
 # Runbook: the server manager (ADR-0040)
 
+> **Developer-only (owner, 2026-11-03).** Only the mod is released to players; this app and the edge agent are for
+> development and are not offered to players (ADR-0058, "Mod only for players").
+
 A small Electron app, for the owner's game PC only, that starts and supervises the Satisfactory dedicated server: Start,
 Stop (a clean save first), Restart, Update through SteamCMD, a crash back-off, and a tray icon. It is a holdover until
 the mod (ADR-0039), so there is no installer, no signing and no auto-update. The edge agent beside it is a separate

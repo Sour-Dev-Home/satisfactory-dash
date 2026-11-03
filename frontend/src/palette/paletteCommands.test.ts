@@ -9,6 +9,13 @@ const headings = (input: PaletteInput) => paletteGroups(input).map((g) => g.head
 const group = (input: PaletteInput, heading: string) => paletteGroups(input).find((g) => g.heading === heading);
 
 describe("paletteGroups", () => {
+  it("names the connection settings for the mod, and for the agent only to the operator (owner, 2026-11-03)", () => {
+    const entry = (isOperator: boolean) => group({ ...base, isOperator }, "Settings")?.commands.find((c) => c.id === "settings-agent");
+    expect(entry(false)?.label).toBe("Satis Manager mod");
+    expect(entry(true)?.label).toBe("Game PC agent");
+    expect(entry(false)?.keywords).toEqual(expect.arrayContaining(["mod", "agent", "enrol"]));
+  });
+
   it("always offers the pages and settings; Servers only to the operator", () => {
     expect(headings(base)).toEqual(["Pages", "Settings"]);
     expect(group(base, "Pages")?.commands.map((c) => c.label)).not.toContain("Servers");

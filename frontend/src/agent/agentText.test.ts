@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { agentBackendUrl, agentVersionLine, canCreateCode, canRevoke, connectionText, gameConnectionView, lastSeenText, versionText } from "./agentText";
+import {
+  agentBackendUrl,
+  agentVersionLine,
+  canCreateCode,
+  canRevoke,
+  connectionText,
+  gameConnectionView,
+  lastSeenText,
+  offersDevAgent,
+  senderWords,
+  versionText,
+} from "./agentText";
 
 describe("gameConnectionView (#740 follow-up)", () => {
   const NOW = Date.parse("2026-10-27T12:00:00.000Z");
@@ -106,6 +117,42 @@ describe("connectionText", () => {
     expect(connectionText("local")).toBe("Directly, from the dashboard's backend");
     expect(connectionText("agent")).toBe("Through the game PC's agent");
     expect(connectionText("relay")).toBe("relay");
+  });
+
+  it("says the mod for a player, who is offered nothing else (owner, 2026-11-03)", () => {
+    expect(connectionText("agent", false)).toBe("Through the Satis Manager mod");
+    expect(connectionText("local", false)).toBe("Directly, from the dashboard's backend");
+  });
+});
+
+describe("offersDevAgent and senderWords (owner, 2026-11-03: the mod for players, the agent for development)", () => {
+  it("offers the Node agent to the operator only", () => {
+    expect(offersDevAgent(true)).toBe(true);
+    expect(offersDevAgent(false)).toBe(false);
+  });
+
+  it("words the section for the mod, or for the agent where it is offered", () => {
+    expect(senderWords(false)).toEqual({
+      heading: "Satis Manager mod",
+      label: "Mod",
+      versionLabel: "Mod version",
+      noun: "the mod",
+      revoke: "Revoke the mod's access",
+      revokeConfirm: "Confirm revoking the mod's access",
+      revokeWarning: "The mod's access ends at once. This server then shows no data, and can't be changed, until the mod is enrolled again.",
+    });
+    expect(senderWords(true)).toMatchObject({ heading: "Game PC agent", label: "Agent", noun: "the agent", revoke: "Revoke the agent" });
+  });
+
+  it("puts no agent wording in front of a player", () => {
+    for (const text of Object.values(senderWords(false))) expect(text).not.toMatch(/agent/i);
+  });
+
+  it("feeds the noun into the game line", () => {
+    const now = Date.parse("2026-10-27T12:00:00.000Z");
+    const base = { enrolled: true, online: false, gameReachable: true } as const;
+    expect(gameConnectionView(base, now, "the mod")?.label).toBe("Unknown while the mod is offline");
+    expect(gameConnectionView({ enrolled: true, online: true, gameReachable: false }, now, "the mod")?.lastRead).toBe("not read since the mod started");
   });
 });
 

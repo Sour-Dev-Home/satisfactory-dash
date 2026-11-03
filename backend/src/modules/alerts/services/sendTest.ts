@@ -39,7 +39,7 @@ export async function sendAlertTest(input: {
   const outcome = await sendDiscordMessage(
     opened.url,
     {
-      username: "Satisfactory Dash",
+      username: "Satis Manager",
       embeds: [{ title: "Test message", description: `**${escapeDiscordText(input.serverName, 60) || "server"}**\nAlerts are set up for this server.`, color: 0x3498db }],
       allowed_mentions: { parse: [] },
     },

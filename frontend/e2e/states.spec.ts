@@ -218,7 +218,7 @@ const CASES: StateCase[] = [
   {
     scenario: "login-google-error",
     path: "/app/login?error=not_invited",
-    shows: "This Google account hasn't been invited yet. Ask the server's owner for an invitation.",
+    shows: "This Google account hasn't been invited. Sign-in is invite-only during the beta.",
   },
   { scenario: "login-terms-changed", path: "/app/login?error=terms_changed", shows: "What changed:" },
   { scenario: "login-failed", shows: "Invalid username or password", act: signIn },
@@ -709,7 +709,7 @@ const CASES: StateCase[] = [
     scenario: "agent-enrolled-owner",
     name: "agent-revoke-confirm",
     path: "/app/settings",
-    shows: /until an agent is enrolled again/,
+    shows: /until the mod is enrolled again/,
     clock: AGENT_NOW,
     act: (page) => page.getByRole("button", { name: "Revoke…" }).click(),
   },
@@ -789,7 +789,7 @@ const CASES: StateCase[] = [
     path: "/app/settings",
     shows: /can.t be undone/,
     clock: AGENT_NOW,
-    act: (page) => page.getByRole("button", { name: "Remove My first world from Satisfactory Dash" }).click(),
+    act: (page) => page.getByRole("button", { name: "Remove My first world from Satis Manager" }).click(),
   },
   // ADR-0047 (#311 task 3): Settings → Delete my account, its confirm, its two refusals, and leaving a server.
   { scenario: "account-delete", path: "/app/settings", shows: "Removed with your account", clock: AGENT_NOW },
@@ -816,14 +816,14 @@ const CASES: StateCase[] = [
     clock: AGENT_NOW,
     act: (page) => page.getByRole("button", { name: "Leave this server…" }).click(),
   },
-  { scenario: "agent-enrolled-viewer", path: "/app/settings", shows: "Only a server owner or admin can enrol or revoke the agent.", clock: AGENT_NOW },
+  { scenario: "agent-enrolled-viewer", path: "/app/settings", shows: "Only a server owner or admin can enrol or revoke the mod.", clock: AGENT_NOW },
   // The command bar (#351), open over the Overview: a native modal dialog, so the CSP guard here
   // also proves it injects no <style> (ADR-0016 item 8).
   {
     scenario: "default",
     name: "command-bar",
     // A command's text: the search box's placeholder isn't text getByText can find.
-    shows: "Game PC agent",
+    shows: "Satis Manager mod",
     act: async (page) => {
       await page.getByRole("heading", { name: "Health" }).waitFor();
       await page.keyboard.press("Control+K");

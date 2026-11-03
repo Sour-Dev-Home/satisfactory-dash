@@ -15,7 +15,18 @@ import { useNow } from "../lib/useNow";
 import { EnrolmentGuide } from "../selfServe/EnrolmentGuide";
 import { useSelectedServer } from "../servers/ServerContext";
 import { cn } from "../lib/cn";
-import { agentBackendUrl, agentVersionLine, canCreateCode, canRevoke, connectionText, gameConnectionView, lastSeenText, type GameConnectionView } from "./agentText";
+import {
+  agentBackendUrl,
+  agentVersionLine,
+  canCreateCode,
+  canRevoke,
+  connectionText,
+  gameConnectionView,
+  lastSeenText,
+  offersDevAgent,
+  senderWords,
+  type GameConnectionView,
+} from "./agentText";
 import { useHashTarget } from "../lib/useHashTarget";
 
 const isAgentAnchor = (id: string) => id === "agent";
@@ -30,6 +41,8 @@ export function AgentSettings() {
   // /app/settings#agent (#351's deep links) scrolls here.
   useHashTarget(isAgentAnchor);
   const isOperator = useQuery(queries.servers()).data?.canManageServers === true;
+  const devAgent = offersDevAgent(isOperator);
+  const words = senderWords(devAgent);
   const status = useQuery(queries.agentStatus(server.id));
   const { createCode, revoke } = useAgentWrites(server.id);
   // The code lives only here: shown once, gone when the section unmounts (see useAgentWrites).
@@ -56,8 +69,8 @@ export function AgentSettings() {
 
   return (
     <section id="agent" aria-labelledby="agent-settings-heading" className="panel grid gap-4">
-      <h3 id="agent-settings-heading">Game PC agent</h3>
-      <Loadable pending={status.isPending} skeleton={<AgentSkeleton />} className="grid gap-4">
+      <h3 id="agent-settings-heading">{words.heading}</h3>
+      <Loadable pending={status.isPending} skeleton={<AgentSkeleton noun={words.noun} />} className="grid gap-4">
       {!status.data ? (
         <ErrorNotice
           error={status.error}
@@ -71,11 +84,12 @@ export function AgentSettings() {
         <>
         {/* ADR-0046: the player's own server needs to be told where the code goes (the mod's config file). */}
         {server.createdVia === "self_serve" && canCreateCode(status.data.connectionKind, server.role, isOperator) && (
-          <EnrolmentGuide enrolled={status.data.enrolled} />
+          <EnrolmentGuide enrolled={status.data.enrolled} devAgent={devAgent} />
         )}
         <AgentPanel
           agent={status.data}
           code={code}
+          devAgent={devAgent}
           canCreate={canCreateCode(status.data.connectionKind, server.role, isOperator)}
           canRevoke={canRevoke(server.role)}
           creating={createCode.isPending}
@@ -93,10 +107,10 @@ export function AgentSettings() {
 }
 
 /** The agent's status while it loads: the status line and the buttons under it. */
-function AgentSkeleton() {
+function AgentSkeleton({ noun }: { noun: string }) {
   return (
     <div className="grid gap-3">
-      <SkeletonStatus>Loading the agent's status…</SkeletonStatus>
+      <SkeletonStatus>Loading {noun}&apos;s status…</SkeletonStatus>
       <Skeleton className="h-lh w-64" />
       <Skeleton className="h-touch w-40" />
       {/* A phone wraps the agent's lines: about one more. */}
@@ -115,8 +129,8 @@ const TONE_CLASS = new Map<GameConnectionView["tone"], string>([
   ["unknown", "text-muted"],
 ]);
 
-function GameConnectionRow({ agent, now }: { agent: AgentStatusResponse; now: number }) {
-  const view = gameConnectionView(agent, now);
+function GameConnectionRow({ agent, now, noun }: { agent: AgentStatusResponse; now: number; noun: string }) {
+  const view = gameConnectionView(agent, now, noun);
   if (view === null) return null;
   return (
     <>
@@ -159,10 +173,14 @@ function GameConnectionIcon({ tone }: { tone: "ok" | "warn" }) {
   );
 }
 
-/** Presentational: one server's agent, and the controls this user may use. */
+/**
+ * Presentational: one server's agent, and the controls this user may use. A new code says where the mod reads it;
+ * `devAgent` (`offersDevAgent`: the operator) adds the Node agent's enrol command, which players are not offered.
+ */
 export function AgentPanel({
   agent,
   code,
+  devAgent = false,
   canCreate,
   canRevoke,
   creating,
@@ -174,6 +192,7 @@ export function AgentPanel({
 }: {
   agent: AgentStatusResponse;
   code: EnrollmentCode | null;
+  devAgent?: boolean;
   canCreate: boolean;
   canRevoke: boolean;
   creating: boolean;
@@ -202,12 +221,13 @@ export function AgentPanel({
     if (!agent.enrolled && confirming) setConfirming(false);
   }
   const local = agent.connectionKind === "local";
+  const words = senderWords(devAgent);
   return (
     <>
       <dl className="mb-0">
         <dt>Reached</dt>
-        <dd>{connectionText(agent.connectionKind)}</dd>
-        <dt>Agent</dt>
+        <dd>{connectionText(agent.connectionKind, devAgent)}</dd>
+        <dt>{words.label}</dt>
         <dd>
           {agent.enrolled ? (
             <>
@@ -231,10 +251,10 @@ export function AgentPanel({
             "None enrolled"
           )}
         </dd>
-        <GameConnectionRow agent={agent} now={now} />
+        <GameConnectionRow agent={agent} now={now} noun={words.noun} />
         {agent.enrolled && (
           <>
-            <dt>Agent version</dt>
+            <dt>{words.versionLabel}</dt>
             <dd>{agentVersionLine(agent.agentVersion, agent.modVersion)}</dd>
           </>
         )}
@@ -251,16 +271,24 @@ export function AgentPanel({
           </div>
           <p className="mb-0 text-sm text-muted">
             It works once, until <time dateTime={code.expiresAt}>{formatTime(code.expiresAt)}</time> (10 minutes), and
-            isn't shown again after you leave this page. On the game PC, in the agent's folder, run:
+            isn't shown again after you leave this page. Paste it into the mod&apos;s config on the game server: the value of{" "}
+            {/* docs-vault/raw-sources/mod-core-v1-config.md, as in EnrolmentGuide. */}
+            <code>enrollmentCode</code> in <code>FactoryGame/Configs/SatisDashAgent.cfg</code>.
           </p>
-          {/* The agent app's command (docs-vault/wiki/runbooks/agent-app.md, "Enrol"). Whether --replace is
-              needed depends on what the PC has stored, which the dashboard can't see, so it's only named. */}
-          <p className="mb-0 font-mono text-sm break-words">
-            node agent.cjs enroll {code.code} --url {agentBackendUrl(apiHref(""))}
-          </p>
-          <p className="mb-0 text-sm text-muted">
-            If this PC was enrolled before (or the agent was revoked), add <code>--replace</code>.
-          </p>
+          {devAgent && (
+            <>
+              {/* The agent app's command (docs-vault/wiki/runbooks/agent-app.md, "Enrol"), for development only
+                  (owner, 2026-11-03). Whether --replace is needed depends on what the PC has stored, which the
+                  dashboard can't see, so it's only named. */}
+              <p className="mb-0 text-sm text-muted">For development, with the agent app instead: in the agent&apos;s folder, run:</p>
+              <p className="mb-0 font-mono text-sm break-words">
+                node agent.cjs enroll {code.code} --url {agentBackendUrl(apiHref(""))}
+              </p>
+              <p className="mb-0 text-sm text-muted">
+                If this PC was enrolled before (or the agent was revoked), add <code>--replace</code>.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         canCreate && (
@@ -284,14 +312,13 @@ export function AgentPanel({
       {agent.enrolled && canRevoke && (
         <div className="grid gap-2">
           {confirming ? (
-            <div role="group" aria-label="Confirm revoking the agent" className="grid gap-2">
+            <div role="group" aria-label={words.revokeConfirm} className="grid gap-2">
               <p ref={focusWarning} tabIndex={-1} className="mb-0">
-                The agent stops working at once. This server then shows no data, and can't be changed, until an agent is
-                enrolled again.
+                {words.revokeWarning}
               </p>
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={onRevoke} disabled={revoking} className={DANGER_BUTTON}>
-                  {revoking ? "Revoking…" : "Revoke the agent"}
+                  {revoking ? "Revoking…" : words.revoke}
                 </button>
                 <button
                   type="button"
@@ -328,7 +355,7 @@ export function AgentPanel({
         <p className="mb-0 text-sm text-muted">
           {local
             ? "Only the dashboard's operator can enrol an agent for this server."
-            : "Only a server owner or admin can enrol or revoke the agent."}
+            : `Only a server owner or admin can enrol or revoke ${words.noun}.`}
         </p>
       )}
     </>

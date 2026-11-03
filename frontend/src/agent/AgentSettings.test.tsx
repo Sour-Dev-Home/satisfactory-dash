@@ -116,7 +116,12 @@ describe("AgentSettings", () => {
     renderSection(owner);
     const seen = await screen.findByText("Last seen 8 s ago");
     expect(seen).toHaveAttribute("dateTime", agentStatusEnrolled.lastSeenAt);
-    expect(screen.getByText("Through the game PC's agent")).toBeInTheDocument();
+    // A player (not the operator) is offered the mod only (owner, 2026-11-03).
+    expect(screen.getByRole("heading", { name: "Satis Manager mod" })).toBeInTheDocument();
+    expect(screen.getByText("Through the Satis Manager mod")).toBeInTheDocument();
+    expect(screen.getByText("Mod")).toBeInTheDocument();
+    expect(screen.getByText("Mod version")).toBeInTheDocument();
+    expect(screen.queryByText(/agent/i)).not.toBeInTheDocument();
     expect(screen.getByText(agentStatusEnrolled.agentVersion)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create a code to enrol again" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Revoke…" })).toBeInTheDocument();
@@ -185,14 +190,14 @@ describe("AgentSettings", () => {
     agentIs(agentStatusGameNeverRead);
     renderSection(owner);
     expect(await screen.findByText("Not reachable")).toBeInTheDocument();
-    expect(screen.getByText(/not read since the agent started/)).toBeInTheDocument();
+    expect(screen.getByText(/not read since the mod started/)).toBeInTheDocument();
     expect(screen.queryByRole("time", { name: /last read/ })).not.toBeInTheDocument();
   });
 
   it("doesn't vouch for the game while the agent is offline, but still says when it last read it", async () => {
     agentIs({ ...agentStatusGameReachable, online: false });
     renderSection(owner);
-    const label = await screen.findByText("Unknown while the agent is offline");
+    const label = await screen.findByText("Unknown while the mod is offline");
     expect(label).toHaveClass("text-muted");
     expect(label.querySelector("svg")).toBeNull();
     expect(screen.queryByText("Reachable")).not.toBeInTheDocument();
@@ -232,8 +237,8 @@ describe("AgentSettings", () => {
     );
     renderSection(owner);
     fireEvent.click(await screen.findByRole("button", { name: "Revoke…" }));
-    const confirm = screen.getByRole("group", { name: "Confirm revoking the agent" });
-    expect(within(confirm).getByText(/shows no data, and can't be changed, until an agent is enrolled again/)).toBeInTheDocument();
+    const confirm = screen.getByRole("group", { name: "Confirm revoking the mod's access" });
+    expect(within(confirm).getByText(/shows no data, and can't be changed, until the mod is enrolled again/)).toBeInTheDocument();
     fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Revoke…" })).toBeInTheDocument();
     expect(revoked).toBe(0);
@@ -247,7 +252,7 @@ describe("AgentSettings", () => {
     // Nothing is focused on first render: the section never steals focus on load.
     expect(revokeButton).not.toHaveFocus();
     fireEvent.click(revokeButton);
-    expect(screen.getByText(/The agent stops working at once/)).toHaveFocus();
+    expect(screen.getByText(/The mod's access ends at once/)).toHaveFocus();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Revoke…" })).toHaveFocus();
@@ -277,7 +282,7 @@ describe("AgentSettings", () => {
     );
     renderSection(owner);
     fireEvent.click(await screen.findByRole("button", { name: "Revoke…" }));
-    fireEvent.click(screen.getByRole("button", { name: "Revoke the agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revoke the mod's access" }));
     expect(await screen.findByText("None enrolled")).toBeInTheDocument();
   });
 
@@ -294,14 +299,14 @@ describe("AgentSettings", () => {
     );
     const { client } = renderSection(owner);
     fireEvent.click(await screen.findByRole("button", { name: "Revoke…" }));
-    fireEvent.click(screen.getByRole("button", { name: "Revoke the agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revoke the mod's access" }));
     await screen.findByText("None enrolled");
 
     // The 30 s poll picks up a fresh enrolment; the confirm the user closed out must not resurface.
     enrolled = true;
     await client.refetchQueries({ queryKey: ["servers", owner.id, "agent"] });
     expect(await screen.findByRole("button", { name: "Revoke…" })).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Confirm revoking the agent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Confirm revoking the mod's access" })).not.toBeInTheDocument();
   });
 
   it("shows a refused write like any error", async () => {
@@ -317,8 +322,45 @@ describe("AgentSettings", () => {
     agentIs(agentStatusEnrolled);
     renderSection(viewer);
     expect(await screen.findByText("Last seen 8 s ago")).toBeInTheDocument();
-    expect(screen.getByText("Only a server owner or admin can enrol or revoke the agent.")).toBeInTheDocument();
+    expect(screen.getByText("Only a server owner or admin can enrol or revoke the mod.")).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  // Owner, 2026-11-03: only the mod is released; the Node agent is for development, so only the operator is offered it.
+  it("gives a player's new code the mod's config steps and no agent command", async () => {
+    agentIs({ ...agentStatusEnrolled, connectionKind: "agent" });
+    renderSection(owner);
+    fireEvent.click(await screen.findByRole("button", { name: "Create a code to enrol again" }));
+    const code = await screen.findByRole("group", { name: "Enrolment code" });
+    expect(within(code).getByText("FactoryGame/Configs/SatisDashAgent.cfg")).toBeInTheDocument();
+    expect(within(code).getByText("enrollmentCode")).toBeInTheDocument();
+    expect(within(code).queryByText(/node agent\.cjs/)).not.toBeInTheDocument();
+    expect(within(code).queryByText("--replace")).not.toBeInTheDocument();
+    expect(within(code).queryByText(/agent app/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the agent's wording, command and revoke for the operator, next to the mod's steps", async () => {
+    asOperator();
+    agentIs({ ...agentStatusEnrolled, connectionKind: "agent" });
+    renderSection(owner);
+    expect(await screen.findByRole("heading", { name: "Game PC agent" })).toBeInTheDocument();
+    expect(screen.getByText("Through the game PC's agent")).toBeInTheDocument();
+    expect(screen.getByText("Agent version")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create a code to enrol again" }));
+    const code = await screen.findByRole("group", { name: "Enrolment code" });
+    expect(within(code).getByText("FactoryGame/Configs/SatisDashAgent.cfg")).toBeInTheDocument();
+    expect(within(code).getByText(/For development, with the agent app instead/)).toBeInTheDocument();
+    expect(within(code).getByText(new RegExp(`node agent\\.cjs enroll ${agentEnrollmentCodeResponse.code}`))).toBeInTheDocument();
+  });
+
+  it("names the agent in the operator's revoke confirm", async () => {
+    asOperator();
+    agentIs(agentStatusEnrolled);
+    renderSection(owner);
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke…" }));
+    const confirm = screen.getByRole("group", { name: "Confirm revoking the agent" });
+    expect(within(confirm).getByText(/The agent stops working at once/)).toBeInTheDocument();
+    expect(within(confirm).getByRole("button", { name: "Revoke the agent" })).toBeInTheDocument();
   });
 
   it("shows a failed read with Retry", async () => {
