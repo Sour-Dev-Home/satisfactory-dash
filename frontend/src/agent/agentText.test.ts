@@ -114,9 +114,9 @@ describe("lastSeenText", () => {
 
 describe("connectionText", () => {
   it("names the two known kinds and passes an unknown one through", () => {
-    expect(connectionText("local")).toBe("Directly, from the dashboard's backend");
-    expect(connectionText("agent")).toBe("Through the game PC's agent");
-    expect(connectionText("relay")).toBe("relay");
+    expect(connectionText("local", true)).toBe("Directly, from the dashboard's backend");
+    expect(connectionText("agent", true)).toBe("Through the game PC's agent");
+    expect(connectionText("relay", true)).toBe("relay");
   });
 
   it("says the mod for a player, who is offered nothing else (owner, 2026-11-03)", () => {

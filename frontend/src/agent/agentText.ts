@@ -61,7 +61,7 @@ export function agentVersionLine(agentVersion: string | null, modVersion: string
  * How the backend reaches the server, in words. An unknown kind is shown as it came. An `agent` server is fed by the
  * mod or the Node agent; players are only offered the mod (`devAgent` false), so for them it is the mod.
  */
-export function connectionText(kind: string, devAgent = true): string {
+export function connectionText(kind: string, devAgent: boolean): string {
   if (kind === "local") return "Directly, from the dashboard's backend";
   if (kind === "agent") return devAgent ? "Through the game PC's agent" : "Through the Satis Manager mod";
   return kind;

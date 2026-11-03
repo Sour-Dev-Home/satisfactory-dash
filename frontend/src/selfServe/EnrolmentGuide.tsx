@@ -2,7 +2,7 @@ import { PlayerNotice } from "./PlayerNotice";
 import { CODE_LIFETIME } from "./selfServeText";
 
 /**
- * Plain instructions for a self-serve server's code (ADR-0046, shown in Settings → Game PC agent while
+ * Plain instructions for a self-serve server's code (ADR-0046, shown in Settings → Satis Manager mod while
  * the player can make one). Prominent (open) while the server is waiting for its first connection;
  * collapsed once it is enrolled, where it is only a reminder for enrolling again.
  *

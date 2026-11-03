@@ -363,6 +363,39 @@ describe("AgentSettings", () => {
     expect(within(confirm).getByRole("button", { name: "Revoke the agent" })).toBeInTheDocument();
   });
 
+  // Fail safe: when the server list has not answered (or failed), nobody is known to be the operator, so the
+  // mod-only wording and no agent command are shown, even to an owner.
+  it("shows the mod's wording and no agent command while the server list is failing", async () => {
+    server.use(http.get(endpoints.servers.route, () => HttpResponse.json(errorForbidden, { status: 500 })));
+    agentIs({ ...agentStatusEnrolled, connectionKind: "agent" });
+    renderSection(owner);
+    expect(await screen.findByText("Through the Satis Manager mod")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Satis Manager mod" })).toBeInTheDocument();
+    expect(screen.getByText("Mod version")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create a code to enrol again" }));
+    const code = await screen.findByRole("group", { name: "Enrolment code" });
+    expect(within(code).queryByText(/node agent\.cjs/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tell your players|player-names|in-game names/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the mod's wording while the server list is still loading", async () => {
+    server.use(http.get(endpoints.servers.route, async () => { await delay("infinite"); return HttpResponse.json(serversSingle); }));
+    agentIs({ ...agentStatusEnrolled, connectionKind: "agent" });
+    renderSection(owner);
+    expect(await screen.findByText("Through the Satis Manager mod")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Satis Manager mod" })).toBeInTheDocument();
+    expect(screen.queryByText(/agent/i)).not.toBeInTheDocument();
+  });
+
+  it("shows no agent wording to a player whose enrolled server is not reachable", async () => {
+    agentIs({ ...agentStatusGameUnreachable, connectionKind: "agent", online: false });
+    renderSection(owner);
+    expect(await screen.findByText("Unknown while the mod is offline")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Revoke…" }));
+    expect(screen.getByRole("button", { name: "Revoke the mod's access" })).toBeInTheDocument();
+    expect(screen.queryByText(/agent/i)).not.toBeInTheDocument();
+  });
+
   it("shows a failed read with Retry", async () => {
     server.use(http.get(endpoints.agent.status.route, () => HttpResponse.json(errorForbidden, { status: 403 })));
     renderSection(owner);

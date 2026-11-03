@@ -32,7 +32,7 @@ import { useHashTarget } from "../lib/useHashTarget";
 const isAgentAnchor = (id: string) => id === "agent";
 
 /**
- * Settings → Game PC agent (ADR-0031 PR 7): whether an agent reports for this server, when it was
+ * Settings → Satis Manager mod, or "Game PC agent" for the operator (ADR-0031 PR 7, `senderWords`): whether an agent reports for this server, when it was
  * last heard and its version, and for those allowed, an enrolment code and revoking. Every member
  * reads it. Keyed by server in the shell, so a code never follows the user to another server.
  */
