@@ -149,7 +149,8 @@
   --spacing-overview-rail: 17rem;
   /* The planner graph (ADR-0050): the side panel's width, and what an item filter dims. */
   --spacing-graph-panel: 22rem;
-  --opacity-graph-dim: 0.25;  /* How far an overflow fade reaches in from the canvas edge (the graph) and the nav's edge (the main tabs). */
+  --opacity-graph-dim: 0.25;
+  /* How far an overflow fade reaches in from the canvas edge (the graph) and the nav's edge (the main tabs). */
   --spacing-graph-fade: 3rem;
   --spacing-nav-fade: 2rem;
   /* The Planner outline's group row before it is first laid out (`outline-row-lazy`): about a desktop row's height
