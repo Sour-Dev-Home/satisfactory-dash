@@ -147,11 +147,27 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   arrowhead is never painted over.
 - Item bubbles (ADR-0060 build PR 2): an edge's label box draws the items it carries as icon bubbles, not words
   (`bubbleRow.ts`). Distinct items by summed rate (then name), at most `BUBBLE_MAX` (3) then a "+k" chip, with the rate
-  text ("mixed", "excess" beside it) under the row; links of no known item share one "?" bubble. The box dagre reserves
+  text under the row; links of no known item share one "?" bubble. The box dagre reserves
   is `bubbleRowSize` (plus `GLYPH_INSET` for a transport), so the router keeps it clear as it did the words. A bubble
   draws its item's 32 px icon (64 px once that would stretch: `bubbleDetail`), the name's initials when there is none or
   it fails to load, never blank; below zoom `BUBBLE_DETAIL_ZOOM` (0.4) only plain discs. `LaidEdge.labelLines` keeps
   the words for text views and tests; the item names are in the edge's `<title>` and the outline.
+- Rate labels and the highlight (ADR-0063 amendment, 2026-11-03). The rate under a line's bubbles is the short form
+  `shortRateText` (`plannerText.ts`): "20/min", "~20/min" estimated, "≥20/min" at least, "?/min" unknown, a fluid
+  "20 m³/min"; "mixed" and "excess" are not drawn (the line's style and its words say them). Only that canvas label is
+  short: `<title>`s, buttons, the outline and the legend keep `aggregateRateText`'s words. Its row is always reserved
+  (`bubbleRowSize`), so showing it moves nothing. With a mouse (`(hover: hover) and (pointer: fine)`, `[data-rate]` in
+  `index.css`) the canvas never shows it; a touch screen shows every one at rest. Pointing at a line (its label, or
+  `[data-line-hit]`, a transparent `LINE_HIT_W` stroke over it) or a card, or the keyboard on a card's button or a line's
+  bubble, highlights it (`lineHighlight.ts`: `targetAt` reads `data-hl-edge`/`data-hl-node`, `highlightOf` lights a
+  line and its cards, or a card, all its lines and their far cards). The pointer's target lives in `pointerStore`, outside
+  React state, so pointing never re-renders the canvas or re-runs layout. `HighlightLayer.tsx` draws it: a third `<svg>`
+  after `MarchLayer`, the same box and transform, `aria-hidden`, `pointer-events-none`, `will-change-transform`, always
+  mounted. In `dim` mode a `fill-surface` cover at `--opacity-graph-cover` (0.75, one minus the dim) with a luminance
+  mask holed for the lit cards, labels and lines (`marchHoles` plus each lit route stroked `HIGHLIGHT_LINE_HOLE` wide),
+  then the lit lines' rates (`rateAnchor`, the canvas's own spot) rising in (`animate-reveal`, keyed by target). The layer
+  fades by its own opacity (`transition-opacity`); reduced motion zeroes both. Item focus or the item filter set `labels`
+  mode: rates only, no cover. Off during a make-room glide; touch and pen pointers are ignored.
 - Stalled marks (ADR-0062 build PR 2): a card whose product reads 0 with all its machines backed up, underfed, paused or
   idle has `Card.stalled` (`stalledOf`), and the lines leaving it `CanvasFlow.stalled` (`withStalledFlows`; not a line
   measured above 0; a bundle only when every part is). In marks mode (`planner.stateStyle`, the default; the toolbar's

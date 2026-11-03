@@ -90,12 +90,12 @@ describe("bubbleRow", () => {
     const row = bubbleRow(bundle(...["A", "B", "C", "D", "E"].map((n, i) => flow(`Desc_${n}_C`, n, 10 - i))));
     expect(row.items.map((i) => i.name)).toEqual(["A", "B", "C"]);
     expect(row.more).toBe(2);
-    expect(row.rateText).toBe("40 items/min");
+    expect(row.rateText).toBe("40/min");
   });
 
-  it("says mixed and excess beside the rate, and has no rate text when the rate is unknown", () => {
-    expect(bubbleRow(flow("Desc_A_C", "A", 5, { mixed: true, flow: "excess" })).rateText).toBe("5 items/min · mixed · excess");
-    expect(bubbleRow(flow("Desc_A_C", "A", null)).rateText).toBeNull();
+  it("draws the short rate only: mixed and excess stay in the words, and an unknown rate reads ?/min (ADR-0063 amendment)", () => {
+    expect(bubbleRow(flow("Desc_A_C", "A", 5, { mixed: true, flow: "excess" })).rateText).toBe("5/min");
+    expect(bubbleRow(flow("Desc_A_C", "A", null)).rateText).toBe("?/min");
   });
 });
 
@@ -128,8 +128,11 @@ describe("the row's geometry", () => {
 
   it("reserves a box for the bubbles over one line of rate text, as wide as the wider", () => {
     const row = bubbleRow(flow("Desc_A_C", "A", 123.4));
-    expect(bubbleRowSize(row)).toEqual({ width: Math.max(BUBBLE_D + LABEL_PAD, labelWidth(row.rateText!)), height: BUBBLE_D + LABEL_LINE_H + LABEL_PAD });
-    expect(bubbleRowSize({ ...row, rateText: null })).toEqual({ width: BUBBLE_D + LABEL_PAD, height: BUBBLE_D + LABEL_PAD });
+    expect(bubbleRowSize(row)).toEqual({ width: Math.max(BUBBLE_D + LABEL_PAD, labelWidth(row.rateText)), height: BUBBLE_D + LABEL_LINE_H + LABEL_PAD });
+    // The text's row is kept for every line, an unknown one's "?/min" too: showing it on hover moves nothing.
+    expect(bubbleRowSize(bubbleRow(flow("Desc_A_C", "A", null))).height).toBe(BUBBLE_D + LABEL_LINE_H + LABEL_PAD);
+    const wide = bubbleRow(flow("Desc_A_C", "A", 1234567.8));
+    expect(bubbleRowSize(wide).width).toBe(Math.max(BUBBLE_D + LABEL_PAD, labelWidth("1,234,567.8/min")));
   });
 });
 

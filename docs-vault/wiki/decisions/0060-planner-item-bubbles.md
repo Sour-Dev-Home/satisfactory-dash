@@ -8,6 +8,10 @@ independent `architecture-advisor` review of the planner code on `main` after #7
 fallback when its two end labels do not fit (Decision 1; the box stays reserved, the "+k" chip goes with the flag);
 dimming is by colour tokens, not `--opacity-graph-dim` (Decision 2's look; the hop-1 rule is unchanged).
 
+**Amended by ADR-0063's amendment of 2026-11-03 (owner):** Decision 1's rate text under the row is now the short form
+("20/min", "~20/min", "≥20/min", "?/min", a fluid "20 m³/min"; no "mixed" or "excess"), hidden at rest with a mouse and shown
+while its line is highlighted (pointing at the line or either card), always shown on a touch screen; its row stays reserved.
+
 ## Owner answers (2026-10-27)
 
 The owner answered the six open questions of the proposal on 2026-10-27:

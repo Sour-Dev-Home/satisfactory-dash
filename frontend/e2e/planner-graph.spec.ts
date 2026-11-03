@@ -23,7 +23,8 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   // the <title> tooltip keeps the words).
   const ironOre = svg.locator('[data-edge-label]:has([data-bubble="Desc_OreIron_C"])').first();
   await expect(ironOre.locator('[data-bubble] image[href$="-32.webp"], [data-bubble] image[href$="-64.webp"]')).toBeVisible();
-  await expect(ironOre.locator(":scope > text", { hasText: /^120 items\/min$/ })).toBeVisible();
+  // The canvas's short rate (ADR-0063 amendment, 2026-11-03); with a mouse it shows only on hover (its own test below).
+  await expect(ironOre.locator(":scope > text", { hasText: /^120\/min$/ })).toBeAttached();
 
   // Wheel zoom about the pointer, then drag to pan.
   const box = (await svg.boundingBox())!;
@@ -130,6 +131,151 @@ test("an item filter dims the groups it does not reach", async ({ page, mockApi 
   // The recycler (its card) and nothing else of the cards is faded; the edges that miss the item are too.
   await expect(svg.locator("g.opacity-graph-dim", { has: page.locator("title", { hasText: "Iron Plate Recycle" }) }).first()).toBeAttached();
   expect(await svg.locator("g.opacity-graph-dim").count()).toBeGreaterThan(0);
+});
+
+// ADR-0063 amendment (2026-11-03): with a mouse a line's rate label is hidden at rest and fades in while the line is
+// highlighted (pointed at, or one of its cards), and everything else dims, all drawn by the highlight layer over the canvas;
+// a touch screen shows every label at rest. All of it under the production CSP (no inline style), with axe.
+const openIronSite = async (page: Page) => {
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
+  await expect(svg).toBeVisible();
+  return svg;
+};
+const opacityOf = (el: Locator) => el.evaluate((node) => getComputedStyle(node).opacity);
+const rateOf = (label: Locator) => label.locator(":scope > [data-rate]");
+
+test("hovering a line shows its rate and dims the rest; hovering a card lights all its lines", async ({ page, mockApi }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "a mouse's hover; the touch project has its own test");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await mockApi("planner-group-panel");
+  const svg = await openIronSite(page);
+  const layer = page.locator("[data-highlight-layer]");
+  const ironOre = svg.locator('[data-edge-label]:has([data-bubble="Desc_OreIron_C"])').first();
+  const index = await ironOre.getAttribute("data-edge-label");
+  // At rest: no rate shows, nothing is dimmed, and the highlight layer is clear. It lies exactly over the canvas, as its own
+  // compositing layer.
+  for (const rate of await svg.locator("[data-rate]").all()) expect(await opacityOf(rate)).toBe("0");
+  await expect(svg.locator("g.opacity-graph-dim")).toHaveCount(0);
+  expect(await opacityOf(layer)).toBe("0");
+  const [canvasBox, layerBox] = await Promise.all([svg.boundingBox(), layer.boundingBox()]);
+  for (const k of ["x", "y", "width", "height"] as const) expect(Math.abs(layerBox![k] - canvasBox![k]), k).toBeLessThan(0.5);
+  expect(await layer.evaluate((el) => getComputedStyle(el).willChange)).toBe("transform");
+  const before = await ironOre.boundingBox();
+
+  // The line (here its bubbles): the layer fades in (its own opacity, by the motion token) with the cover over everything
+  // else and the line's rate on top, rising in.
+  await ironOre.hover();
+  await expect(layer).toHaveAttribute("data-highlight", "dim");
+  expect(await layer.evaluate((el) => getComputedStyle(el).transitionDuration)).not.toBe("0s");
+  await expect.poll(() => opacityOf(layer)).toBe("1");
+  const lit = layer.locator("[data-highlight-rate]");
+  await expect(lit).toHaveCount(1);
+  await expect(lit).toHaveAttribute("data-highlight-rate", index!);
+  await expect(lit).toHaveText("120/min");
+  expect(await layer.locator("[data-highlight-cover]").evaluate((el) => getComputedStyle(el).opacity)).toBe("0.75");
+  // The canvas is not touched: nothing in it changed opacity, and nothing moved (the label's room was reserved).
+  const other = svg.locator(`[data-edge-layer="lines"] [data-edge]:not([data-edge="${index}"])`).first();
+  expect(await opacityOf(other)).toBe("1");
+  expect(await opacityOf(rateOf(ironOre))).toBe("0");
+  expect(await ironOre.boundingBox()).toEqual(before);
+  await expectNoAxeViolations(page, testInfo);
+
+  // A card: every line in or out of it is lit, each with its rate.
+  const constructor = svg.locator("g[data-card]", { has: page.locator(":scope > title", { hasText: /^8× Constructor/ }) });
+  // Its lower half: the count badge sits on its top edge.
+  const card = (await constructor.boundingBox())!;
+  await page.mouse.move(card.x + card.width / 2, card.y + card.height * 0.7);
+  await expect.poll(() => lit.count()).toBeGreaterThan(1);
+  for (const text of await lit.allTextContents()) expect(text).toMatch(/^(~|≥)?[\d,.]+( m³)?\/min$|^\?\/min$/);
+
+  // Off the canvas: back to rest.
+  await page.mouse.move(0, 0);
+  await expect(layer).not.toHaveAttribute("data-highlight", /.*/);
+  await expect.poll(() => opacityOf(layer)).toBe("0");
+  await expect(svg.locator("[style]")).toHaveCount(0);
+  await expect(layer.locator("[style]")).toHaveCount(0);
+});
+
+test("under reduced motion a hovered line's rate appears at once, with no transition", async ({ page, mockApi }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "a mouse's hover");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await mockApi("planner-group-panel");
+  const svg = await openIronSite(page);
+  const layer = page.locator("[data-highlight-layer]");
+  expect(await layer.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
+  await svg.locator('[data-edge-label]:has([data-bubble="Desc_OreIron_C"])').first().hover();
+  await expect(layer).toHaveAttribute("data-highlight", "dim");
+  expect(await opacityOf(layer)).toBe("1");
+  const rates = layer.locator("[data-highlight-rates]");
+  expect(await rates.evaluate((el) => getComputedStyle(el).animationDuration)).toBe("0s");
+  expect(await opacityOf(rates)).toBe("1");
+});
+
+test("a touch screen shows every line's rate at rest, and a tap changes no highlight", async ({ page, mockApi }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "the touch-emulated project");
+  await mockApi("planner-group-panel");
+  const svg = await openIronSite(page);
+  expect(await page.evaluate(() => matchMedia("(hover: hover) and (pointer: fine)").matches)).toBe(false);
+  const rates = svg.locator("[data-rate]");
+  expect(await rates.count()).toBeGreaterThan(0);
+  for (const rate of await rates.all()) expect(await opacityOf(rate)).toBe("1");
+  await expect(rates.filter({ hasText: /^120\/min$/ })).toHaveCount(1);
+  await expectNoAxeViolations(page, testInfo);
+});
+
+// The highlight's cost: pointing from card to card on the 160-group, 210-line site, against the same view at rest (Motion
+// Off, so only the highlight paints), zoomed out so every line is in view. A highlight never re-renders or repaints the
+// canvas: the highlight layer over it draws the cover and the rates, and fades as its own compositing layer. Recorded as
+// `hover-frame-times.json`; held to the march layer's regression bound on desktop (ADR-0062 amendment build PR 3).
+test("pointing from card to card records its frame times (210 lines)", async ({ page, mockApi }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "a mouse's hover");
+  test.setTimeout(90_000);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await mockApi("planner-large");
+  await page.goto("/app/planner");
+  await page.getByRole("button", { name: "Open site: Large site" }).click();
+  await page.getByRole("button", { name: "Graph", exact: true }).click();
+  const svg = page.getByRole("img", { name: /^Graph of Large site/ });
+  await expect(svg).toBeVisible({ timeout: 15_000 });
+  await page.getByLabel("Motion").selectOption("off");
+  await expect(page.locator("[data-march-layer]")).toHaveCount(0);
+  // Zoomed out so every line is in view, as the marching test's worst case: the most a repaint of the canvas costs.
+  await page.getByRole("group", { name: /^Graph viewport/ }).focus();
+  for (let i = 0; i < 12; i++) await page.keyboard.press("Minus");
+  const box = (await svg.boundingBox())!;
+  // Each card's lower middle (its top edge holds the count badge), wherever that point is in the canvas.
+  const inView = (p: { x: number; y: number }) => p.x > box.x + 8 && p.y > box.y + 8 && p.x < box.x + box.width - 8 && p.y < box.y + box.height - 8;
+  const centres: { x: number; y: number }[] = [];
+  for (const card of await svg.locator("g[data-card]").all()) {
+    const b = await card.boundingBox();
+    const p = b === null ? null : { x: b.x + b.width / 2, y: b.y + b.height * 0.7 };
+    if (p !== null && inView(p)) centres.push(p);
+    if (centres.length >= 12) break;
+  }
+  expect(centres.length).toBeGreaterThan(3);
+  await page.mouse.move(box.x + 2, box.y + 2);
+  const rest = frameSummary(await frameTimes(page, 2_000));
+
+  let changes = 0;
+  const measuring = frameTimes(page, 2_000);
+  const started = Date.now();
+  while (Date.now() - started < 1_900) {
+    const c = centres[changes % centres.length]!;
+    await page.mouse.move(c.x, c.y);
+    changes++;
+    await page.waitForTimeout(100);
+  }
+  const hovering = frameSummary(await measuring);
+  await expect(page.locator("[data-highlight-layer]")).toHaveAttribute("data-highlight", "dim");
+
+  const result = { project: testInfo.project.name, lines: await svg.locator('[data-edge-layer="lines"] [data-edge]').count(), changes, frameMs: { rest, hovering } };
+  await testInfo.attach("hover-frame-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
+  console.info(`[ADR-0063 amendment hover frame times] ${JSON.stringify(result)}`);
+  for (const run of [rest, hovering]) expect(run.frames).toBeGreaterThan(10);
+  expect(hovering.p95, JSON.stringify(result.frameMs)).toBeLessThanOrEqual(2 * rest.p95 + 17);
 });
 
 // ADR-0055 PR 8a: the factory canvas under the production CSP (the guards fixture fails the test on any violation).

@@ -5,6 +5,11 @@ Status: **Accepted** (owner, 2026-11-01): the owner approved the direction and t
 plan says which PR waits for which answer. Paths are relative to `frontend/src/planner/graph/` unless they say otherwise.
 Docs only: nothing here is built yet. No contract change.
 
+**Amended 2026-11-03 (owner): rates on hover and the highlight.** The canvas's rate label is short ("~20/min"), hidden at
+rest with a mouse and shown while its line is highlighted (pointing at the line or either of its cards, or the keyboard on
+one), when everything else dims; a touch screen shows every label at rest. Built in the same PR as the amendment. See
+"Amendment, 2026-11-03" at the end; it changes Decision 2's label words, Decision 3's states and the build plan.
+
 ## Owner input (2026-11-01)
 
 The owner looked at reference screenshots of another tool's production graph and picked three patterns for the
@@ -353,11 +358,12 @@ is not flagged: it changes how the two existing dim states look (an accessibilit
 
 | # | PR | Files | Proof | Demo data |
 |---|---|---|---|---|
-| 1 | Dim tokens and `focusSet` | `index.css` (`--color-graph-dim-line`, drop `--opacity-graph-dim`), `focusSet.ts` with states 1 and 3 only (today's), every user of the opacity token: `SiteGraph.tsx` (lines, march strokes, moving glyphs, labels, cards, machine frames), `DestinationCaps.tsx`, and the tests that read it (`SiteGraph.test.tsx`, `SiteGraph.focus.test.tsx`, `SiteGraph.marchLayer.hunt.test.tsx`, `e2e/planner-graph.spec.ts`); contrast test | Unit tests of `focusSet`; contrast at 4.5:1 for dimmed text and 3:1 for the dim line on canvas and surface; the item-filter baselines change in this PR (not flagged); item focus, still behind `planner.itemFocus`, by its RTL test; lit and dimmed clearly apart on the screenshots (Decision 3); `ui-reviewer`, `test-hunter` | None new |
+| 0 | Rates on hover and the highlight (the amendment of 2026-11-03; **built**) | `plannerText.ts` (`shortRateText`), `bubbleRow.ts`, `layoutSite.ts` (`bubbleRowSize` keeps the rate row), `lineHighlight.ts`, `HighlightLayer.tsx`, `SiteGraph.tsx` (`[data-rate]`, `[data-line-hit]`, `data-hl-edge`/`data-hl-node`, the legend row), `index.css` (`--opacity-graph-cover`, `[data-rate]` hidden at rest with a mouse) | Unit tests of the format and the highlight; RTL: the canvas untouched by a hover; e2e: hover a line and a card, reduced motion, touch at rest, hover frame times on `planner-large`; `ui-reviewer`, `test-hunter` | None new (the demo is not flagged) |
+| 1 | Dim tokens and `focusSet` | `index.css` (`--color-graph-dim-line`, drop `--opacity-graph-dim`), `focusSet.ts` with states 1, 3 and the highlight (3a, the amendment) only (today's), every user of the opacity token: `SiteGraph.tsx` (lines, march strokes, moving glyphs, labels, cards, machine frames), `DestinationCaps.tsx`, `HighlightLayer.tsx` (its cover and `--opacity-graph-cover`: see the amendment's "When build PR 1 lands"), and the tests that read it (`SiteGraph.test.tsx`, `SiteGraph.focus.test.tsx`, `SiteGraph.marchLayer.hunt.test.tsx`, `SiteGraph.highlight.test.tsx`, `e2e/planner-graph.spec.ts`); contrast test | Unit tests of `focusSet`; contrast at 4.5:1 for dimmed text and 3:1 for the dim line on canvas and surface; the item-filter baselines change in this PR (not flagged); item focus, still behind `planner.itemFocus`, by its RTL test; lit and dimmed clearly apart on the screenshots (Decision 3); the hover frame-time bound still holds; `ui-reviewer`, `test-hunter` | None new |
 | 2 | Ports: model, layout and drawing | `ports.ts` (pure: sides from `returnFlows`, the fold to "+N", order by the router), `canvasScene.ts` (`bundleFlows` and `edgeKeyOf` by item when the flag is on), `layoutSite.ts` (`cardSize`, peer rule), `orthogonalRoute.ts` (sides as input, ends at port heights, same-port levels in `free`, track ties), `SiteGraph.tsx` (port discs, both arrowhead forms behind the flag, trims from the disc's edge, the stop bar at the port), `marching.ts` (`marchHoles`), `plannerPrefs.ts` (the flag), `frontend-planner-map.md` | Unit tests: one port per item per side, return ports, "+N" past 6, one line per item; ADR-0059's metrics test with ports on (no edge through a card, crossings within 10%); the layout benchmarks recorded here; flag off draws exactly today's canvas (baselines unchanged); `test-hunter`, `ui-reviewer` | Demo world: a group with 7 inputs (the fold), a fan-out, a loop, a train on a port |
-| 3 | End labels and the fallback | `endLabels.ts` (pure: label words, bands, `endLabelFit`), `layoutSite.ts` (bands to dagre, the off-centre card in its box), `orthogonalRoute.ts` (left and right column reach, tracks and straightening outside the bands), `SiteGraph.tsx` (labels, the empty middle box, fallback bubbles, level of detail), the port-line list in the overlay | Unit tests of the fit rule (a long line gets two labels, a squeezed one its bubble, the grid none) and of the `PORT_PITCH` inequality; no label meets a card, cap, pill or other label on the dense scenes; picture width recorded; layout benchmarks again; `test-hunter`, `ui-reviewer` | A pair of cards in a narrow frame (the fallback), an unknown-item line |
+| 3 | End labels and the fallback (the rate row in `shortRateText`'s form and shown only while highlighted with a mouse, per the amendment) | `endLabels.ts` (pure: label words, bands, `endLabelFit`), `layoutSite.ts` (bands to dagre, the off-centre card in its box), `orthogonalRoute.ts` (left and right column reach, tracks and straightening outside the bands), `SiteGraph.tsx` (labels, the empty middle box, fallback bubbles, level of detail), the port-line list in the overlay | Unit tests of the fit rule (a long line gets two labels, a squeezed one its bubble, the grid none) and of the `PORT_PITCH` inequality; no label meets a card, cap, pill or other label on the dense scenes; picture width recorded; layout benchmarks again; `test-hunter`, `ui-reviewer` | A pair of cards in a narrow frame (the fallback), an unknown-item line |
 | 4 | Motion, focus targets and frame times | `marching.ts`, `capLayout.ts` and `glyphMotion.ts` (lit candidates only), `ItemFocusLayer.tsx` (stops unchanged; the port-line list's Escape), e2e frame-time and pan-zoom records | The regression bound with ports on; keyboard reaches every line with labels drawn; axe | `planner-large` with the flag on |
-| 5 | Focus states and the legend | `focusSet.ts` (states 2, 4, 5 and emphasis, per the owner's answers), `graphModel.ts` (`reachFromCard`), `GroupPanel.tsx` ("Show what ... feeds and needs"), the status line, `Legend` rows | Unit tests per state and their order; e2e states `planner-dim-context`, `planner-dim-select`, `planner-dim-path`; axe with dimmed text; `ui-reviewer` | Demo factory with a group outside its home site |
+| 5 | Focus states and the legend | `focusSet.ts` (states 2, 4, 5 and emphasis, per the owner's answers, ordered after the highlight 3a), `graphModel.ts` (`reachFromCard`), `GroupPanel.tsx` ("Show what ... feeds and needs"), the status line, `Legend` rows | Unit tests per state and their order; e2e states `planner-dim-context`, `planner-dim-select`, `planner-dim-path`; axe with dimmed text; `ui-reviewer` | Demo factory with a group outside its home site |
 | 6 | Demo and review | demo world, e2e states (`planner-ports`, `planner-ports-overview`, `planner-ports-fallback`), baselines in CI's image (`npm run baselines`) | `ui-reviewer`; the owner reviews on the demo | The demo's own world, never the fixtures |
 | 7 | Flag removed | `plannerPrefs.ts`, every flag-off branch, the "+k" chip and its list (ADR-0060 build PR 2's chip), this ADR's note | After the owner's demo review only; baselines | — |
 
@@ -428,3 +434,116 @@ Question 5 is still open; build PR 2 builds both forms behind the flag, and the 
 - Fallback bubbles turn out common on real saves (the fit failing often): look at the band rule before adding a second
   placement pass.
 - Free dragging or routing around cards comes off hold.
+
+## Amendment, 2026-11-03: rates on hover, and the highlight
+
+Status: **Accepted** (owner, 2026-11-03), built in the same PR. The owner's words: "Can we remove the about x/minute text and
+instead when the line is highlighted (scrubbing over the line [or] either connected card) should do the dimming on the rest
+like we said earlier, and also a transparent text eases in from behind the line and becomes opaque. No 'about' also. Just use
+~20/min, no per either." The owner's picks the same day: the rate fades in **once, in the middle of the line** (next to its
+item bubble), not at both ends; on **touch** devices (no hover) the rate text **always shows at rest**; an unknown rate shows
+**"?/min"**. Ports and end labels (build PRs 2 and 3) are not part of this.
+
+**What it amends.** ADR-0060 Decision 1's rate text under the bubble row, always drawn and in words ("about 120 items/min ·
+mixed"); Decision 2 above ("What a label says": the end labels' rate in `aggregateRateText`'s words), whose rate row now
+takes this short form and the same visibility rule; Decision 3's table, which gains the highlight as a state; Decision 4's
+"nothing here animates except the dim colour transition", which gains the highlight's fade.
+
+### Decisions
+
+1. **The short form, on the canvas only** (`shortRateText`, `plannerText.ts`):
+
+   | Rate | Canvas label | Why |
+   |---|---|---|
+   | Measured | `20/min` | The number and "/min"; no "items", no "per". |
+   | Estimated | `~20/min` | The owner's form. |
+   | At least (a sum with a part missing, ADR-0053 Decision 3) | `≥20/min` | The quality exists (`summedQuality`), and a lower bound is not an estimate: "~" would claim the sum is near the truth when it may be far under. |
+   | Unknown (no number, whatever the quality says) | `?/min` | The owner's pick. Before, an unknown line drew no rate text. |
+   | Fluid | `20 m³/min`, `~20 m³/min`, `≥20 m³/min`; unknown `?/min` | A fluid keeps its unit. Items and m³ are never compared or added (ADR-0053 Decision 3, `rateStep`'s per-unit steps), and the pipe's blue would otherwise be the only thing telling "20" of fluid from "20" items, and colour is never the only carrier (ADR-0062). Items are the default, so they drop theirs. |
+
+   The number rounds as the words do (`formatAmount`: one decimal, thousands grouped). "Mixed" and "excess" are no longer
+   drawn beside it: the mixed line's warn rails say mixed, and both words stay in the line's `<title>`, its button and the
+   outline (as Decision 2 already ruled for end labels).
+
+2. **Words everywhere else.** "~" reads as "tilde" and "≥" as "greater than or equal" aloud, so the short form is only the
+   label drawn on a line. Screen-reader text, `<title>`s, the bubbles' and caps' buttons, the outline, the item card and the
+   legend's words keep `aggregateRateText` ("about 20 items/min", "at least ...", "rate unknown"). The legend's new row
+   shows the four forms as drawn (`aria-hidden`) beside a visually hidden sentence in words.
+
+3. **When the label shows.** With a mouse or trackpad (`(hover: hover) and (pointer: fine)`) the canvas never shows it at
+   rest; it rises in while its line is highlighted. On a touch screen (no hover) every label shows at rest, as before. The
+   label's row is reserved in every line's box either way (`bubbleRowSize` always counts it, "?/min" included), so showing
+   it moves nothing, and the layout does not depend on the device.
+
+4. **What highlights, and what it lights.** The mouse over a line (its label and bubbles, or a transparent 12-unit stroke over
+   the line, `LINE_HIT_W`, so a 2-unit line is easy to point at), the mouse over a card, the keyboard on a card's button, or
+   the keyboard on a line's bubble (the bubble stops exist with `planner.itemFocus` on). A line lights itself and its two
+   cards. **A card lights every line in or out of it, each with its rate, and their far cards** (hop-1, ADR-0060's rule
+   and state 4's): the owner named "either connected card" as a way to highlight a line, and a card is connected to all of
+   its lines, so picking one of them would be arbitrary; seeing every rate in and out of a card is also the question a
+   pointed-at card asks. Everything else dims. Touch and pen pointers do not highlight (a tap stays a click, and touch
+   already shows the rates). A drag or pinch in progress does not change it; a make-room glide turns it off.
+
+5. **How it dims.** ADR-0063 build PR 1's dim colours are not built yet, so the look is today's `--opacity-graph-dim` (a
+   quarter of the thing over the canvas colour), as item focus draws it. It is drawn without touching the canvas: a cover in
+   the canvas colour (`fill-surface`) at a new token `--opacity-graph-cover` (0.75, one minus the dim) over everything,
+   with a hole for each lit card (its edge badge and pills, a bubble's pile: `marchHoles`), each lit label pill and each lit
+   line (its route stroked 10 wide, 13 for a stalled line's stop bar, 28 for a transport's glyph). A quarter of the thing
+   plus three quarters of the canvas colour is the same colour either way. The march layer is under the cover, so a
+   dimmed line's marching dims too.
+
+6. **Precedence (Decision 3's order).** The highlight is state **3a**: after item focus (1) and the item filter (3), before
+   a card selected (4). Item focus and the item filter own the dimming: while either is on, a highlight draws only the
+   lit lines' rates, no cover (`labels` mode). Lasso, Select mode and picks change nothing, as before.
+
+7. **Motion.** The highlight layer fades in and out by its own opacity (`transition-opacity`, `--duration-fast`), and a new
+   target's rates rise in (`animate-reveal`: opacity and `--spacing-motion-rise`, keyed by the target, so moving from one
+   card to the next fades the new rates in). Both are motion tokens, zeroed under reduced motion: the rates then just
+   appear. It is not a continuous animation, so the Motion control does not govern it.
+
+8. **Off the canvas's repaint path** (ADR-0062 amendment build PR 3's rule). The first cut put the label's fade and the dim
+   in the canvas (attributes on the drawn elements and CSS). Any opacity change in the canvas `<svg>` repaints the whole
+   canvas for every frame it runs. So the highlight moved to **`HighlightLayer`**, a third `<svg>` after the march layer,
+   with the canvas's box, viewBox and pan and zoom (as `MarchLayer`), `aria-hidden`, `pointer-events-none` and
+   `will-change-transform` (its own compositing layer), always mounted. It draws the cover and the lit lines' rates (at
+   `rateAnchor`, the canvas's own spot for the rate). The pointer's target is held in a small store (`pointerStore`,
+   `lineHighlight.ts`) that only this layer reads, so pointing re-renders that layer and never the canvas, never re-runs
+   layout, and writes nothing into the canvas (the RTL test compares the canvas's markup before and after).
+   **Measured** (dev box, headless Chromium, `planner-large` zoomed out so all 210 lines are in view, Motion Off, a new card
+   every 100 ms over 2 s; p95 frame ms, at rest 16.7 in every row):
+
+   | CPU | In the canvas (first cut) | In the canvas, reduced motion | Highlight layer | Highlight layer, reduced motion |
+   |---|---|---|---|---|
+   | 1x | 16.8 | — | 16.8 | — |
+   | 4x throttle | 50.0 (max 116.6) | 33.3 | 33.3 (max 33.4) | 33.3 |
+   | 8x throttle | 149.9 (max 300) | 116.7 | 100 (max 100) | 133.3 |
+
+   In the canvas the fade cost a frame more than the change itself (50 against 33.3 at 4x); in the layer it costs nothing
+   over the change (33.3 either way). The 8x rows have only 3 to 4 changes each and are noisy. The e2e test ("pointing from
+   card to card records its frame times", `hover-frame-times.json`) holds the march layer's regression bound (p95 at most
+   twice the rest's plus 17 ms) on desktop; CI's software-raster number comes with this PR's e2e run.
+
+9. **No flag.** It changes how a rate reads and adds a hover; nothing is removed from any text path and touch keeps today's
+   behaviour, so it ships unflagged and the demo (the same component) shows it.
+
+10. **Layout.** No dagre or router change. Every line's box keeps its rate row; the short text is narrower than the words,
+    so most boxes and pictures get narrower, and an unknown line's box gains the row it lacked. One fix this surfaced: a
+    route can run a little below dagre's box (a self-loop under a lone card, half a unit), so the layout's height now
+    grows to hold every route instead of clipping it.
+
+### When build PR 1 lands
+
+The cover is the opacity dim drawn another way, so it goes with `--opacity-graph-dim`. PR 1 makes the highlight state 3a of
+`focusSet` and must keep it off the canvas's repaint path: either the layer's cover takes the dim look (a cover cannot grey
+a line's hue, so the likely form is dimmed things redrawn grey in the layer, or a canvas class change with **no**
+transition, one repaint per change), measured with the hover frame-time test before choosing.
+
+### Screenshots
+
+Every Planner state that draws the canvas changes: at 1440 px the rates are gone at rest (screenshots point at nothing), at
+both widths the boxes and pictures are narrower (short text), unknown lines show "?/min" (390 px) and the legend has the new
+row. The outline-only states (390 px states that open on the outline) do not change.
+
+### Review
+
+`ui-reviewer` and `test-hunter` (fresh), before the PR: see the PR description.

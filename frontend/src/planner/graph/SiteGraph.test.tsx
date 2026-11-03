@@ -343,7 +343,7 @@ describe("the graph's readable chrome", () => {
     // One bubble per item, the faster first, over the summed rate (ADR-0060 Decision 1).
     const label = [...svg.querySelectorAll("[data-edge-label]")].find((g) => g.querySelectorAll("[data-bubble]").length === 2)!;
     expect([...label.querySelectorAll("[data-bubble]")].map((b) => b.getAttribute("data-bubble"))).toEqual(["Desc_OreIron_C", "Desc_Stone_C"]);
-    expect(label.querySelector(":scope > text")?.textContent).toBe("150 items/min");
+    expect(label.querySelector(":scope > text")?.textContent).toBe("150/min");
     const title = label.querySelector("title")!.textContent!;
     expect(title).toContain("2 links, medium: Iron Ore · 120 items/min (measured); Limestone · 30 items/min (measured)");
     // The summary still counts every link; the lines layer draws one line fewer.
@@ -362,11 +362,11 @@ describe("the graph's readable chrome", () => {
   it("draws card text at the readable sizes, and edge labels as an item bubble over halo rate text with a named class", async () => {
     const svg = await openGraph();
     expect(svg.querySelector("text.text-base.font-semibold")).not.toBeNull();
-    const label = [...svg.querySelectorAll("[data-edge-label] > text")].find((t) => t.textContent === "120 items/min")!;
+    const label = [...svg.querySelectorAll("[data-edge-label] > text")].find((t) => t.textContent === "120/min")!;
     expect(label).toHaveClass("text-sm", "paint-stroke-first");
     // The item is its icon, and its name is in the tooltip, not printed.
     const row = label.closest("[data-edge-label]")!;
-    expect(row.querySelector('[data-bubble="Desc_OreIron_C"] image')?.getAttribute("href")).toMatch(/\/items\/iron-new-32\.webp$/);
+    expect(row.querySelector('[data-bubble="Desc_OreIron_C"] image')?.getAttribute("href")).toMatch(/\/items\/iron-new-(32|64)\.webp$/);
     expect(row.querySelector("title")?.textContent).toContain("Iron Ore");
     expect(label.getAttribute("class")).not.toContain("[paint-order");
     // One line of plain text under each icon row: nothing is muted any more.

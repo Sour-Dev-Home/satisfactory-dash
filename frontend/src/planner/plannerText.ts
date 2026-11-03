@@ -220,6 +220,25 @@ export function aggregateRateText(flow: Pick<AggregateFlow, "quality" | "ratePer
   return flow.quality === "estimated" ? `about ${text}` : flow.quality === "atLeast" ? `at least ${text}` : text;
 }
 
+/** What a short rate puts before its number, by quality: nothing when measured. */
+const SHORT_RATE_MARK: ReadonlyMap<AggregateFlow["quality"], string> = new Map([
+  ["estimated", "~"],
+  ["atLeast", "≥"],
+]);
+
+/**
+ * A rate in the canvas's short form (ADR-0063 amendment, 2026-11-03): "20/min" measured, "~20/min" estimated, "≥20/min"
+ * for a sum with a part missing, "?/min" with no number; a fluid keeps its unit, "~20 m³/min". Only for the label drawn
+ * on a line: "~" and "≥" read badly aloud, so every text path (titles, buttons, the outline, the legend's words) keeps
+ * `aggregateRateText`'s full words.
+ */
+export function shortRateText(flow: Pick<AggregateFlow, "quality" | "ratePerMinute" | "unit">): string {
+  const rate = flow.ratePerMinute;
+  if (flow.quality === "unknown" || rate === null || !Number.isFinite(rate)) return "?/min";
+  const unit = flow.unit === "m3/min" ? " m³/min" : "/min";
+  return `${SHORT_RATE_MARK.get(flow.quality) ?? ""}${formatAmount(rate)}${unit}`;
+}
+
 const ENDS_ONWARD: ReadonlySet<string> = new Set(["factory", "machine"]);
 const DESTINATION_PHRASE: Record<string, string> = {
   storage: "storage",

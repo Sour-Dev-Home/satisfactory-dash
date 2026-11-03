@@ -255,10 +255,11 @@ export const labelSize = (lines: readonly string[]) => ({
 });
 
 /** The box dagre reserves for a line's bubble row (ADR-0060 Decision 1): as wide as the bubbles or the rate text, as tall
- *  as a bubble plus the text's line. */
-export const bubbleRowSize = (row: BubbleRow) => ({
-  width: Math.max(bubblesWidth(row) + LABEL_PAD, row.rateText === null ? 0 : labelWidth(row.rateText)),
-  height: BUBBLE_D + (row.rateText === null ? 0 : LABEL_LINE_H) + LABEL_PAD,
+ *  as a bubble plus the text's line. The text's room is kept whether it shows or not (ADR-0063 amendment, 2026-11-03: it
+ *  fades in on hover), so showing it never moves anything. */
+export const bubbleRowSize = (row: Pick<BubbleRow, "items" | "more" | "rateText">) => ({
+  width: Math.max(bubblesWidth(row) + LABEL_PAD, labelWidth(row.rateText)),
+  height: BUBBLE_D + LABEL_LINE_H + LABEL_PAD,
 });
 
 type Point = { x: number; y: number };
@@ -609,7 +610,10 @@ function routed(
   const centres = new Map(out.cards.map((c) => [c.key, { x: c.x + c.width / 2, y: c.y + c.height / 2 }]));
   const frames = new Map(frameKeys.map((k, i) => [k, out.frames[i]]));
   const labelAt = out.labels.map((b, i) => (b === undefined ? placed.labelAt[i] : { x: b.x + b.width / 2, y: b.y + b.height / 2 }));
-  return { ...placed, centres, frames, paths: out.paths, labelAt, width: placed.width + out.widened };
+  // A route may run a little below dagre's box (a self-loop under its lone card, by half a unit once its label box changed
+  // size): the picture grows to hold it rather than clip it.
+  const lowest = out.paths.reduce((y, path) => path.reduce((m, p) => Math.max(m, p.y), y), placed.height);
+  return { ...placed, centres, frames, paths: out.paths, labelAt, width: placed.width + out.widened, height: lowest };
 }
 
 /** Where a straight line from a card's centre towards a point leaves the card. */

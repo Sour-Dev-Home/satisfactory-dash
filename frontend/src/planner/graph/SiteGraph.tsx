@@ -28,8 +28,6 @@ import {
   machineSlot,
   machineSlots,
   ICON_TOP,
-  LABEL_LINE_H,
-  LABEL_PAD,
   NODE_PAD_X,
   PILL_H,
   PILL_HIT,
@@ -89,6 +87,8 @@ import { CanvasOverlay } from "./CanvasOverlay";
 import { placeOverlay, screenRect, stageBesideOverlay } from "./overlayPlacement";
 import { useLargeScreen } from "./useWideScreen";
 import { CARD_RX, bubbleCentre, bubbleRowOrigin, itemCardText } from "./itemCardText";
+import { pointerStore, targetAt, type HighlightMode, type HighlightTarget } from "./lineHighlight";
+import { HighlightLayer, rateAnchor } from "./HighlightLayer";
 import { tweenMs, useTween } from "./useTween";
 import { itemIconUrl } from "./itemIcons";
 import {
@@ -177,6 +177,9 @@ const INNER_TRIM_STALLED = 3 + STOP_BAR_GAP;
  */
 const innerDash = (dash: string | undefined) => dash?.split(" ").map((n, i) => Number(n) + (i % 2 === 0 ? -1 : 1)).join(" ");
 const INNER_DASH_OFFSET = -0.5;
+/** How wide a line's invisible pointer target is, in canvas units (ADR-0063 amendment, 2026-11-03): past the widest line
+ *  (a transport's 6), so pointing near a thin line still finds it. */
+const LINE_HIT_W = 12;
 /**
  * Marching dashes (ADR-0062 amendment build PR 3), one class per step, each timed by its `--duration-flow-*` token. An
  * estimated line's own dashes march (and a mixed one's inner dashes with them, in step). A measured line stays solid: pulses
@@ -1116,6 +1119,25 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // Focus is hop-1 (owner answer 1): only the focused line and its two cards stay lit; otherwise the item filter decides.
   const lit = (key: string) => (focus !== null && focusEdge !== undefined ? key === focusEdge.flow.from || key === focusEdge.flow.to : reach === null || reach.nodes.has(key));
   const edgeLit = (e: LaidEdge) => (focus !== null ? edgeKeyOf(e.flow) === focus.edgeKey : reach === null || e.parts.some((i) => reach.edges.has(i)));
+
+  // The highlight (ADR-0063 amendment, 2026-11-03): the line or card under the mouse, else the line whose bubble or the card
+  // whose button the keyboard is on. It lights that line and its cards (a card: all its lines), dims the rest and shows the
+  // lit lines' rates, all drawn by `HighlightLayer` over the canvas. The pointer's target is in a store only that layer
+  // reads, so pointing never re-renders the canvas, re-runs layout or repaints it. Item focus and the item filter own the
+  // dimming: then a highlight only shows the rates.
+  const [hoverStore] = useState(pointerStore);
+  const keyTarget = useMemo((): HighlightTarget | null => {
+    const stopEdge = keyStop === null ? undefined : edgeByKey.get(keyStop.edgeKey);
+    if (stopEdge !== undefined) return { kind: "edge", index: stopEdge.index };
+    return focusKey === null ? null : { kind: "card", key: focusKey };
+  }, [keyStop, focusKey, edgeByKey]);
+  const highlightMode: HighlightMode = focus !== null || reach !== null ? "labels" : "dim";
+  // A mouse only: a touch screen shows every rate at rest, and a tap is a click. Nothing changes while a drag pans.
+  const onPointerOver = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType !== "mouse" || pointers.current.size > 0) return;
+    hoverStore.set(event.target instanceof Element ? targetAt(event.target) : null);
+  };
+  const onPointerLeave = () => hoverStore.set(null);
   const findingsByCard = useMemo(() => {
     const counts = new Map<string, number>();
     if (findings === undefined) return counts;
@@ -1370,6 +1392,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             height={canvasH}
             preserveAspectRatio="xMidYMid meet"
             onPointerDown={onPointerDown}
+            onPointerOver={onPointerOver}
+            onPointerLeave={onPointerLeave}
             onClick={onCanvasClick}
             // A pan must not start a text selection or drag a building icon away as an image.
             onDragStart={(e) => e.preventDefault()}
@@ -1491,6 +1515,22 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               height={canvasH}
             />
           )}
+          <HighlightLayer
+            store={hoverStore}
+            keyTarget={keyTarget}
+            mode={highlightMode}
+            enabled={ghost === null}
+            edges={layout.edges}
+            nodes={layout.nodes}
+            decor={Math.max(BADGE_H, PILL_H)}
+            showRates={detail.full}
+            bounds={{ width: layout.width, height: layout.height }}
+            stage={stage}
+            viewport={viewport}
+            shape={shape}
+            maskId={`${ids}-highlight-mask`}
+            height={canvasH}
+          />
           {/* A fade on each edge the drawing runs past: a cue that there is more, eased in and out. */}
           {FADES.map((f) => (
             <div
@@ -1780,7 +1820,7 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
   const dash = edgeDash(e.flow.rate);
   const underArrow = stroke.double ? DOUBLE_UNDER_ARROW : LINE_UNDER_ARROW;
   return (
-    <g data-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-edge={e.index} data-hl-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
       <path
         d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? underArrow : STOP_BAR_GAP)}
@@ -1812,6 +1852,9 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
           className="stroke-surface"
         />
       )}
+      {/* The pointer's target (ADR-0063 amendment, 2026-11-03): a transparent stroke wider than the line, last so it is the
+          one under the pointer, so a 2-unit line is easy to point at. It draws nothing. */}
+      <path d={roundedOrthogonalPath(e.points)} fill="none" strokeWidth={LINE_HIT_W} data-line-hit="" className="stroke-transparent" />
     </g>
   );
 }
@@ -2001,12 +2044,12 @@ function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }:
   const transport = isTransport(e.flow);
   const stalled = marks ? e.flow.stalled : undefined;
   const row = e.bubbles;
-  const top = e.labelY - e.labelHeight / 2 + LABEL_PAD / 2;
+  const rate = rateAnchor(e);
   // The same geometry the detail card's morph starts from (`bubbleCentre`).
   const { left, cy } = bubbleRowOrigin(e);
   const at = bubbleOffsets(row);
   return (
-    <g data-edge-label={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-edge-label={e.index} data-hl-edge={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
       {/* In the box the layout reserved for it: a pill over its own line, so the line stops at the bubbles. */}
       <rect
@@ -2070,8 +2113,10 @@ function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }:
           )}
         </g>
       )}
-      {detail.full && row.rateText !== null && (
-        <text x={e.textX} y={top + BUBBLE_D + LABEL_LINE_H / 2} textAnchor="middle" dominantBaseline="central" strokeWidth={4} className="fill-fg stroke-surface text-sm paint-stroke-first">
+      {/* The short rate (ADR-0063 amendment, 2026-11-03): shown at rest on a touch screen only (`data-rate`, index.css);
+          with a mouse, `HighlightLayer` draws it here, over the canvas, while the line is highlighted. Its room is kept. */}
+      {detail.full && (
+        <text x={rate.x} y={rate.y} textAnchor="middle" dominantBaseline="central" strokeWidth={4} data-rate="" className="fill-fg stroke-surface text-sm paint-stroke-first">
           {row.rateText}
         </text>
       )}
@@ -2261,6 +2306,7 @@ function CardView({
       onClick={(e) => onActivate(e.shiftKey || e.ctrlKey || e.metaKey)}
       data-card={card.kind}
       data-node={n.key}
+      data-hl-node={n.key}
       data-picked={picked || undefined}
       className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}
     >
@@ -2441,6 +2487,7 @@ function MachinesFrame({
       onClick={(e) => onActivate(e.shiftKey || e.ctrlKey || e.metaKey)}
       data-card={card.kind}
       data-node={n.key}
+      data-hl-node={n.key}
       data-machines-open=""
       data-picked={picked || undefined}
       className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}
@@ -2586,6 +2633,13 @@ function RateLegend() {
             </span>
           ))}
         </span>
+      </li>
+      {/* The canvas's short rates (ADR-0063 amendment, 2026-11-03), shown as drawn but read in words: "~" and "≥" read
+          badly aloud. */}
+      <li data-legend-rates="">
+        <span aria-hidden="true">Rates: 20/min measured, ~20/min about, ≥20/min at least, ?/min unknown.</span>
+        <span className="sr-only">Rates on the lines: a number per minute, marked when it is about, at least, or unknown.</span>{" "}
+        With a mouse, point at a line or a card to show its rates.
       </li>
     </ul>
   );

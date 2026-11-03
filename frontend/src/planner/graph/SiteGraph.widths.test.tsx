@@ -83,7 +83,7 @@ describe("line widths on the canvas", () => {
     const bundle = lineFor(svg, /, 2 links, fast: /);
     expect(bundle.title).toMatch(/120 items\/min.*400 items\/min/);
     const label = svg.querySelector(`[data-edge-label="${bundle.path.parentElement!.getAttribute("data-edge")}"]`)!;
-    expect(label.querySelector(":scope > text")?.textContent).toBe("520 items/min");
+    expect(label.querySelector(":scope > text")?.textContent).toBe("520/min");
     expect(widthOf(bundle.path)).toBe(LINE_W_FAST);
   });
 
