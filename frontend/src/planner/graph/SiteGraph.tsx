@@ -152,7 +152,7 @@ const edgeDash = (rate: CanvasFlow["rate"]) => (rate === "measured" ? undefined 
  * The arrowhead (`markerUnits="userSpaceOnUse"`, so it keeps its size on every width): 8 units long, 8 wide at its base,
  * its viewBox 10 wide. It is placed at its middle (`ARROW_REF_X`) and the line stops `LINE_UNDER_ARROW` short of its end, so
  * the line ends where the head is 4 wide (the widest line) and never blunts the tip; the tip stays 0.8 past the route's
- * end, under the card, as before. A stalled line's stop bar (marks mode) needs no trim: the line ends inside the bar.
+ * end, under the card, as before. A stalled line (marks mode) stops `STOP_BAR_GAP` short instead, and ends inside its bar.
  */
 const ARROW_REF_X = 5;
 const LINE_UNDER_ARROW = 3.2;
@@ -163,9 +163,14 @@ const LINE_UNDER_ARROW = 3.2;
  */
 const DOUBLE_ARROW_REF_X = 2.5;
 const DOUBLE_UNDER_ARROW = 5.2;
+/**
+ * A stalled line (marks mode) stops this far short of the card, so its stop bar stands just outside the card's edge with a
+ * clear gap: "the flow stops here", not a line that runs into the card and looks cut off (owner, 2026-11-03).
+ */
+const STOP_BAR_GAP = 6;
 /** A mixed line's inner stroke stops before the arrowhead's base (7.2 short of the end), or at a stop bar's back (3 short). */
 const INNER_TRIM = 8;
-const INNER_TRIM_STALLED = 3;
+const INNER_TRIM_STALLED = 3 + STOP_BAR_GAP;
 /**
  * A dashed or dotted mixed line's inner dashes: each one unit shorter (its gap one longer) and centred in the line's dash by
  * `INNER_DASH_OFFSET`, so each dash's hole is closed at both ends instead of splitting the dash in two.
@@ -1778,7 +1783,7 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
     <g data-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
       <title>{flowTitle(e.flow, from, to)}</title>
       <path
-        d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? underArrow : 0)}
+        d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? underArrow : STOP_BAR_GAP)}
         fill="none"
         strokeWidth={stroke.width}
         strokeDasharray={dash}
@@ -2601,8 +2606,10 @@ function LegendDoubleLine() {
 function LegendStopBar() {
   return (
     <svg aria-hidden="true" viewBox="0 0 32 12" className="h-3 w-8 shrink-0">
-      <line x1={1} y1={6} x2={28} y2={6} fill="none" strokeWidth={LINE_W_BASE} className="stroke-muted" />
-      <rect x={27} y={0} width={4} height={12} rx={1} data-stop-bar="backedUp" className={cn("fill-current", stateMarkTone("backedUp"))} />
+      <line x1={1} y1={6} x2={24} y2={6} fill="none" strokeWidth={LINE_W_BASE} className="stroke-muted" />
+      <rect x={23} y={0} width={4} height={12} rx={1} data-stop-bar="backedUp" className={cn("fill-current", stateMarkTone("backedUp"))} />
+      {/* The card's edge past the gap, as on the canvas (`STOP_BAR_GAP`). */}
+      <line x1={31} y1={0} x2={31} y2={12} strokeWidth={1} className="stroke-line" />
     </svg>
   );
 }

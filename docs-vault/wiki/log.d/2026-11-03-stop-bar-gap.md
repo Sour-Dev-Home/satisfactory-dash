@@ -1,0 +1,1 @@
+- 2026-11-03 — Planner: a stalled line's stop bar (marks mode, ADR-0062 Decision 2) now stands just outside the card it points at, with a clear gap (`STOP_BAR_GAP`, 6 units), instead of the line running into the card's edge with the bar on it, which read as a cut-off line (owner's pick, 2026-11-03). The legend's stop-bar sample shows the gap and a card edge.
