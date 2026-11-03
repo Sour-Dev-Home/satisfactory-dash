@@ -48,6 +48,7 @@ import { navFadeClass, revealActiveTab } from "./navFade";
 import { whenIdle } from "../lib/idle";
 import { pageQueries, paletteQueries, prefetchFresh } from "./pageQueries";
 import { visibleTabs } from "./tabs";
+import { offersDevAgent, senderWords } from "../agent/agentText";
 
 type PaletteModule = { default: ComponentType<{ onDone: () => void }> };
 
@@ -498,7 +499,7 @@ export function Shell() {
                     the user to another server. */}
                 <AutoPauseView key={server.id} />
               </Section>
-              <Section label="Game PC agent" probe="agent">
+              <Section label={senderWords(offersDevAgent(canManageServers)).heading} probe="agent">
                 {/* Keyed by server: an enrolment code is for one server and must never follow the user. */}
                 <AgentSettings key={server.id} />
               </Section>

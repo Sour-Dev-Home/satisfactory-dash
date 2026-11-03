@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, useLocation } from "react-router";
 import { describe, expect, it } from "vitest";
@@ -179,7 +179,7 @@ describe("Add your server", () => {
     );
     renderSettings();
     expect(await screen.findByRole("heading", { name: "Add your first server", level: 2 })).toBeInTheDocument();
-    expect(screen.getByText(/Name it, get a code, paste it on the game PC/)).toBeInTheDocument();
+    expect(screen.getByText(/Name it, get a code, paste it into the mod's config on the game server/)).toBeInTheDocument();
     expect(screen.getByLabelText("Server name")).toHaveAttribute("placeholder", "e.g. Our factory");
     // No shell here, so the account menu is: a signed-in player can always sign out.
     expect(screen.getByRole("button", { name: "Account" })).toBeInTheDocument();
@@ -213,7 +213,7 @@ describe("the owner's controls", () => {
     serveList({ servers: [enrolledServer], selfServeEnabled: false });
     renderSettings();
     expect(await screen.findByRole("button", { name: "Rename My first world" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remove My first world from Satisfactory Dash" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove My first world from Satis Manager" })).toBeInTheDocument();
   });
 
   it("tells the owner of a never-enrolled server it is removed after 24 hours", async () => {
@@ -293,18 +293,18 @@ describe("the owner's controls", () => {
       }),
     );
     renderSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satisfactory Dash" }));
-    const group = screen.getByRole("form", { name: "Confirm removing My first world from Satisfactory Dash" });
-    expect(group).toHaveTextContent(/Removing takes this server off Satisfactory Dash for good/);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satis Manager" }));
+    const group = screen.getByRole("form", { name: "Confirm removing My first world from Satis Manager" });
+    expect(group).toHaveTextContent(/Removing takes this server off Satis Manager for good/);
     expect(group).toHaveTextContent(/Its history and alerts/);
     expect(group).toHaveTextContent(/Its push settings and members/);
     expect(group).toHaveTextContent(/This can't be undone./);
     expect(group).toHaveTextContent(/Your game and its saves are never touched: nothing on your game PC changes./);
-    // ADR-0047 amendment: a server is removed from Satisfactory Dash, never "deleted".
+    // ADR-0047 amendment: a server is removed from Satis Manager, never "deleted".
     expect(group).not.toHaveTextContent(/delet/i);
     expect(group).toHaveTextContent(/must match exactly, capital letters included/);
     expect(screen.getByLabelText(/Type My first world to confirm/)).toHaveAccessibleDescription(expect.stringContaining("must match exactly"));
-    const confirm = screen.getByRole("button", { name: "Remove from Satisfactory Dash" });
+    const confirm = screen.getByRole("button", { name: "Remove from Satis Manager" });
     expect(confirm).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/Type My first world to confirm/), { target: { value: "My first" } });
     expect(confirm).toBeDisabled();
@@ -322,10 +322,10 @@ describe("the owner's controls", () => {
     let deletes = 0;
     server.use(http.delete(endpoints.serverManagement.remove.route, () => ((deletes += 1), HttpResponse.json({ deleted: true }))));
     renderSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satisfactory Dash" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satis Manager" }));
     expect(screen.getByText(/Removing takes this server off/).parentElement).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Remove My first world from Satisfactory Dash" })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove My first world from Satis Manager" })).toHaveFocus());
     expect(deletes).toBe(0);
   });
 
@@ -337,9 +337,9 @@ describe("the owner's controls", () => {
       ),
     );
     renderSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satisfactory Dash" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove My first world from Satis Manager" }));
     fireEvent.change(screen.getByLabelText(/Type My first world to confirm/), { target: { value: "My first world" } });
-    fireEvent.click(screen.getByRole("button", { name: "Remove from Satisfactory Dash" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove from Satis Manager" }));
     expect(await screen.findByText("Only the owner of a server you added can do that.")).toBeInTheDocument();
     expect(screen.getByText("selected: My first world")).toBeInTheDocument();
   });
@@ -369,12 +369,32 @@ describe("the enrolment instructions", () => {
     expect(screen.getByText("enrollmentCode")).toBeInTheDocument();
     expect(screen.getByText(/12 characters, works once and lasts 10 minutes/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create enrolment code" })).toBeInTheDocument();
+    // ADR-0051: the mod re-reads its config, so nothing tells the player to (re)start the server.
+    expect(guide).toHaveTextContent(/so there is no need to restart it/);
+    expect(guide).not.toHaveTextContent(/start the game server/);
+    // Owner, 2026-11-03: the mod is the only way a player connects; the agent's step and its notice are development-only.
+    expect(guide).not.toHaveTextContent(/agent app/);
+    expect(screen.queryByRole("heading", { name: "Tell your players" })).not.toBeInTheDocument();
+  });
+
+  it("add the agent's step and the players notice for the operator only", async () => {
+    serveList({ servers: [pendingServer], selfServeEnabled: true, canManageServers: true });
+    server.use(
+      http.get(endpoints.agent.status.route, () =>
+        HttpResponse.json({ enrolled: false, connectionKind: "agent", lastSeenAt: null, agentVersion: null }),
+      ),
+    );
+    renderAgent();
+    const guide = (await screen.findByText("Connect your game server")).closest("details")!;
+    expect(guide).toHaveTextContent(/For development, with the agent app instead: run the command shown with the code\./);
+    expect(within(guide).getByRole("heading", { name: "Tell your players" })).toBeInTheDocument();
+    expect(guide).toHaveTextContent(/FactoryGame\/Configs\/SatisDashAgent\.cfg/);
   });
 
   it("are not shown for an operator's server", async () => {
     serveList({ servers: [operatorServer], selfServeEnabled: true });
     renderAgent();
-    await screen.findByText("Game PC agent");
+    await screen.findByText("Satis Manager mod");
     await screen.findByText(/Reached/);
     expect(screen.queryByText("Connect your game server")).not.toBeInTheDocument();
   });

@@ -21,6 +21,11 @@ describe("PlayerNotice", () => {
     expect(screen.getByText(PLAYER_NOTICE)).toBeInTheDocument();
   });
 
+  it("names the product by its one name, Satis Manager (owner, 2026-11-03)", () => {
+    expect(PLAYER_NOTICE).toMatch(/^This server is connected to Satis Manager, /);
+    expect(PLAYER_NOTICE).not.toMatch(/Satisfactory Dash/);
+  });
+
   it("says the names are live and not stored", () => {
     render(<PlayerNotice />);
     expect(screen.getByText(/Names are shown live and are not stored\./)).toBeInTheDocument();

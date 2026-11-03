@@ -60,7 +60,7 @@ describe("leaving a server", () => {
     expect(res.status).toBe(409);
     const { error } = ApiErrorResponseSchema.parse(res.body);
     expect([error.code, error.reason]).toEqual(["would_orphan", "last_owner"]);
-    expect(error.message).toMatch(/Remove it from Satisfactory Dash/);
+    expect(error.message).toMatch(/Remove it from Satis Manager/);
     expect(error.message).not.toMatch(/delete/i);
   });
 

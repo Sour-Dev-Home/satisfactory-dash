@@ -2,12 +2,12 @@ import { CopyButton } from "../components/CopyButton";
 
 /** The message the owner pastes into their server's Discord (#530): what the dashboard shows of the players, and that it isn't kept. */
 export const PLAYER_NOTICE =
-  "This server is connected to Satisfactory Dash, a dashboard for the factory. Its members can see the in-game names of players who are online. Names are shown live and are not stored.";
+  "This server is connected to Satis Manager, a dashboard for the factory. Its members can see the in-game names of players who are online. Names are shown live and are not stored.";
 
 /**
  * A ready-made message for the server's players. Only the edge agent reports player names; the mod sends
  * player counts, so the message is optional for a server that connects with the mod alone. Telling the
- * players is the owner's job.
+ * players is the owner's job. Shown only where the agent is offered (`offersDevAgent`, development since 2026-11-03).
  */
 export function PlayerNotice() {
   return (

@@ -161,7 +161,7 @@ export const demoHandlers = [
   ),
   post(endpoints.members.leave.route, ({ params }) =>
     guarded(params, () =>
-      error(409, "would_orphan", "You own this server. Remove it from Satisfactory Dash instead of leaving it.", "last_owner"),
+      error(409, "would_orphan", "You own this server. Remove it from Satis Manager instead of leaving it.", "last_owner"),
     ),
   ),
   get(endpoints.status.route, ({ params }) => guarded(params, () => Response.json(world.status(demoNow())))),

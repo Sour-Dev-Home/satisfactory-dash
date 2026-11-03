@@ -282,7 +282,7 @@ export function formatAlertMessage(input: AlertMessageInput): DiscordPayload {
   const description = cutAt([`**${server}**`, ...lines].join("\n"), MAX_DESCRIPTION);
   const at = Number.isFinite(input.at) ? new Date(input.at) : new Date(0);
   return {
-    username: "Satisfactory Dash",
+    username: "Satis Manager",
     embeds: [
       {
         title: cutAt(title, MAX_TITLE),

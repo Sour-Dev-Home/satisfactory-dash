@@ -29,10 +29,12 @@ export interface GameConnectionView {
 export function gameConnectionView(
   agent: Pick<AgentStatusResponse, "enrolled" | "online" | "gameReachable" | "lastGameReadAt">,
   now: number,
+  /** What sends the data, in a sentence (`SenderWords.noun`). */
+  noun = "the agent",
 ): GameConnectionView | null {
   if (!agent.enrolled || (agent.gameReachable === undefined && agent.lastGameReadAt === undefined)) return null;
-  const lastRead = agent.lastGameReadAt !== undefined ? lastReadText(agent.lastGameReadAt, now) : agent.gameReachable === false ? "not read since the agent started" : null;
-  if (agent.online === false) return { tone: "unknown", label: "Unknown while the agent is offline", lastRead };
+  const lastRead = agent.lastGameReadAt !== undefined ? lastReadText(agent.lastGameReadAt, now) : agent.gameReachable === false ? `not read since ${noun} started` : null;
+  if (agent.online === false) return { tone: "unknown", label: `Unknown while ${noun} is offline`, lastRead };
   if (agent.gameReachable === true) return { tone: "ok", label: "Reachable", lastRead };
   if (agent.gameReachable === false) return { tone: "warn", label: "Not reachable", lastRead };
   return { tone: "unknown", label: "Reachability not reported", lastRead };
@@ -55,10 +57,13 @@ export function agentVersionLine(agentVersion: string | null, modVersion: string
   return modVersion === undefined || modVersion === agentVersion ? versionText(agentVersion) : `${versionText(agentVersion)} · sender ${versionText(modVersion)}`;
 }
 
-/** How the backend reaches the server, in words. An unknown kind is shown as it came. */
-export function connectionText(kind: string): string {
+/**
+ * How the backend reaches the server, in words. An unknown kind is shown as it came. An `agent` server is fed by the
+ * mod or the Node agent; players are only offered the mod (`devAgent` false), so for them it is the mod.
+ */
+export function connectionText(kind: string, devAgent: boolean): string {
   if (kind === "local") return "Directly, from the dashboard's backend";
-  if (kind === "agent") return "Through the game PC's agent";
+  if (kind === "agent") return devAgent ? "Through the game PC's agent" : "Through the Satis Manager mod";
   return kind;
 }
 
@@ -70,6 +75,57 @@ export function connectionText(kind: string): string {
 export function canCreateCode(kind: string, role: ServerSummary["role"], isOperator: boolean): boolean {
   if (kind === "local") return isOperator;
   return role === "owner" || role === "admin";
+}
+
+/**
+ * Whether Settings offers the Node edge agent (its enrol command, its "Tell your players" notice) next to the mod.
+ * Owner, 2026-11-03: only the mod is released; the agent and the server-manager app are for development. So players
+ * get the mod's steps only, and the operator, who develops and runs the agent against this backend, keeps both. The
+ * server list's `canManageServers` decides rather than `import.meta.env.DEV`: the operator needs the command in the
+ * production build too, and this module stays free of build flags (the demo build swaps the transport, not the env).
+ */
+export function offersDevAgent(isOperator: boolean): boolean {
+  return isOperator;
+}
+
+/** The words Settings uses for what sends a server's data: the mod for players, the agent where it is offered. */
+export interface SenderWords {
+  /** The Settings section's heading, its crash-boundary label and its search-palette entry. */
+  heading: string;
+  /** The status row's label ("Mod: Enrolled · Online"). */
+  label: string;
+  versionLabel: string;
+  /** In a sentence: "the mod", "the agent". */
+  noun: string;
+  /** The confirmed revoke button. */
+  revoke: string;
+  /** The confirm group's accessible name. */
+  revokeConfirm: string;
+  /** What revoking does, said before the button. */
+  revokeWarning: string;
+}
+
+const MOD_WORDS: SenderWords = {
+  heading: "Satis Manager mod",
+  label: "Mod",
+  versionLabel: "Mod version",
+  noun: "the mod",
+  revoke: "Revoke the mod's access",
+  revokeConfirm: "Confirm revoking the mod's access",
+  revokeWarning: "The mod's access ends at once. This server then shows no data, and can't be changed, until the mod is enrolled again.",
+};
+const AGENT_WORDS: SenderWords = {
+  heading: "Game PC agent",
+  label: "Agent",
+  versionLabel: "Agent version",
+  noun: "the agent",
+  revoke: "Revoke the agent",
+  revokeConfirm: "Confirm revoking the agent",
+  revokeWarning: "The agent stops working at once. This server then shows no data, and can't be changed, until an agent is enrolled again.",
+};
+
+export function senderWords(devAgent: boolean): SenderWords {
+  return devAgent ? AGENT_WORDS : MOD_WORDS;
 }
 
 /**

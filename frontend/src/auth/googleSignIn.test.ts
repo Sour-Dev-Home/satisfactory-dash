@@ -65,7 +65,7 @@ describe("signInErrorText", () => {
     ["denied", "Google sign-in was cancelled."],
     ["expired", "That sign-in took too long. Try again."],
     ["failed", "Google sign-in didn't work. Try again."],
-    ["not_invited", "This Google account hasn't been invited yet. Ask the server's owner for an invitation."],
+    ["not_invited", "This Google account hasn't been invited. Sign-in is invite-only during the beta."],
     ["unavailable", "Google sign-in isn't available right now. Try again later."],
   ])("maps %s to its fixed text", (code, text) => {
     expect(signInErrorText(`?error=${code}`)).toBe(text);

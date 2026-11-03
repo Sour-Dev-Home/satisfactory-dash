@@ -28,8 +28,8 @@ export function AddServer({
         <>
           <h2 className="mb-0">Add your first server</h2>
           <p className="mb-0 text-sm text-muted">
-            Name it, get a code, paste it on the game PC. The code works once and lasts {CODE_LIFETIME}. A server that is never connected is
-            removed after 24 hours.
+            Name it, get a code, paste it into the mod&apos;s config on the game server. The code works once and lasts {CODE_LIFETIME}.
+            A server that is never connected is removed after 24 hours.
           </p>
         </>
       ) : (
@@ -37,7 +37,7 @@ export function AddServer({
           {heading && <h4 className="mb-0">Add your server</h4>}
           <p className="mb-0 text-sm text-muted">
             Name your Satisfactory server. Next you get an enrolment code (it works once and lasts {CODE_LIFETIME}) to paste into the
-            dashboard mod or agent on the game PC. A server that is never connected is removed after 24 hours.
+            Satis Manager mod&apos;s config on the game server. A server that is never connected is removed after 24 hours.
           </p>
         </>
       )}

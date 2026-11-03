@@ -44,7 +44,7 @@ export const errorLastOwner = {
   error: {
     code: "would_orphan",
     reason: "last_owner",
-    message: "You own this server. Remove it from Satisfactory Dash instead of leaving it.",
+    message: "You own this server. Remove it from Satis Manager instead of leaving it.",
     requestId: "00000000-0000-4000-8000-000000000564",
   },
 } satisfies ApiErrorResponse;
