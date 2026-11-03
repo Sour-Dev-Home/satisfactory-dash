@@ -29,8 +29,7 @@
         protection law (the GDPR) asks for: who is responsible, the legal basis for each use, and where
         to complain. It doesn't claim any certification.
       </p>
-      <!-- OWNER: confirm the page may name the GDPR (EU and UK) as the law it gives details for, and
-           whether Swiss law (the revFADP) needs anything beyond this. No compliance claim is made. -->
+      <!-- The owner confirmed naming the GDPR (EU and UK) on 2026-11-03. No compliance claim is made. -->
 
       <h2>Who runs this</h2>
       <!-- The operator's name: the one place in the repository besides LICENSE where it may
@@ -172,7 +171,6 @@
           "selling" or "sharing" your personal information; "Your consent choices" below says how to opt
           out.
         </li>
-        <!-- OWNER: confirm this US sentence; the US state regulations message is published (2026-11-01). -->
         <li>
           We don't track you across other sites ourselves. Google and its partners can, for
           personalised ads, if you allow them (see "Advertising"). We don't respond to a browser's
@@ -221,8 +219,8 @@
         </li>
         <li>The demo site (demo.satis-manager.com) shows no ads.</li>
       </ul>
-      <!-- OWNER: "never on this page or the Terms of Use" follows from these pages being script-free
-           (frontend/e2e/legal.spec.ts). Drop the clause if ads are ever planned for them. -->
+      <!-- "Never on this page or the Terms of Use" (owner, 2026-11-03) follows from these pages being
+           script-free (frontend/e2e/legal.spec.ts). -->
       <h3>What Google's ad script can see</h3>
       <p>
         To show ads, a script from Google runs in the page itself, on the public pages and in the app.
@@ -242,10 +240,8 @@
         Google decides for itself how it uses what it collects through its ads. Under its advertising
         data protection terms, it is an independent controller of that data, not someone acting on our
         behalf.
-        <!-- OWNER/VERIFY: AdSense is listed as a "Controller Service" under the Google Ads
-             Controller-Controller Data Protection Terms, under which each party is an independent
-             controller (E6). Confirm in the AdSense account that these terms are accepted for it; the
-             capture couldn't see that without signing in. -->
+        <!-- AdSense is a "Controller Service" under the Google Ads Controller-Controller Data Protection
+             Terms (E6); the owner confirmed on 2026-11-03 that the account has accepted them. -->
         How Google uses that data is explained in
         <a href="https://policies.google.com/technologies/partner-sites">How Google uses information
         from sites or apps that use our services</a>, and in
@@ -271,10 +267,9 @@
           Storage, only to detect invalid traffic and fraud. Google doesn't ask for consent for this.
         </li>
       </ul>
-      <!-- OWNER: limited ads are on (ADR-0021 amendment 3, Decision 4). Google leaves the legal
-           judgement on using their invalid-traffic cookies and local storage without consent to the
-           publisher (adsense-csp-and-cmp E13). The legal basis given for it under "Legal bases" is the
-           owner's call. -->
+      <!-- Limited ads are on (ADR-0021 amendment 3, Decision 4). Google leaves the legal judgement on their
+           invalid-traffic cookies and local storage without consent to the publisher (adsense-csp-and-cmp
+           E13); the owner accepted it, with the legal basis under "Legal bases", on 2026-11-03. -->
       <p>
         Other ad companies that Google works with may also place and read cookies to show ads here.
         <!-- OWNER/VERIFY: AdSense's "Required content" page (E1) says that unless third-party ad
@@ -480,47 +475,44 @@
         <li>
           To run the service you asked for (each table row marked so, above): performance of our
           contract with you, the <a href="/terms">Terms of Use</a>.
-          <!-- OWNER: confirm -->
         </li>
         <li>
           To keep the service safe (security, rate limiting, sign-in security logs, the operator's server
           lists, and the audit events, kept for a year even after an account is deleted): our
           legitimate interest in protecting the service and its users from abuse.
-          <!-- OWNER: confirm -->
         </li>
         <li>
           Personalised ads, and the cookies and similar storage that non-personalised ads use: your
           consent, through Google's consent message. You can withdraw it at any time (see "Your consent
           choices").
-          <!-- OWNER: confirm -->
         </li>
         <li>
           Limited ads' invalid-traffic cookies and local storage, used before or without consent: the
           legitimate interest in detecting fraud and invalid traffic on the ads that pay for the service.
           You can object to it, as below.
-          <!-- OWNER: confirm. This is the judgement Google leaves to the publisher (adsense-csp-and-cmp
-               E13). If the owner's view is that it needs consent, turn limited ads off (ADR-0021
-               amendment 3, "Revisit when") and drop this item and the limited-ads lines above. -->
+          <!-- The owner's judgement (2026-11-03), which Google leaves to the publisher (adsense-csp-and-cmp
+               E13). If it changes, turn limited ads off (ADR-0021 amendment 3, "Revisit when") and drop
+               this item and the limited-ads lines above. -->
         </li>
         <li>
           Showing ads at all, on pages where Google's script runs: our legitimate interest in paying for
           a free service. What Google itself does with the data rests on Google's own legal bases,
           explained in its privacy policy.
-          <!-- OWNER: confirm. Google's partner-sites page says its Privacy Policy explains the legal
-               grounds Google relies on (E4); that policy was not captured. -->
+          <!-- Confirmed by the owner, 2026-11-03. Google's partner-sites page says its Privacy Policy
+               explains the legal grounds Google relies on (E4); that policy was not captured. -->
         </li>
       </ul>
 
       <h2>Your choices and rights</h2>
       <p>
         Whoever and wherever you are, you can ask to see the data we hold about you, get a copy of
-        it, correct it, or delete it, and you can object to how it's used. Email
+        it, correct it, or delete it, and you can object to how it's used, ask us to restrict how it's
+        used while a request is sorted out, or ask for the data you gave us in a machine-readable form to
+        take elsewhere. Email
         <a href="mailto:privacy@satis-manager.com">privacy@satis-manager.com</a>. We'll check that
         the request comes from the account's owner before acting on it, and we'll answer within 30
         days.
       </p>
-      <!-- OWNER: the GDPR also gives a right to restrict processing and to data portability. Decide
-           whether to name them here; the line above doesn't promise them by name. -->
       <p>
         Where we rely on your consent, you can withdraw it at any time, as easily as you gave it (see
         "Your consent choices"). For the data Google collects through the ads, you can also use
@@ -528,12 +520,18 @@
       </p>
       <p>
         If you're in the EEA, the UK or Switzerland and think we've handled your data wrongly, you can
-        complain to a data protection authority, for example the one where you live or work (in the UK,
-        the Information Commissioner's Office). We'd like the chance to put it right first, so please
-        email us too.
+        complain to the data protection authority where you live or work: in the EEA, your country's
+        authority (the <a href="https://www.edpb.europa.eu/about-edpb/about-edpb/members_en">European Data
+        Protection Board lists them</a>); in the UK, the
+        <a href="https://ico.org.uk/make-a-complaint/">Information Commissioner's Office</a>; in Switzerland,
+        the <a href="https://www.edoeb.admin.ch/en">Federal Data Protection and Information Commissioner</a>.
+        We'd like the chance to put it right first, so please email us too.
       </p>
-      <!-- OWNER: which authority to name, if any (the operator's location is left off this page by the
-           owner's decision), and whether Swiss visitors get a named authority (the FDPIC). -->
+      <!-- The operator is in the US (owner, 2026-11-03), so there is no single lead EU authority and the page
+           points to the visitor's own. OWNER/VERIFY: a controller outside the EU that offers a service to
+           people in the EU may need an EU representative (GDPR Article 27), unless its processing is only
+           occasional and low-risk; the same goes for the UK (UK GDPR Article 27). This is a legal question
+           for the owner, not settled by this page. -->
       <!-- ADR-0047 (#556, #564): the deletion itself, in the app's Settings (frontend/src/account/). -->
       <p>
         You can delete your account yourself, in Settings, under "Delete my account". It asks for a
