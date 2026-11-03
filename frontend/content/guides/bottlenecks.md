@@ -61,13 +61,12 @@ For a **backed-up** machine, the mirror cases are:
 
 ## Belt speeds the finder uses
 
-For belts, the finder reads each belt's rated capacity from the game. FicsitRemoteMonitoring reports these per tier: Mk.1 carries 60 items per minute, Mk.2 120, Mk.3 270 and Mk.4 480. Pipes are rated in cubic metres per minute: 300 for Mk.1 and 600 for Mk.2. A finding names the tier and its rate, so you know what to upgrade to.
+For belts, the finder reads each belt's rated capacity from the game. The rates per tier are: Mk.1 carries 60 items per minute, Mk.2 120, Mk.3 270 and Mk.4 480. Pipes are rated in cubic metres per minute: 300 for Mk.1 and 600 for Mk.2. A finding names the tier and its rate, so you know what to upgrade to.
 
 ## When the finder has less to work with
 
 The notes under the list tell you how much the finder could see:
 
-- **"Item-level results only. Update FRM to 1.5.4 or newer for belt detail."** Your FRM is too old to report belt connections. Findings still work per item, but can't name the belt that caps a flow.
 - **"Connections refresh every 10 minutes."** Belts are read less often than machines. A belt you built or rebuilt a few minutes ago may not show yet.
 - **"Item-level results only: this factory's connection data is too large to read."** Very big factories skip belt detail.
 

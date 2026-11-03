@@ -64,7 +64,7 @@ An **Outage** or missing data can't be hidden. Those always show.
 
 ## The Players and Power cards
 
-The **Players** card shows how many players are on out of the server's limit. If your server connects through the edge agent, it also lists the names of players online. Names are shown live and never stored. If the game is paused it says "The game is paused."
+The **Players** card shows how many players are on out of the server's limit. It also lists the names of players online. Names are shown live and never stored. If the game is paused it says "The game is paused."
 
 The **Power** card gives a quick look at the grid, with a thin animated line that moves while power is drawn and stays still at 0 MW or when your device asks for reduced motion. For the full picture, open the Power page.
 

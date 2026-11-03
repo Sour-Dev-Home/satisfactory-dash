@@ -1,6 +1,6 @@
 ---
 title: Frequently asked questions
-description: Answers about privacy, what Satis Manager reads from your server, whether it changes your game, FRM and the dashboard mod, and cost.
+description: Answers about privacy, what Satis Manager reads from your server, whether it changes your game, the Satis Manager mod, and cost.
 order: 9
 updated: 2026-11-03
 ---
@@ -8,7 +8,7 @@ Short answers to the questions people ask most. Each one links to the guide with
 
 ## Does Satis Manager change my game?
 
-Only if you ask it to, and only in one way. The single setting it can change is the server's auto-pause, the **Auto-pause when no players are connected** switch in **Settings**. When you flip it, the dashboard sends the change to the program on your game PC, which asks the server to apply it. Until the server confirms, Settings says "Change pending: the server will apply it."
+Only if you ask it to, and only in one way. The single setting it can change is the server's auto-pause, the **Auto-pause when no players are connected** switch in **Settings**. When you flip it, the dashboard sends the change to the mod on your server, which applies it in the game. Until the server confirms, Settings says "Change pending: the server will apply it."
 
 Everything else is read only. Satis Manager doesn't build, move, delete or reset anything in your world, and it never touches your save files. Even removing a server from the dashboard leaves your game alone: "Your game and its saves are never touched: nothing on your game PC changes."
 
@@ -23,11 +23,11 @@ Readings of the game world:
 - Machines: their names, recipes, rates, states and positions.
 - World layers for the map: rails, trains and stations, resource nodes, players' map markers, drone ports, power lines, and belts and pipes.
 - The auto-pause setting.
-- With the edge agent, the names of players who are online.
+- The names of players who are online.
 
-It reads nothing about your computer: no host name, network address, user name, file path or operating system.
+It reads nothing about the machine the server runs on: no host name, network address, user name, file path or operating system.
 
-Opening the dashboard doesn't add load on your server either. The program on your game PC reads the game on its own fixed schedule, and the dashboard shows those readings, however many people are watching.
+Opening the dashboard doesn't add load on your server either. The mod reads the game on its own fixed schedule, and the dashboard shows those readings, however many people are watching.
 
 ## What about my privacy?
 
@@ -43,27 +43,23 @@ You can leave a server, or delete your account, from **Settings**, under **Your 
 
 ## Who can see my server?
 
-Only its members. The person who added a server is its owner. Owners and admins can do more, such as creating enrolment codes, revoking the agent and reshaping factories on the Planner. Viewers can look but not change anything.
+Only its members. The person who added a server is its owner. Owners and admins can do more, such as creating enrolment codes, revoking the mod's connection and reshaping factories on the Planner. Viewers can look but not change anything.
 
-If you connect with the edge agent, your server's members can see who is online. Settings has a short, ready-made message under **Tell your players** that you can paste into your server's Discord, so your players know.
+Your server's members can see who is online. Settings has a short, ready-made message under **Tell your players** that you can paste into your server's Discord, so your players know.
 
 ## Does my game's admin token go to the cloud?
 
-Not with the edge agent. The game's API token, and the FRM token if you have one, stay on your game machine, encrypted. The agent sends readings out; the dashboard never calls into your network, and you don't open any port for it. See [Connecting a server](/guides/connecting-a-server).
+No. The mod runs inside the game and reads it from there, so it never needs the game's admin token, and you never give one to the dashboard. The mod's config holds only the dashboard's address and your enrolment code. The mod sends readings out; the dashboard never calls into your network, and you don't open any port for it. See [Connecting a server](/guides/connecting-a-server).
 
-## What's FRM, and do I need it?
+## What's the Satis Manager mod?
 
-FicsitRemoteMonitoring (FRM) is a separate community mod for Satisfactory. It runs a small web server inside the game that reports factory data: power circuits, machines, belts, trains and more.
+It's how a server connects to Satis Manager: a server-side mod that loads with your dedicated server and reads the game directly. Only the server needs it; players join as usual, with nothing to install. It runs on the Satisfactory Mod Loader, like other mods, and needs no other mod to read your factory.
 
-The edge agent reads two sources on the game machine: the game's own dedicated server API, and FRM if it's installed. The game's API alone gives the basics, like whether a save is loaded, the player count, the tick rate and server options such as auto-pause. Power, machines, the Planner and most of the map need FRM.
+The mod isn't published yet. [Connecting a server](/guides/connecting-a-server) covers installing it and will link to its download once it's out.
 
-For belt-level detail in the bottleneck finder, FRM 1.5.4 or newer is needed. With an older FRM, the Factory page says "Item-level results only. Update FRM to 1.5.4 or newer for belt detail."
+## Do I need to restart the server after pasting the code?
 
-## What's the dashboard mod, then?
-
-It's Satis Manager's own server-side mod, the second way to connect a server. It runs inside the game and reads the game directly, so it's meant for rented hosts where you can add mods but can't run a separate program. It sends player counts, not names. It's still early and experimental; the edge agent is the main path today.
-
-In short: FRM is a community mod the edge agent reads from. The dashboard mod is a sender in its own right. See [Connecting a server](/guides/connecting-a-server) for how each is set up.
+No. The mod reads its config file again when it changes, so saving the file is enough. You restart the server once, after installing the mod, because mods load when the server starts.
 
 ## Can I try it without a server?
 
@@ -84,5 +80,5 @@ No. Satis Manager is an independent project. Satisfactory, its map and its icons
 ## Something's wrong. Where do I start?
 
 - The Overview's headline names the problem in a few words. See [Reading the Overview](/guides/overview-and-status).
-- If the server doesn't show up or the data is old, open **Settings** and check **Game PC agent**. The troubleshooting table in [Connecting a server](/guides/connecting-a-server) covers the usual causes.
+- If the server doesn't show up or the data is old, open **Settings** and check **Game PC agent**, where the mod's connection is shown. The troubleshooting table in [Connecting a server](/guides/connecting-a-server) covers the usual causes.
 - For slow production, see [Finding and fixing bottlenecks](/guides/bottlenecks).

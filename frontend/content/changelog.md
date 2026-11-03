@@ -32,7 +32,7 @@ The changes you can see in the dashboard, newest first. Fixes behind the scenes 
 - **Planner**: a stalled card and its lines show the state's mark and a stop bar. The **State marks** button switches back to words.
 - **Planner**: a product that reads 0 now says what it could make, such as "0 of 160", and the page explains why an item or rate can be unknown.
 - **Planner**: the "Reason factories for me" suggestion mode was removed.
-- **Settings**: the agent's status shows whether it can reach your game, and when it last read it.
+- **Settings**: your server's connection status shows whether the game could be read, and when it was last read.
 
 ## 26 October 2026
 

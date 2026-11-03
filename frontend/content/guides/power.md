@@ -27,7 +27,7 @@ If the circuit has batteries, the card adds three more rows:
 - **Battery charge**: how full they are, as a percentage.
 - **Battery flow**: "Charging" or "Discharging" with the rate, or "Idle" when nothing moves.
 
-On a server connected through the edge agent, these numbers come from the FicsitRemoteMonitoring (FRM) mod's power reading, which reports each circuit's production, consumption, capacity, maximum consumption, battery state and whether its fuse has tripped. The dashboard mod reads power from the game itself.
+These numbers come from the Satis Manager mod, which reads power from the game itself: each circuit's production, consumption, capacity, maximum consumption, battery state and whether its fuse has tripped.
 
 ## OK, At risk and Outage
 
