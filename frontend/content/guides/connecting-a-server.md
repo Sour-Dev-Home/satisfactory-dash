@@ -28,7 +28,7 @@ On its first start without a code, the mod writes its config file, `FactoryGame/
 ## Step 2: add the server and get a code
 
 1. In **Settings**, under **Your server**, press **Add your server** and give it a name. (On your very first visit the app asks for this straight away.)
-2. In **Settings**, under **Game PC agent**, press **Create enrolment code**. This section is where the dashboard shows your mod's connection.
+2. In **Settings**, under **Satis Manager mod**, press **Create enrolment code**. This section is where the dashboard shows your mod's connection.
 3. Copy the code. It has 12 letters and digits in three groups, like AB3D-7XQ2-K5MN, and it never contains 0, 1, 8 or 9. It works once and lasts 10 minutes.
 
 A server that hasn't connected within 24 hours of adding it is removed automatically. If your code expires, just create another.
@@ -56,13 +56,13 @@ Only approve a server you started pairing yourself. The mod prints a fresh code 
 - **No inbound port.** The mod only makes outgoing connections.
 - **No game admin token.** The mod reads the game from the inside, so its config holds only the dashboard's address and the code.
 - **Codes are single use** and short-lived, and the service stores only a hash of each one.
-- **The mod's credential** is a file in the server's folder. On a rented host, anyone with access to those files, such as the host's staff or other SFTP users, could read it. If you think it leaked, press **Revoke…** in Settings, then **Revoke the agent**. The mod then drops the old credential, and you can connect it again with a new code.
+- **The mod's credential** is a file in the server's folder. On a rented host, anyone with access to those files, such as the host's staff or other SFTP users, could read it. If you think it leaked, press **Revoke…** in Settings, then **Revoke the mod's access**. The mod then drops the old credential, and you can connect it again with a new code.
 
 Your server's members can see who is online. Settings has a ready-made message under **Tell your players** that you can copy into your server's Discord.
 
 ## Troubleshooting
 
-Open **Settings** and look at **Game PC agent**. The **Agent** row says whether the mod is enrolled, **Online** or **Offline**, and when it was last seen.
+Open **Settings** and look at **Satis Manager mod**. The **Mod** row says whether the mod is enrolled, **Online** or **Offline**, and when it was last seen.
 
 | What you see | What it means | What to do |
 |---|---|---|

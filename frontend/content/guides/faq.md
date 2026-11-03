@@ -80,5 +80,5 @@ No. Satis Manager is an independent project. Satisfactory, its map and its icons
 ## Something's wrong. Where do I start?
 
 - The Overview's headline names the problem in a few words. See [Reading the Overview](/guides/overview-and-status).
-- If the server doesn't show up or the data is old, open **Settings** and check **Game PC agent**, where the mod's connection is shown. The troubleshooting table in [Connecting a server](/guides/connecting-a-server) covers the usual causes.
+- If the server doesn't show up or the data is old, open **Settings** and check **Satis Manager mod**, where the mod's connection is shown. The troubleshooting table in [Connecting a server](/guides/connecting-a-server) covers the usual causes.
 - For slow production, see [Finding and fixing bottlenecks](/guides/bottlenecks).

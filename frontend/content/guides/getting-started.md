@@ -35,7 +35,7 @@ The first time an invited account signs in, you accept the Terms of Use to creat
 If you don't have a server in the dashboard yet, the app asks you to add one. If you already have one, the same form is under **Settings**, in the **Your server** section, as **Add your server**. Adding your own server may not be open to every account during the beta; if it isn't, the form says so.
 
 1. Type a name for the server, for example "Our factory", and press **Add server**.
-2. The app takes you to **Settings**, to the **Game PC agent** section, where your server's connection lives.
+2. The app takes you to **Settings**, to the **Satis Manager mod** section, where your server's connection lives.
 3. Press **Create enrolment code**. You get a 12-character code such as AB3D-7XQ2-K5MN. It works once and lasts 10 minutes.
 4. Paste that code into the Satis Manager mod's config file on your dedicated server. [Connecting a server](/guides/connecting-a-server) walks through installing the mod and where the code goes.
 

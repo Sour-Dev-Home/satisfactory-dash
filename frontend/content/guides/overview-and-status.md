@@ -70,7 +70,7 @@ The **Power** card gives a quick look at the grid, with a thin animated line tha
 
 ## When a section won't load
 
-If a section can't be loaded at all, its row says "Couldn't load this section" and the overall state becomes Unavailable. If the whole game server is unreachable, one banner says so at the top of the page, instead of every panel repeating it. Check the connection in **Settings**, under **Game PC agent**, and see [Connecting a server](/guides/connecting-a-server) for fixes.
+If a section can't be loaded at all, its row says "Couldn't load this section" and the overall state becomes Unavailable. If the whole game server is unreachable, one banner says so at the top of the page, instead of every panel repeating it. Check the connection in **Settings**, under **Satis Manager mod**, and see [Connecting a server](/guides/connecting-a-server) for fixes.
 
 ## A quick routine
 
