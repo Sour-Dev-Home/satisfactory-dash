@@ -106,6 +106,14 @@ describe("renderMarkdown", () => {
     expect(() => renderMarkdown("![Alt](https://example.com/x.png)", "a.md")).toThrow(/this site's own files/);
     expect(() => renderMarkdown("![Alt](//example.com/x.png)", "a.md")).toThrow(/this site's own files/);
     expect(() => renderMarkdown("![Alt](x.png)", "a.md")).toThrow(/this site's own files/);
+    // "/\host" reads as "//host" in a browser; markdown-it percent-encodes the backslash, so it stays a path here.
+    expect(renderMarkdown("![Alt](/\\example.com/x.png)", "a.md")).toContain('src="/%5Cexample.com/x.png"');
+  });
+
+  it("makes code blocks keyboard-focusable, since they scroll sideways on a phone", () => {
+    expect(renderMarkdown("```\nnpm ci\n```", "a.md")).toBe('<pre tabindex="0"><code>npm ci\n</code></pre>\n');
+    expect(renderMarkdown("    indented", "a.md")).toMatch(/^<pre tabindex="0"><code>indented/);
+    expect(renderMarkdown("Inline `code` only", "a.md")).not.toContain("tabindex");
   });
 });
 

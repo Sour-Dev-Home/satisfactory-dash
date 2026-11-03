@@ -87,31 +87,33 @@ th {
   color: #fbf8f2;
   font-weight: 600;
 }
-/* Phones: each row stacks, the data over its reason, as the app's own tables do (src/index.css).
-   The header row is hidden visually but stays for screen readers. */
+/* Phones: each row of the legal pages' two-column tables (direct children of <main>) stacks, the
+   data over its reason, as the app's own tables do (src/index.css). The header row is hidden
+   visually but stays for screen readers. Tables in a guide's Markdown (inside .prose) keep their
+   columns and headers. */
 @media (max-width: 600px) {
-  thead {
+  main > table thead {
     position: absolute;
     width: 1px;
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
   }
-  tr {
+  main > table tr {
     display: block;
     padding: 10px 0;
     border-bottom: 1px solid #353b41;
   }
-  td {
+  main > table td {
     display: block;
     padding: 0;
     border: 0;
   }
-  td:first-child {
+  main > table td:first-child {
     color: #fbf8f2;
     font-weight: 600;
   }
-  td + td {
+  main > table td + td {
     margin-top: 2px;
     color: #a3a9ae;
   }

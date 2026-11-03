@@ -449,3 +449,11 @@ guides, as the first part of step 5 (the public pages' slots come after).
   Worker's `/` and `/landing` (`worker/landing.test.ts`); e2e: `e2e/guides.spec.ts` (index, a guide, the changelog: no
   script, no off-origin request, axe, no sideways scroll at 390 px), `/` serving its text without JavaScript and
   hydrating without a mismatch (`e2e/landing.spec.ts`), and the files in `e2e/build-output.spec.ts`.
+- **Reviews.** `security-reviewer`: nothing blocking; the image rule now also refuses a backslash after the first
+  slash (markdown-it already percent-encodes it), and Markdown links stay unrestricted while the content is ours.
+  `test-hunter`: no bugs; added a jsdom hydration test of the real prerender (`src/landing/hydrate.test.tsx`) and
+  link, front matter, escaping and image edge cases (`site/content.edge.test.ts`). `ui-reviewer`: code blocks get
+  `tabindex="0"` (they scroll sideways), the legal pages' stacked-table rules are scoped to their own tables, and the
+  static pages' footer links Guides and Changelog too.
+- **Owner decisions:** none new. To check after the first deploy: `/guides` answers 200 (the [NEEDS VERIFICATION]
+  above), and a fresh AdSense review request.

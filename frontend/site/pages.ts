@@ -65,7 +65,7 @@ export function page({ path, title, description, content, section }: PageInput):
     <meta property="og:image" content="${SITE_ORIGIN}/og-image.png" />
   </head>
   <body>
-    <header class="site-header">
+    <header>
       <a href="/">${SITE_NAME}</a>
       <nav aria-label="Site"><ul class="site-nav">${nav}</ul></nav>
     </header>
@@ -74,6 +74,8 @@ export function page({ path, title, description, content, section }: PageInput):
 ${content}
     </main>
     <footer>
+      <a href="${GUIDES_PATH}">Guides</a>
+      <a href="${CHANGELOG_PATH}">Changelog</a>
       <a href="${REPO_URL}">Source code (AGPL-3.0)</a>
       <a href="/privacy">Privacy</a>
       <a href="/terms">Terms</a>

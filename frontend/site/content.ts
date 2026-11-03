@@ -32,6 +32,14 @@ const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 const markdown = new MarkdownIt({ html: false, linkify: false, typographer: false });
 
+// A code block scrolls sideways on a phone (legal.css), so keyboard users must be able to focus it (axe's
+// scrollable-region-focusable): markdown-it's own <pre> output, with tabindex="0" added.
+for (const rule of ["fence", "code_block"] as const) {
+  const render = markdown.renderer.rules[rule];
+  markdown.renderer.rules[rule] = (tokens, idx, options, env, self) =>
+    (render?.(tokens, idx, options, env, self) ?? "").replace(/^<pre>/, '<pre tabindex="0">');
+}
+
 export class ContentError extends Error {
   constructor(file: string, message: string) {
     super(`${file}: ${message}`);
@@ -105,7 +113,8 @@ export function renderMarkdown(body: string, file: string): string {
     for (const child of token.children ?? []) {
       if (child.type !== "image") continue;
       const src = String(child.attrGet("src") ?? "");
-      if (!src.startsWith("/") || src.startsWith("//")) throw new ContentError(file, `images must be this site's own files (a path starting /), got \`${src}\``);
+      // Browsers read "/\" like "//" (another host), so a backslash after the first slash is refused too.
+      if (!/^\/(?![/\\])/.test(src)) throw new ContentError(file, `images must be this site's own files (a path starting /), got \`${src}\``);
     }
   }
   return markdown.renderer.render(tokens, markdown.options, {});

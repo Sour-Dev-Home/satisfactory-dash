@@ -43,6 +43,7 @@ describe("a guide page", () => {
     expect(html).toContain('<a href="/guides" aria-current="page">Guides</a>');
     expect(html).toContain('<a href="https://github.com/Sour-Dev-Home/satisfactory-dash">Source code (AGPL-3.0)</a>');
     expect(html).toContain('<a href="/privacy">Privacy</a>');
+    expect(/<footer>[\s\S]*<a href="\/guides">Guides<\/a>[\s\S]*<a href="\/changelog">Changelog<\/a>[\s\S]*<\/footer>/.test(html)).toBe(true);
     expect(html).toContain('<a href="/terms">Terms</a>');
     expect(html).toContain('<time datetime="2026-11-03">3 November 2026</time>');
   });
