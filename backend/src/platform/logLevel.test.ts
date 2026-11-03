@@ -91,7 +91,7 @@ describe("log levels in the real request pipeline", () => {
 
   it("an agent that has not reported yet (503 upstream_unreachable) is a warn on both lines, never level 50", async () => {
     const { status, levels } = await levelsFor(() => {
-      throw new ApiFailure("upstream_unreachable", "This server's agent has not reported yet");
+      throw new ApiFailure("upstream_unreachable", "This server's game PC has not reported yet");
     });
     expect(status).toBe(503);
     expect(levels).toEqual([LEVEL.warn]);

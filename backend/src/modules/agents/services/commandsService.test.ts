@@ -141,6 +141,8 @@ describe("requestAutoPause", () => {
     const { pool, kinds } = fakePool((kind, values) => (kind === "count-open" ? { rows: [{ count: MAX_OPEN_COMMANDS }] } : enrolledAgentServer(kind, values)));
     const failure = await createCommandsService({ db: pool, notifier: new CommandNotifier() }).requestAutoPause("alpha", true, "u").catch((err: unknown) => err);
     expect(failure).toBeInstanceOf(RateLimitedError);
+    // Player-visible: the game PC, never "the agent" (players connect only through the mod, owner 2026-11-03).
+    expect((failure as Error).message).toBe("Too many changes are waiting for this server's game PC. Try again in a minute.");
     expect(kinds()).not.toContain("insert");
   });
 
@@ -218,6 +220,7 @@ describe("readAutoPause", () => {
       const failure = await read(withRecent(recent)).catch((err: unknown) => err);
       expect(failure).toBeInstanceOf(ApiFailure);
       expect((failure as ApiFailure).code).toBe("upstream_unreachable");
+      expect((failure as ApiFailure).message).toBe("This server's auto-pause setting is not known yet: the game PC has not reported it or confirmed a change");
     }
   });
 

@@ -268,6 +268,9 @@ describe("Leave this server", () => {
     const form = screen.getByRole("form", { name: "Confirm leaving Satisfactory server" });
     expect(within(form).getByText("Leave Satisfactory server?").parentElement).toHaveFocus();
     expect(within(form).getByText(/The server and its game are not changed/)).toBeInTheDocument();
+    // There is no invitation to rejoin by (2026-11-03): only the operator adds members back.
+    expect(within(form).getByText(/You can't rejoin it yourself: only the operator can add you back\./)).toBeInTheDocument();
+    expect(within(form).queryByText(/invitation/)).not.toBeInTheDocument();
     fireEvent.click(within(form).getByRole("button", { name: "Leave server" }));
     fireEvent.click(within(form).getByRole("button", { name: /Leav/ }));
     expect(await screen.findByText("selected: Creative test world")).toBeInTheDocument();

@@ -45,6 +45,13 @@ describe("account deletion and leaving in the demo", () => {
     expect(list.servers.map((s) => s.id)).toContain(DEMO_SERVER_ID);
   });
 
+  // Owner, 2026-11-03: players connect only through the Satis Manager mod, so the demo's refusal doesn't say "agent".
+  it("refuses to revoke the demo server's connection without naming the agent", async () => {
+    const res = await call("DELETE", endpoints.agent.revoke.path(DEMO_SERVER_ID));
+    expect(res.status).toBe(403);
+    expect(await envelope(res)).toMatchObject({ code: "forbidden", message: "The demo doesn't revoke its connection." });
+  });
+
   it("answers both like every data route when signed out or for another server", async () => {
     expect((await call("POST", endpoints.members.leave.path("someone-else"))).status).toBe(404);
     await call("POST", endpoints.auth.logout.path());

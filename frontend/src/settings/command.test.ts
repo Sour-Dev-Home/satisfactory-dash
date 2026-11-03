@@ -38,11 +38,18 @@ describe("msUntilGiveUp", () => {
 
 describe("failureText", () => {
   it("names each known result code, and falls back for an unknown or missing one", () => {
-    expect(failureText("unsupported")).toMatch(/Update the agent/);
-    expect(failureText("upstream_auth_rejected")).toMatch(/admin token/);
+    expect(failureText("unsupported")).toBe("The game PC can't change this setting yet. Update the Satis Manager mod and try again.");
+    expect(failureText("upstream_auth_rejected")).toBe("The game server refused the admin token, so the setting didn't change.");
     expect(failureText("upstream_error")).toMatch(/reported an error/);
     expect(failureText("disk_on_fire")).toBe("The change failed on the game PC; the setting didn't change.");
     expect(failureText(null)).toBe("The change failed on the game PC; the setting didn't change.");
+  });
+
+  // Owner, 2026-11-03: players connect only through the Satis Manager mod, so no failure names the agent.
+  it("never names the agent in a player-visible failure", () => {
+    for (const code of ["unsupported", "upstream_unreachable", "upstream_auth_rejected", "upstream_error", null]) {
+      expect(failureText(code)).not.toMatch(/agent/i);
+    }
   });
 
   // resultCode is an open string in the contract (deploy skew), so an inherited name like

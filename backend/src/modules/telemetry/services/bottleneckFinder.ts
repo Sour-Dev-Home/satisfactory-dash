@@ -47,8 +47,12 @@ export const CONNECTIONS_REFRESH_MINUTES = 10;
  *  layer has arrived from the agent yet, which says nothing about FRM). */
 export type BottleneckEdges = readonly ConveyorEdge[] | "unsupported" | "tooLarge" | "notReceived";
 
-/** The `notReceived` wording, shared with the planner's graph. The agent reads belt data every `CONNECTIONS_REFRESH_MINUTES`. */
-export const BELT_DATA_NOT_RECEIVED_TEXT = `The agent hasn't sent belt data yet. If this stays, update the agent; it reads belts every ${CONNECTIONS_REFRESH_MINUTES} minutes.`;
+/**
+ * The `notReceived` wording, shared with the planner's graph. Belt data is read every `CONNECTIONS_REFRESH_MINUTES`.
+ * Players connect only through the Satis Manager mod (owner, 2026-11-03; ADR-0058), and this text can't tell the mod
+ * from the Node agent, so it names neither as the sender and gives the players' fix.
+ */
+export const BELT_DATA_NOT_RECEIVED_TEXT = `No belt data has arrived from the game server yet. If this stays, update the Satis Manager mod; belts are read every ${CONNECTIONS_REFRESH_MINUTES} minutes.`;
 
 export interface BottleneckOptions {
   /** Top N; default 10 (owner answer 2), clamped to 1..50. */

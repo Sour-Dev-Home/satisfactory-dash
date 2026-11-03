@@ -185,12 +185,20 @@ describe("PlannerView: states", () => {
   it.each([
     ["unsupported", "Item-level results only. Update FRM to 1.5.4 or newer for belt detail."],
     ["tooLarge", "Item-level results only: this factory's connection data is too large to read."],
-    ["notReceived", "Item-level results only. The agent hasn't sent belt data yet; if this stays, update the agent."],
+    ["notReceived", "Item-level results only. No belt data has arrived from the game server yet; if this stays, update the Satis Manager mod."],
   ] as const)("shows the %s mode's note and no sites", async (beltData, note) => {
     answer({ ...productionGraphEmpty, data: { ...productionGraphEmpty.data, beltData, notes: [] } });
     renderView();
     expect(await screen.findByText(/needs belt data/)).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Planner notes" })).toHaveTextContent(note);
+  });
+
+  // Owner, 2026-11-03: players connect only through the Satis Manager mod, so the empty state never says "the agent".
+  it("says no belt data has arrived from the game server when none was received, without naming the agent", async () => {
+    answer({ ...productionGraphEmpty, data: { ...productionGraphEmpty.data, beltData: "notReceived", notes: [] } });
+    renderView();
+    expect(await screen.findByText("No sites to show yet: the planner needs belt data, and none has arrived from the game server.")).toBeInTheDocument();
+    expect(screen.queryByText(/agent/i)).not.toBeInTheDocument();
   });
 
   it("says when the data is stale", async () => {

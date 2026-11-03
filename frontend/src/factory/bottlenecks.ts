@@ -91,7 +91,8 @@ export function sectionNotes(data: Pick<Bottlenecks, "beltData" | "connectionsRe
     out.push("Item-level results only: this factory's connection data is too large to read.");
   }
   if (data.beltData === "notReceived" && !has("beltDataNotReceived")) {
-    out.push("Item-level results only. The agent hasn't sent belt data yet; if this stays, update the agent.");
+    // The backend's own note says the same (bottleneckFinder's BELT_DATA_NOT_RECEIVED_TEXT); this covers an older one.
+    out.push("Item-level results only. No belt data has arrived from the game server yet; if this stays, update the Satis Manager mod.");
   }
   if ((data.beltData === "present" || data.beltData === "stale") && !has("connectionsRefresh")) {
     const m = data.connectionsRefreshMinutes;

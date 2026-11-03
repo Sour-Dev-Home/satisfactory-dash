@@ -397,7 +397,7 @@ const bottlenecksNotReceived = {
     notes: [
       {
         code: "beltDataNotReceived",
-        text: "Item-level results only. The agent hasn't sent belt data yet. If this stays, update the agent; it reads belts every 10 minutes.",
+        text: "Item-level results only. No belt data has arrived from the game server yet. If this stays, update the Satis Manager mod; belts are read every 10 minutes.",
       },
     ],
   },
@@ -956,7 +956,7 @@ export const SCENARIOS = {
     productionGraph: ok(
       plannerItemLevel("notReceived", {
         code: "beltDataNotReceived",
-        text: "No production graph. The agent hasn't sent belt data yet. If this stays, update the agent; it reads belts every 10 minutes.",
+        text: "No production graph. No belt data has arrived from the game server yet. If this stays, update the Satis Manager mod; belts are read every 10 minutes.",
       }),
     ),
   },

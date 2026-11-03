@@ -79,7 +79,8 @@ describe("sectionNotes", () => {
   it("gives notReceived its own note, never the FRM one, even from a disagreeing backend", () => {
     const filled = sectionNotes({ ...bottlenecksItemLevelOldFrm.data, beltData: "notReceived", notes: [] });
     expect(filled).toHaveLength(1);
-    expect(filled[0]).toMatch(/agent hasn't sent belt data/);
+    // Owner, 2026-11-03: players connect only through the Satis Manager mod, so the note never says "the agent".
+    expect(filled[0]).toBe("Item-level results only. No belt data has arrived from the game server yet; if this stays, update the Satis Manager mod.");
     const stray = sectionNotes({
       ...bottlenecksItemLevelOldFrm.data,
       beltData: "notReceived",

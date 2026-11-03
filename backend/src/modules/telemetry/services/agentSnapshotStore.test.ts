@@ -62,6 +62,25 @@ describe("LatestSnapshotStore.read while the game is unreachable (ADR-0052)", ()
     expect(() => store.read("players")).toThrowError(expect.objectContaining({ code: "upstream_unreachable" }));
   });
 
+  it("words its refusals for a player without naming the sender: the mod or the agent (owner, 2026-11-03)", () => {
+    const messageOf = (read: () => unknown) => {
+      try {
+        read();
+      } catch (err) {
+        return (err as Error).message;
+      }
+      throw new Error("expected the read to throw");
+    };
+    const empty = new LatestSnapshotStore(() => CADENCE);
+    expect(messageOf(() => empty.read("status"))).toBe("This server's game PC has not reported yet");
+    const never = new LatestSnapshotStore(() => CADENCE);
+    unreachable(never, T0);
+    expect(messageOf(() => never.read("status"))).toBe("The game PC could not reach the game server");
+    const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 1000);
+    reachable(store, T0);
+    expect(messageOf(() => store.read("players"))).toBe("This server's game PC has not reported that yet");
+  });
+
   it("a silent agent (no unreachable snapshot) is stale by age only, without unreachableSince", () => {
     const store = new LatestSnapshotStore(() => CADENCE, () => T0 + 60_000);
     reachable(store, T0);

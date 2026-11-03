@@ -269,7 +269,7 @@ export const demoHandlers = [
     guarded(params, () => Response.json(world.enrollmentCode(demoNow()), { status: 201 })),
   ),
   del(endpoints.agent.revoke.route, ({ params }) =>
-    guarded(params, () => error(403, "forbidden", "The demo doesn't revoke its agent.")),
+    guarded(params, () => error(403, "forbidden", "The demo doesn't revoke its connection.")),
   ),
 
   // Alerts (ADR-0027 PR 9): the demo's own rules, log and pretend webhook (demo/alerts.ts). Writes
