@@ -52,9 +52,9 @@ test("a guide renders its Markdown as a static page, accessible, with its canoni
   const response = await page.goto("/guides/getting-started");
   expect(response!.status()).toBe(200);
   await expect(page.getByRole("heading", { level: 1, name: "Getting started with Satis Manager" })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: "Try the live demo" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Try the demo first" })).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://satis-manager.com/guides/getting-started");
-  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /live demo/);
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /try the demo/);
   await expect(page.getByRole("link", { name: "All guides" })).toHaveAttribute("href", "/guides");
   await expectStaticPage(page, requests);
   await expectNoAxeViolations(page, testInfo);

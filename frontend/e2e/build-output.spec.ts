@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import { PREVIEW } from "../src/landing/preview";
 import { expect, test } from "./fixtures";
@@ -44,7 +44,9 @@ test.describe("production build", () => {
   });
 
   test("contains none of the demo build's code or text (ADR-0026)", () => {
-    const text = bundleText(DIST);
+    // The guides and changelog are our own prose and may name the demo's "Enter demo" button; the app's code and the
+    // prerendered landing page are what must stay free of demo text.
+    const text = bundleText(DIST, WRITTEN_PAGES);
     for (const marker of DEMO_MARKERS) {
       expect(text, `production bundle contains demo marker ${marker}`).not.toContain(marker);
     }
@@ -181,9 +183,14 @@ const DEMO_MARKERS = ["Demo data: nothing here is live", "Enter demo", "[demo] n
 /** Text only the landing page (src/landing/) has; main site only. */
 const LANDING_MARKER = "Sign-in is invite-only during the beta.";
 
-function bundleText(dir: string): string {
+/** The pages built from Markdown in content/ (site/paths.ts): written text, not app code. */
+const WRITTEN_PAGES = ["guides.html", "guides", "changelog.html"];
+
+function bundleText(dir: string, skip: readonly string[] = []): string {
+  const skipped = skip.map((name) => join(dir, name));
   return allFiles(dir)
     .filter((f) => /\.(js|html|css)$/.test(f))
+    .filter((f) => !skipped.some((s) => f === s || f.startsWith(s + sep)))
     .map((f) => readFileSync(f, "utf8"))
     .join("\n");
 }
