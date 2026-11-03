@@ -138,6 +138,10 @@ added or removed.
   — ADR-0021 amendment 3 build step 2: Cloudflare's pages on a Worker in front of static assets (`run_worker_first`
   patterns, the assets binding, `_headers` not applied to Worker responses, HTML handling, HTMLRewriter, `vars`), as
   verbatim excerpts E1-E7.
+- [`../raw-sources/cloudflare-workers-html-handling-2026-11-03.md`](../raw-sources/cloudflare-workers-html-handling-2026-11-03.md)
+  — ADR-0021's 2026-11-03 build note (static public pages): the whole `auto-trailing-slash` table (files served
+  without a slash, folder indexes with one), grounding the guides', changelog's and landing file's URLs, as verbatim
+  excerpts HH-E1 and HH-E2.
 - [`../raw-sources/adsense-ad-units-and-us-states-link-2026-11-01.md`](../raw-sources/adsense-ad-units-and-us-states-link-2026-11-01.md)
   — ADR-0021 amendment 3 build step 4: the US "Do Not Sell or Share" link (rendered by Google's message on AdSense
   sites; a custom link is Ad Manager only), creating display ad units, exact-size responsive ad code, and unfilled

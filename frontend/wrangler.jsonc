@@ -25,6 +25,8 @@
     // The Worker runs first for every path except the static files below, which are served directly with
     // public/_headers' rules (E1, E2). Every top-level entry of public/ that isn't an HTML page must be listed
     // here: worker/routing.test.ts fails otherwise. "/*" covers the root "/" too (Wrangler rejects listing both).
+    // The build's own non-HTML files (site/paths.ts GENERATED_STATIC_FILES: robots.txt, sitemap.xml) are listed too;
+    // its HTML pages (landing, guides, changelog) go through the Worker like privacy and terms.
     "run_worker_first": [
       "/*",
       "!/assets/*",
@@ -41,7 +43,9 @@
       "!/og-image.png",
       "!/overview-preview.png",
       "!/push-sw.js",
-      "!/site.webmanifest"
+      "!/robots.txt",
+      "!/site.webmanifest",
+      "!/sitemap.xml"
     ]
   }
 }

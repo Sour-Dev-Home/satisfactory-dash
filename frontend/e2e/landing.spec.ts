@@ -30,6 +30,49 @@ test("renders with no API or third-party request, and the demo button above the 
   expect(offOrigin, "requests off the site's origin").toEqual([]);
 });
 
+// The AdSense rejection (2026-11-03): / must carry its content in the served HTML, not only after JavaScript runs.
+test("serves its text and links in the HTML itself, for crawlers without JavaScript", async ({ request }) => {
+  const response = await request.get("/");
+  expect(response.status()).toBe(200);
+  const html = await response.text();
+  for (const text of ["A live dashboard for your Satisfactory dedicated server", "Try the live demo", "What it shows", "Factory health", "Watch the walkthrough"]) {
+    expect(html).toContain(text);
+  }
+  expect(html).toContain('href="/guides"');
+  expect(html).toContain('href="/changelog"');
+  // The app's paths keep the empty shell: no landing content flashes there.
+  const app = await (await request.get("/app/power")).text();
+  expect(app).toContain('<div id="root"></div>');
+  expect(app).not.toContain("What it shows");
+});
+
+test.describe("with JavaScript off", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("the page, its demo and sign-in links and the guides are all there", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: /A live dashboard for your Satisfactory dedicated server/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Try the live demo" })).toHaveAttribute("href", "https://demo.satis-manager.com");
+    await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/app");
+    const footer = page.getByRole("contentinfo");
+    await expect(footer.getByRole("link", { name: "Guides" })).toHaveAttribute("href", "/guides");
+    await expect(footer.getByRole("link", { name: "Changelog" })).toHaveAttribute("href", "/changelog");
+  });
+});
+
+test("hydrates the prerendered page without a mismatch", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await page.waitForLoadState("networkidle");
+  // Hydrated: React has attached to the served markup (its internal keys are on the node), not just painted it.
+  await expect.poll(() => page.evaluate(() => Object.keys(document.querySelector("#root > div")!).some((key) => key.startsWith("__react")))).toBe(true);
+  expect(errors, "console errors (a hydration mismatch logs one)").toEqual([]);
+});
+
 test("Sign in opens the app's sign-in form", async ({ page, mockApi }) => {
   await mockApi("login");
   await page.goto("/");

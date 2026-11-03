@@ -22,12 +22,33 @@ contract needs to grow, not that this module should special-case a backend detai
   shown when the server list says `canManageServers`; tokens are write-only there, never prefilled or
   shown beyond their last 4). `/` is the static landing page (`src/landing/`, main site only;
   the demo's `/` is "Enter demo"); any other path redirects to `/app`, keeping the query
-  string. Keep `/` and future public paths (`/guides/*`, `/changelog`) free of app code: no
-  queries, no auth, no API calls (`e2e/landing.spec.ts`). Its link-preview tags are static
+  string. Keep `/` and the static public paths (`/guides/*`, `/changelog`, below) free of app code: no
+  queries, no auth, no API calls (`e2e/landing.spec.ts`, `e2e/guides.spec.ts`). Its link-preview tags are static
   in `index.html` (previews don't run JavaScript); `og:image` is `public/og-image.png`, the
   demo video's poster (`npm run demo:video`).
   Link with absolute `/app/...` paths. Every page element in `Shell` needs its own `key`, or
   React reuses the previous page's crash boundaries.
+- Public pages as real HTML (ADR-0021's 2026-11-03 build note; a crawler without JavaScript must see content). All
+  built by `site/plugin.ts` in the main build only (never the demo, never `vite` dev), with names and URLs in
+  `site/paths.ts`:
+  - `/`: the build prerenders the landing page (`src/landing/prerender.tsx`: `AppFrame` under `StaticRouter`, through
+    a Vite server in middleware mode) into `dist/landing.html`; `main.tsx` hydrates it. The Worker serves that file
+    for exactly `/` and redirects `/landing` to `/`; `vite preview` does the same. `index.html` stays the empty shell for
+    every app path. Anything the landing page (or the header and footer around it) renders must be the same in the
+    build and the browser: no time, random value or browser-only read during render (read such a value with
+    `useSyncExternalStore` and a server snapshot, as `SourceFooter` reads the ads marker). `e2e/landing.spec.ts` fails
+    on a hydration mismatch.
+  - `/guides`, `/guides/<slug>`, `/changelog`: Markdown in `content/guides/<slug>.md` and `content/changelog.md`,
+    rendered by markdown-it (dev dependency, raw HTML off) through `site/content.ts` and `site/pages.ts` into script-free
+    pages styled by `public/legal.css` (token colours only; `e2e/legal.spec.ts` checks). A guide's front matter is
+    `title`, `description`, `order` (whole number, the index's order) and `updated` (YYYY-MM-DD); the file name is the
+    slug (lowercase words and hyphens). The body starts at `##` (the title is the h1), never skips a heading level,
+    uses only this site's images (`/...`) and has at least `MIN_GUIDE_WORDS` words, or the build fails. Link the app
+    and other static pages with plain `<a href>`, never a router `Link`: they're outside the SPA.
+  - `sitemap.xml` and `robots.txt`: generated from the same list. Keep `/app` out of the sitemap but never disallow it
+    (the AdSense crawler signs in there).
+  A new generated page goes in `GENERATED_PAGES` (HTML, through the Worker) or `GENERATED_STATIC_FILES` (anything else,
+  plus a `!` pattern in `wrangler.jsonc`); `worker/routing.test.ts` checks both.
 - Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`
   (direction FICSIT-industrial (ADR-0041), dark only). Use the token utilities (`bg-surface`, `text-muted`,
   `text-ok`, `min-h-touch`...). Every colour, size, radius, z-index, breakpoint and motion
@@ -126,8 +147,8 @@ contract needs to grow, not that this module should special-case a backend detai
   `wrangler.jsonc`. Cloudflare's Git build runs `npx wrangler`; it's not a dependency.
   Served on the custom domain only (`workers_dev` and `preview_urls` are off).
   A Worker (`worker/index.ts`, ADR-0021 amendment 3) runs in front of the HTML pages only: `run_worker_first` is `/*`
-  minus `/assets/*` and every static entry of `public/`, so a new file or folder in `public/` must be added there as a
-  `!` pattern (`worker/routing.test.ts` fails otherwise). It puts a fresh nonce on every script and script preload and
+  minus `/assets/*`, every static entry of `public/` and the build's non-HTML files (`robots.txt`, `sitemap.xml`), so a
+  new file or folder in `public/` must be added there as a `!` pattern (`worker/routing.test.ts` fails otherwise). It puts a fresh nonce on every script and script preload and
   sends the security headers. `vars.ADS_ENABLED` is the ads switch, `"false"`: the CSP is then exactly `_headers`' and
   nothing is inserted. `"true"` sends `onPolicy` and appends the AdSense loader (with the nonce) and the
   `<meta name="satis-ads" content="on">` marker to `<head>` (`adsHead`). The app never loads an ad script itself: it
