@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Where the Planner canvas hides its rates at rest (ADR-0063 amendment, 2026-11-03): a mouse or trackpad is the primary
+   pointer. The same query as `[data-rate]` below and `RATES_HIDE_QUERY` (planner/graph/lineHighlight.ts). */
+@custom-variant hover-pointer (@media (hover: hover) and (pointer: fine));
+
 /*
  * Design tokens: the FICSIT-industrial direction (ADR-0041, which replaced ADR-0016's B2).
  * Dark only for now. Every UI PR is judged against these; add a token here rather than a
@@ -146,6 +150,9 @@
   /* The planner graph (ADR-0050): the side panel's width, and what an item filter dims. */
   --spacing-graph-panel: 22rem;
   --opacity-graph-dim: 0.25;
+  /* The highlight's cover (ADR-0063 amendment, 2026-11-03; planner/graph/HighlightLayer.tsx): the canvas colour over what is
+     not lit, at one minus the dim, so a covered thing shows at the dim's quarter, as item focus draws it. */
+  --opacity-graph-cover: 0.75;
   /* How far an overflow fade reaches in from the canvas edge (the graph) and the nav's edge (the main tabs). */
   --spacing-graph-fade: 3rem;
   --spacing-nav-fade: 2rem;
@@ -443,6 +450,14 @@
     font: inherit;
     text-transform: inherit;
     letter-spacing: inherit;
+  }
+  /* The Planner canvas's rate labels (ADR-0063 amendment, 2026-11-03). With a mouse or trackpad the canvas never shows them:
+     the highlight layer (planner/graph/HighlightLayer.tsx) draws a highlighted line's rate over it, rising in. A touch
+     screen (no hover) shows every one at rest. The label keeps its room either way (opacity only), so nothing moves. */
+  @media (hover: hover) and (pointer: fine) {
+    [data-rate] {
+      opacity: 0;
+    }
   }
   dd {
     color: var(--color-fg-strong);

@@ -1,4 +1,4 @@
-import { aggregateRateText } from "../plannerText";
+import { aggregateRateText, shortRateText } from "../plannerText";
 import type { CanvasFlow } from "./canvasScene";
 import type { FlowQuality } from "./hierarchy";
 import { itemIconText } from "./itemIcons";
@@ -41,12 +41,13 @@ export interface BubbleItem {
   quality: FlowQuality;
 }
 
-/** A line's bubbles: the shown items, every item (for the "+k" list), how many more the chip counts, and the rate text. */
+/** A line's bubbles: the shown items, every item (for the "+k" list), how many more the chip counts, and the short rate
+ *  text drawn under them (every line has one; "?/min" when unknown). */
 export interface BubbleRow {
   items: BubbleItem[];
   all: BubbleItem[];
   more: number;
-  rateText: string | null;
+  rateText: string;
 }
 
 const isKnown = (f: CanvasFlow): boolean => f.quality !== "unknown" && f.ratePerMinute !== null && Number.isFinite(f.ratePerMinute);
@@ -91,13 +92,16 @@ export function bubbleItems(flow: CanvasFlow): BubbleItem[] {
     .sort((a, b) => b.rate - a.rate || (a.name ?? "￿").localeCompare(b.name ?? "￿"));
 }
 
-/** A line's bubble row: up to `BUBBLE_MAX` items, a "+k" for the rest, and its rate text (with "mixed" and "excess"). */
+/**
+ * A line's bubble row: up to `BUBBLE_MAX` items, a "+k" for the rest, and its rate in the canvas's short form
+ * (`shortRateText`: "20/min", "~20/min", "?/min"; ADR-0063 amendment, 2026-11-03). "Mixed" and "excess" are not drawn:
+ * the line's style says mixed, and both stay in the line's `<title>`, its button and the outline, as ADR-0063 Decision 2
+ * rules for end labels.
+ */
 export function bubbleRow(flow: CanvasFlow): BubbleRow {
   const all = bubbleItems(flow);
   const items = all.slice(0, BUBBLE_MAX);
-  const rate = flow.quality === "unknown" || flow.ratePerMinute === null ? null : aggregateRateText(flow);
-  const words = [...(rate === null ? [] : [rate]), ...(flow.mixed ? ["mixed"] : []), ...(flow.flow === "excess" ? ["excess"] : [])];
-  return { items, all, more: all.length - items.length, rateText: words.length === 0 ? null : words.join(" · ") };
+  return { items, all, more: all.length - items.length, rateText: shortRateText(flow) };
 }
 
 /** What focus mode holds (ADR-0060 Decision 2): a line by its key, and one of its items by `BubbleItem.key`. */
