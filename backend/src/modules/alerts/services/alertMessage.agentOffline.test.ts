@@ -32,6 +32,13 @@ describe("the Discord message of an agent_offline alert (ADR-0031)", () => {
     expect(embed.footer.text).toBe("power outage · warning");
   });
 
+  it("keeps every other rule kind's footer as its spelled-out name", () => {
+    for (const kind of ["power_outage", "fuse_trip", "stopped_machines", "server_unreachable", "production_below_target"] as const) {
+      const embed = formatAlertMessage({ kind, transition: "fired", severity: "info", subject: "server", summary: {}, serverName: "Home factory", at: 0 }).embeds[0]!;
+      expect(embed.footer.text).toBe(`${kind.replace(/_/g, " ")} · info`);
+    }
+  });
+
   it("rounds the silence to whole minutes, at least one, and tolerates a summary that is not what was recorded", () => {
     expect(message("fired", { silentForSeconds: 40 }).description).toContain("about 1 min");
     expect(message("fired", { silentForSeconds: "long" }).description).not.toContain("No snapshot");
