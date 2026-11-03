@@ -12,7 +12,7 @@
 
 # Build stage: install workspace deps and bundle the backend into one file. It runs on the BUILD
 # machine's platform, so the arm64 image never runs npm ci or esbuild under emulation.
-FROM --platform=$BUILDPLATFORM node:26-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS build
+FROM --platform=$BUILDPLATFORM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS build
 WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/package.json
@@ -39,7 +39,7 @@ RUN case "$TARGETARCH" in \
 # Ops image: the build stage's tsx scripts and backend/migrations, plus the tools the scripts call:
 # the PostgreSQL 18 client (pg_dump), age and the AWS CLI (backup). Only the paths the scripts need
 # are copied, never the whole backend directory, so a local backend/.env can't end up in the image.
-FROM node:26-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS ops
+FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS ops
 # The PGDG signing key, pinned by hash: a changed key fails the build instead of being trusted.
 ARG PGDG_ASC_SHA256=0144068502a1eddd2a0280ede10ef607d1ec592ce819940991203941564e8e76
 RUN apt-get update \
@@ -74,7 +74,7 @@ USER node
 CMD ["npm", "run", "-w", "backend"]
 
 # Runtime stage: just the bundled output, no node_modules, no source.
-FROM node:26-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS runtime
+FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS runtime
 WORKDIR /app
 COPY backend/rds-global-bundle.pem /etc/ssl/rds/global-bundle.pem
 COPY --from=build /repo/backend/dist/server.cjs ./server.cjs
