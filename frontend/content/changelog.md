@@ -1,7 +1,6 @@
 ---
 title: Changelog
 description: Notable changes to Satis Manager you can see in the dashboard, newest first.
-order: 1
 updated: 2026-11-03
 ---
 The changes you can see in the dashboard, newest first. Fixes behind the scenes and work that isn't visible yet are left out.
