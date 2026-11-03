@@ -108,6 +108,42 @@ describe("the canvas highlight", () => {
     over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!, "touch");
     over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!, "pen");
     expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
+    // A touch after the mouse ends the mouse's highlight rather than leave it behind.
+    over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!);
+    expect(layerOf(svg)).toHaveAttribute("data-highlight", "dim");
+    over(svg.querySelector("g[data-card] rect")!, "touch");
+    expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
+  });
+
+  it("a hybrid device (a mouse its primary pointer, so rates hide at rest) lets a finger highlight too, until the next touch", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(hover: hover) and (pointer: fine)", media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
+    const svg = await openGraph();
+    over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!, "touch");
+    expect(layerOf(svg)).toHaveAttribute("data-highlight", "dim");
+    // The finger lifting leaves the canvas: the highlight stays.
+    act(() => void fireEvent.pointerLeave(svg, { pointerType: "touch" }));
+    expect(layerOf(svg)).toHaveAttribute("data-highlight", "dim");
+    over(svg, "touch");
+    expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
+  });
+
+  it("a pan ends the highlight: the picture moves under it", async () => {
+    const svg = await openGraph();
+    over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!);
+    expect(layerOf(svg)).toHaveAttribute("data-highlight", "dim");
+    act(() => void fireEvent.pointerDown(svg, { button: 0, pointerId: 1, pointerType: "mouse", clientX: 100, clientY: 100 }));
+    act(() => void window.dispatchEvent(new MouseEvent("pointermove", { clientX: 160, clientY: 140 })));
+    act(() => {
+      const move = new MouseEvent("pointermove", { clientX: 200, clientY: 180 });
+      Object.defineProperty(move, "pointerId", { value: 1 });
+      window.dispatchEvent(move);
+    });
+    act(() => {
+      const up = new MouseEvent("pointerup", { clientX: 200, clientY: 180 });
+      Object.defineProperty(up, "pointerId", { value: 1 });
+      window.dispatchEvent(up);
+    });
+    expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
   });
 
   it("the keyboard on a card's button highlights it as the pointer does", async () => {

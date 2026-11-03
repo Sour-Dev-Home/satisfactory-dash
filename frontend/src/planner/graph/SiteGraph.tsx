@@ -87,8 +87,8 @@ import { CanvasOverlay } from "./CanvasOverlay";
 import { placeOverlay, screenRect, stageBesideOverlay } from "./overlayPlacement";
 import { useLargeScreen } from "./useWideScreen";
 import { CARD_RX, bubbleCentre, bubbleRowOrigin, itemCardText } from "./itemCardText";
-import { pointerStore, targetAt, type HighlightMode, type HighlightTarget } from "./lineHighlight";
-import { HighlightLayer, rateAnchor } from "./HighlightLayer";
+import { pointerStore, rateAnchor, ratesHideAtRest, targetAt, type HighlightMode, type HighlightTarget } from "./lineHighlight";
+import { HighlightLayer } from "./HighlightLayer";
 import { tweenMs, useTween } from "./useTween";
 import { itemIconUrl } from "./itemIcons";
 import {
@@ -683,6 +683,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // The pointers that are down on the stage (client pixels, last seen): one pans, two pinch and pan together.
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const travelled = useRef(0);
+  // The mouse's highlight target (ADR-0063 amendment, 2026-11-03), outside React state: only `HighlightLayer` reads it.
+  const [hoverStore] = useState(pointerStore);
 
   useEffect(() => {
     const toStagePoint = (p: { x: number; y: number }) => {
@@ -710,6 +712,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         const other = [...pointers.current].find(([id]) => id !== e.pointerId)![1];
         pointers.current.set(e.pointerId, next);
         dragged.current = true;
+        // A pinch or a pan moves the picture under the highlight: it ends (the next pointerover sets it again).
+        hoverStore.set(null);
         const before: Pair = [toStagePoint(prev), toStagePoint(other)];
         const after: Pair = [toStagePoint(next), toStagePoint(other)];
         setView((v) => pinchView(v, before, after));
@@ -723,6 +727,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       travelled.current += Math.abs(dx) + Math.abs(dy);
       if (travelled.current > DRAG_SLOP) {
         dragged.current = true;
+        hoverStore.set(null);
         setView((v) => panBy(v, dx / scale, dy / scale));
       }
     };
@@ -750,7 +755,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, []);
+  }, [hoverStore]);
 
   const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
@@ -1125,19 +1130,27 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // lit lines' rates, all drawn by `HighlightLayer` over the canvas. The pointer's target is in a store only that layer
   // reads, so pointing never re-renders the canvas, re-runs layout or repaints it. Item focus and the item filter own the
   // dimming: then a highlight only shows the rates.
-  const [hoverStore] = useState(pointerStore);
   const keyTarget = useMemo((): HighlightTarget | null => {
     const stopEdge = keyStop === null ? undefined : edgeByKey.get(keyStop.edgeKey);
     if (stopEdge !== undefined) return { kind: "edge", index: stopEdge.index };
     return focusKey === null ? null : { kind: "card", key: focusKey };
   }, [keyStop, focusKey, edgeByKey]);
   const highlightMode: HighlightMode = focus !== null || reach !== null ? "labels" : "dim";
-  // A mouse only: a touch screen shows every rate at rest, and a tap is a click. Nothing changes while a drag pans.
+  // A line's target is its index in this layout: a new layout (a poll that reorders the lines) ends the pointer's highlight
+  // rather than light another line under a still mouse. The next pointerover sets it again.
+  useEffect(() => hoverStore.set(null), [layout, hoverStore]);
+  // The mouse, and on a device whose rates hide at rest (a mouse is its primary pointer) a finger or pen too, so a touch on
+  // a hybrid laptop still shows them. On a touch screen every rate shows at rest and a tap is only a click; a touch there
+  // ends a mouse's highlight. Nothing changes while a drag pans.
   const onPointerOver = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (event.pointerType !== "mouse" || pointers.current.size > 0) return;
-    hoverStore.set(event.target instanceof Element ? targetAt(event.target) : null);
+    if (pointers.current.size > 0) return;
+    const highlights = event.pointerType === "mouse" || ratesHideAtRest();
+    hoverStore.set(highlights && event.target instanceof Element ? targetAt(event.target) : null);
   };
-  const onPointerLeave = () => hoverStore.set(null);
+  // A finger lifting leaves the canvas too: its highlight stays until the next touch (on the background, it ends).
+  const onPointerLeave = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.pointerType === "mouse") hoverStore.set(null);
+  };
   const findingsByCard = useMemo(() => {
     const counts = new Map<string, number>();
     if (findings === undefined) return counts;
@@ -2116,7 +2129,7 @@ function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }:
       {/* The short rate (ADR-0063 amendment, 2026-11-03): shown at rest on a touch screen only (`data-rate`, index.css);
           with a mouse, `HighlightLayer` draws it here, over the canvas, while the line is highlighted. Its room is kept. */}
       {detail.full && (
-        <text x={rate.x} y={rate.y} textAnchor="middle" dominantBaseline="central" strokeWidth={4} data-rate="" className="fill-fg stroke-surface text-sm paint-stroke-first">
+        <text x={rate.x} y={rate.y} textAnchor="middle" dominantBaseline="central" strokeWidth={4} data-rate="" aria-hidden="true" className="fill-fg stroke-surface text-sm paint-stroke-first">
           {row.rateText}
         </text>
       )}
@@ -2637,9 +2650,10 @@ function RateLegend() {
       {/* The canvas's short rates (ADR-0063 amendment, 2026-11-03), shown as drawn but read in words: "~" and "≥" read
           badly aloud. */}
       <li data-legend-rates="">
-        <span aria-hidden="true">Rates: 20/min measured, ~20/min about, ≥20/min at least, ?/min unknown.</span>
+        <span aria-hidden="true">Rates: 20/min measured, ~20/min means about, ≥20/min at least, ?/min unknown.</span>
         <span className="sr-only">Rates on the lines: a number per minute, marked when it is about, at least, or unknown.</span>{" "}
-        With a mouse, point at a line or a card to show its rates.
+        {/* Only where the rates hide at rest (a mouse is the primary pointer); a touch screen shows them all. */}
+        <span className="hidden hover-pointer:inline">Point at or focus a line or a card to show its rates.</span>
       </li>
     </ul>
   );

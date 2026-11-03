@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Where the Planner canvas hides its rates at rest (ADR-0063 amendment, 2026-11-03): a mouse or trackpad is the primary
+   pointer. The same query as `[data-rate]` below and `RATES_HIDE_QUERY` (planner/graph/lineHighlight.ts). */
+@custom-variant hover-pointer (@media (hover: hover) and (pointer: fine));
+
 /*
  * Design tokens: the FICSIT-industrial direction (ADR-0041, which replaced ADR-0016's B2).
  * Dark only for now. Every UI PR is judged against these; add a token here rather than a

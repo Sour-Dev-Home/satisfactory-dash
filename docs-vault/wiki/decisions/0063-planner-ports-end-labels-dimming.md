@@ -467,8 +467,10 @@ takes this short form and the same visibility rule; Decision 3's table, which ga
 
 2. **Words everywhere else.** "~" reads as "tilde" and "≥" as "greater than or equal" aloud, so the short form is only the
    label drawn on a line. Screen-reader text, `<title>`s, the bubbles' and caps' buttons, the outline, the item card and the
-   legend's words keep `aggregateRateText` ("about 20 items/min", "at least ...", "rate unknown"). The legend's new row
-   shows the four forms as drawn (`aria-hidden`) beside a visually hidden sentence in words.
+   legend's words keep `aggregateRateText` ("about 20 items/min", "at least ...", "rate unknown"). The canvas's own rate
+   `<text>` is `aria-hidden`. The legend's new row shows the four forms as drawn (`aria-hidden`) beside a visually hidden
+   sentence in words, then, only where the rates hide at rest (the `hover-pointer` variant), "Point at or focus a line or a
+   card to show its rates."
 
 3. **When the label shows.** With a mouse or trackpad (`(hover: hover) and (pointer: fine)`) the canvas never shows it at
    rest; it rises in while its line is highlighted. On a touch screen (no hover) every label shows at rest, as before. The
@@ -481,8 +483,12 @@ takes this short form and the same visibility rule; Decision 3's table, which ga
    cards. **A card lights every line in or out of it, each with its rate, and their far cards** (hop-1, ADR-0060's rule
    and state 4's): the owner named "either connected card" as a way to highlight a line, and a card is connected to all of
    its lines, so picking one of them would be arbitrary; seeing every rate in and out of a card is also the question a
-   pointed-at card asks. Everything else dims. Touch and pen pointers do not highlight (a tap stays a click, and touch
-   already shows the rates). A drag or pinch in progress does not change it; a make-room glide turns it off.
+   pointed-at card asks. Everything else dims. On a touch screen a finger or pen does not highlight (a tap stays a click, and
+   the rates already show) and ends a mouse's highlight; on a hybrid device whose primary pointer is a mouse (so the rates
+   hide at rest) a finger highlights too, and the highlight stays after the finger lifts until the next touch. A pan or
+   pinch ends it, as does a new layout (a line's target is its index in the layout, so a reordering poll must not light
+   another line under a still mouse); a make-room glide turns it off. The keyboard's target shows whenever the pointer's
+   is not in the picture.
 
 5. **How it dims.** ADR-0063 build PR 1's dim colours are not built yet, so the look is today's `--opacity-graph-dim` (a
    quarter of the thing over the canvas colour), as item focus draws it. It is drawn without touching the canvas: a cover in
@@ -546,4 +552,12 @@ row. The outline-only states (390 px states that open on the outline) do not cha
 
 ### Review
 
-`ui-reviewer` and `test-hunter` (fresh), before the PR: see the PR description.
+- `ui-reviewer` (from the diff, no live check): nothing blocking. Taken: the legend hint names the keyboard too and shows
+  only where the rates hide at rest; a hybrid device's finger highlights; a pan ends the highlight; the canvas's rate text
+  is `aria-hidden`; a test pins `--opacity-graph-cover` to one minus the dim and the three uses of the media query to one
+  string. Left for the live look on the baselines and the demo: the holes round double lines, stop bars and transport
+  glyphs at the zoom extremes, and whether hover-only rates are found.
+- `test-hunter`: one bug, fixed: a pointer target a poll took away masked a valid keyboard target (the layer now falls
+  back to the keyboard's). Also raised and fixed here: a positional line target after a reordering poll (a new layout
+  ends the pointer's highlight) and a touch after the mouse leaving the mouse's highlight lit. Tests added for both, for a
+  huge and a negative rate, and for the glide's off switch.

@@ -1,9 +1,8 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { cn } from "../../lib/cn";
-import { BUBBLE_D } from "./bubbleRow";
 import { roundedOrthogonalPath } from "./edgeShapes";
-import { LABEL_LINE_H, LABEL_PAD, isTransport, type LaidEdge, type LaidNode } from "./layoutSite";
-import { highlightOf, targetId, type Highlight, type HighlightMode, type HighlightTarget, type PointerStore } from "./lineHighlight";
+import { isTransport, type LaidEdge, type LaidNode } from "./layoutSite";
+import { highlightOf, rateAnchor, targetId, type Highlight, type HighlightMode, type HighlightTarget, type PointerStore } from "./lineHighlight";
 import { marchHoles } from "./marching";
 import { GLYPH_HALO_RADIUS } from "./transportModes";
 import type { Stage, View } from "./viewport";
@@ -16,13 +15,6 @@ export const HIGHLIGHT_STALLED_HOLE = 13;
 export const HIGHLIGHT_TRANSPORT_HOLE = 2 * GLYPH_HALO_RADIUS;
 /** How far the cover reaches past the picture, as the march layer's mask does: a line's arrowhead or a badge sticks out. */
 const COVER_PAD = 50;
-
-/** Where a line's rate text sits: centred under its bubbles, in the row its label box keeps for it. The canvas's
- *  `EdgeLabel` and this layer both use it, so the lit rate lies exactly on the canvas's own (hidden) one. */
-export function rateAnchor(e: Pick<LaidEdge, "labelY" | "labelHeight" | "textX">): { x: number; y: number } {
-  const top = e.labelY - e.labelHeight / 2 + LABEL_PAD / 2;
-  return { x: e.textX, y: top + BUBBLE_D + LABEL_LINE_H / 2 };
-}
 
 const holeWidth = (e: LaidEdge): number => (isTransport(e.flow) ? HIGHLIGHT_TRANSPORT_HOLE : e.flow.stalled !== undefined ? HIGHLIGHT_STALLED_HOLE : HIGHLIGHT_LINE_HOLE);
 
@@ -76,9 +68,12 @@ export function HighlightLayer({
   height: number;
 }) {
   const pointer = useSyncExternalStore(store.subscribe, store.get, store.get);
-  const target = enabled ? (pointer ?? keyTarget) : null;
   const cardKeys = useMemo(() => new Set(nodes.map((n) => n.key)), [nodes]);
-  const hl = useMemo(() => highlightOf(target, edges, cardKeys), [target, edges, cardKeys]);
+  // A pointer target a poll took away must not mask the keyboard's: fall back to it when the pointer's is not in the picture.
+  const pointerHl = useMemo(() => (enabled ? highlightOf(pointer, edges, cardKeys) : null), [enabled, pointer, edges, cardKeys]);
+  const keyHl = useMemo(() => (enabled && pointerHl === null ? highlightOf(keyTarget, edges, cardKeys) : null), [enabled, pointerHl, keyTarget, edges, cardKeys]);
+  const hl = pointerHl ?? keyHl;
+  const target = pointerHl !== null ? pointer : keyHl !== null ? keyTarget : null;
   // The last highlight stays drawn while the layer fades out. Adjusting state while rendering, guarded so it settles in one pass.
   const [shown, setShown] = useState<{ id: string; hl: Highlight } | null>(null);
   if (hl !== null && target !== null && (shown === null || shown.hl !== hl)) setShown({ id: targetId(target), hl });

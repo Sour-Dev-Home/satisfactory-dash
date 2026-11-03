@@ -32,6 +32,11 @@ describe("shortRateText", () => {
     expect(shortRateText({ quality: "measured", ratePerMinute: 0, unit: "items/min" })).toBe("0/min");
   });
 
+  it("keeps a huge or negative number readable, with the quality mark ahead of the sign", () => {
+    expect(shortRateText({ quality: "measured", ratePerMinute: 1234567.89, unit: "items/min" })).toBe("1,234,567.9/min");
+    expect(shortRateText({ quality: "atLeast", ratePerMinute: -5, unit: "m3/min" })).toBe("≥-5 m³/min");
+  });
+
   it("has the same number as the full words, which keep 'about' and the unit for every text path", () => {
     const flow = { quality: "estimated" as const, ratePerMinute: 102.2, unit: "items/min" as const };
     expect(aggregateRateText(flow)).toBe("about 102.2 items/min");

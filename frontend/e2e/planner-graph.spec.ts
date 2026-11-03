@@ -160,6 +160,8 @@ test("hovering a line shows its rate and dims the rest; hovering a card lights a
   for (const rate of await svg.locator("[data-rate]").all()) expect(await opacityOf(rate)).toBe("0");
   await expect(svg.locator("g.opacity-graph-dim")).toHaveCount(0);
   expect(await opacityOf(layer)).toBe("0");
+  // The legend says how to show them (only where they hide at rest).
+  await expect(page.getByText("Point at or focus a line or a card to show its rates.")).toBeVisible();
   const [canvasBox, layerBox] = await Promise.all([svg.boundingBox(), layer.boundingBox()]);
   for (const k of ["x", "y", "width", "height"] as const) expect(Math.abs(layerBox![k] - canvasBox![k]), k).toBeLessThan(0.5);
   expect(await layer.evaluate((el) => getComputedStyle(el).willChange)).toBe("transform");
@@ -223,6 +225,7 @@ test("a touch screen shows every line's rate at rest, and a tap changes no highl
   expect(await rates.count()).toBeGreaterThan(0);
   for (const rate of await rates.all()) expect(await opacityOf(rate)).toBe("1");
   await expect(rates.filter({ hasText: /^120\/min$/ })).toHaveCount(1);
+  await expect(page.getByText("Point at or focus a line or a card to show its rates.")).toBeHidden();
   await expectNoAxeViolations(page, testInfo);
 });
 

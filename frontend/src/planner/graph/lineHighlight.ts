@@ -10,6 +10,16 @@
  * render of that layer when what it is over changes, and nothing when it does not.
  */
 
+import { BUBBLE_D } from "./bubbleRow";
+import { LABEL_LINE_H, LABEL_PAD, type LaidEdge } from "./layoutSite";
+
+/** Where a line's rate text sits: centred under its bubbles, in the row its label box keeps for it. The canvas's
+ *  `EdgeLabel` and `HighlightLayer` both use it, so the lit rate lies exactly on the canvas's own (hidden) one. */
+export function rateAnchor(e: Pick<LaidEdge, "labelY" | "labelHeight" | "textX">): { x: number; y: number } {
+  const top = e.labelY - e.labelHeight / 2 + LABEL_PAD / 2;
+  return { x: e.textX, y: top + BUBBLE_D + LABEL_LINE_H / 2 };
+}
+
 /** What is highlighted: one line, by its `LaidEdge.index`, or one card, by its key. */
 export type HighlightTarget = { kind: "edge"; index: number } | { kind: "card"; key: string };
 
@@ -65,6 +75,11 @@ export function targetAt(el: Element | null): HighlightTarget | null {
   const key = hit.getAttribute("data-hl-node");
   return key === null ? null : { kind: "card", key };
 }
+
+/** Where the canvas hides its rates at rest (`[data-rate]` in `index.css` uses the same query): a mouse or trackpad is the
+ *  primary pointer. */
+export const RATES_HIDE_QUERY = "(hover: hover) and (pointer: fine)";
+export const ratesHideAtRest = (): boolean => typeof window.matchMedia === "function" && window.matchMedia(RATES_HIDE_QUERY).matches;
 
 /** The pointer's target, outside React state: `set` tells only the subscribers (the highlight layer), and only on a change. */
 export interface PointerStore {
