@@ -8,7 +8,6 @@ import { ServerContext } from "../../servers/ServerContext";
 import { renderWithClient } from "../../test/render";
 import { server } from "../../test/server";
 import { PlannerView } from "../PlannerView";
-import { HIGHLIGHT_LINE_HOLE } from "./HighlightLayer";
 
 // ADR-0063 amendment (2026-11-03): pointing at a line or a card highlights it (its rate rises in, the rest is covered), with
 // the mouse only, all in the highlight layer over the canvas: the canvas itself is never touched.
@@ -53,7 +52,7 @@ describe("the canvas highlight", () => {
     expect(Number(hit.getAttribute("stroke-width"))).toBeGreaterThan(6);
   });
 
-  it("pointing at a line covers the rest, holes its line, label and two cards, and draws its rate; the canvas is untouched", async () => {
+  it("pointing at a line draws its rate and dims nothing; the canvas is untouched", async () => {
     const svg = await openGraph();
     const layer = layerOf(svg);
     expect(layer).toHaveAttribute("aria-hidden", "true");
@@ -63,17 +62,11 @@ describe("the canvas highlight", () => {
     const line = lineOf(svg, IRON_ORE);
     const index = line.getAttribute("data-edge")!;
     over(line.querySelector("[data-line-hit]")!);
-    expect(layer).toHaveAttribute("data-highlight", "dim");
+    expect(layer).toHaveAttribute("data-highlight");
     expect(layer).toHaveClass("opacity-100");
     expect(rates(svg)).toEqual([[index, "120/min"]]);
-    const cover = layer.querySelector("[data-highlight-cover]")!;
-    expect(cover).toHaveClass("fill-surface", "opacity-graph-cover");
-    const mask = layer.querySelector(`mask#${CSS.escape(cover.getAttribute("mask")!.slice(5, -1))}`)!;
-    // White covers; black holes: the label's pill and the two cards (and their badge strips), and the line's own stroke.
-    expect(mask.querySelectorAll("rect.fill-black").length).toBeGreaterThanOrEqual(3);
-    const holes = [...mask.querySelectorAll("path.stroke-black")];
-    expect(holes).toHaveLength(1);
-    expect(Number(holes[0].getAttribute("stroke-width"))).toBe(HIGHLIGHT_LINE_HOLE);
+    // No dimming (the owner dropped it, 2026-11-03): the layer draws only the words, no cover, mask or shape.
+    expect(layer.querySelectorAll("mask, rect, path")).toHaveLength(0);
     // Its rate sits exactly where the canvas keeps the line's own (hidden) one.
     const own = svg.querySelector(`[data-edge-label="${index}"] > text[data-rate]`)!;
     const drawn = layer.querySelector("[data-highlight-rate]")!;
@@ -110,7 +103,7 @@ describe("the canvas highlight", () => {
     expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
     // A touch after the mouse ends the mouse's highlight rather than leave it behind.
     over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!);
-    expect(layerOf(svg)).toHaveAttribute("data-highlight", "dim");
+    expect(layerOf(svg)).toHaveAttribute("data-highlight");
     over(svg.querySelector("g[data-card] rect")!, "touch");
     expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
   });
@@ -119,10 +112,10 @@ describe("the canvas highlight", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(hover: hover) and (pointer: fine)", media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
     const svg = await openGraph();
     over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!, "touch");
-    expect(layerOf(svg)).toHaveAttribute("data-highlight", "dim");
+    expect(layerOf(svg)).toHaveAttribute("data-highlight");
     // The finger lifting leaves the canvas: the highlight stays.
     act(() => void fireEvent.pointerLeave(svg, { pointerType: "touch" }));
-    expect(layerOf(svg)).toHaveAttribute("data-highlight", "dim");
+    expect(layerOf(svg)).toHaveAttribute("data-highlight");
     over(svg, "touch");
     expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
   });
@@ -130,7 +123,7 @@ describe("the canvas highlight", () => {
   it("a pan ends the highlight: the picture moves under it", async () => {
     const svg = await openGraph();
     over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!);
-    expect(layerOf(svg)).toHaveAttribute("data-highlight", "dim");
+    expect(layerOf(svg)).toHaveAttribute("data-highlight");
     act(() => void fireEvent.pointerDown(svg, { button: 0, pointerId: 1, pointerType: "mouse", clientX: 100, clientY: 100 }));
     act(() => void window.dispatchEvent(new MouseEvent("pointermove", { clientX: 160, clientY: 140 })));
     act(() => {
@@ -150,18 +143,17 @@ describe("the canvas highlight", () => {
     const svg = await openGraph();
     const button = screen.getByRole("button", { name: /^8× Constructor, Iron Plate/ });
     act(() => button.focus());
-    expect(layerOf(svg)).toHaveAttribute("data-highlight", "dim");
+    expect(layerOf(svg)).toHaveAttribute("data-highlight");
     expect(rates(svg).length).toBeGreaterThan(1);
     act(() => button.blur());
     expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
   });
 
-  it("under the item filter only draws the rates: the filter owns the dimming", async () => {
+  it("under the item filter draws the rates the same way: the filter keeps its own dimming", async () => {
     const svg = await openGraph();
     fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_OreIron_C" } });
     over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!);
-    expect(layerOf(svg)).toHaveAttribute("data-highlight", "labels");
-    expect(layerOf(svg).querySelector("[data-highlight-cover]")).toBeNull();
+    expect(layerOf(svg)).toHaveAttribute("data-highlight");
     expect(rates(svg)).toHaveLength(1);
   });
 });

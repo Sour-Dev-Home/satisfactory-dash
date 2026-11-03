@@ -561,3 +561,13 @@ row. The outline-only states (390 px states that open on the outline) do not cha
   back to the keyboard's). Also raised and fixed here: a positional line target after a reordering poll (a new layout
   ends the pointer's highlight) and a touch after the mouse leaving the mouse's highlight lit. Tests added for both, for a
   huge and a negative rate, and for the glide's off switch.
+
+### Change, 2026-11-03 (after it shipped): no dimming on hover
+
+The owner, after trying it live: "Drop the dimm on hover, keep the rest of the behavior." Decision 5 is withdrawn: a
+highlight no longer dims anything. The cover, its mask and holes, the `dim`/`labels` modes (Decision 6's "no cover"
+case is now the only case) and `--opacity-graph-cover` are gone; `HighlightLayer` draws only the lit lines' rates. All
+else stands: rates hidden at rest with a mouse and shown at rest on touch, the short form, the rate rising in mid-line
+for a pointed-at or focused line or card, the layer off the canvas's repaint path. Item focus and the item filter keep
+their own dimming. Build PR 1 no longer has a cover to migrate ("When build PR 1 lands" and its row's `HighlightLayer`
+entry fall away); whether the highlight should dim in PR 1's colours is a new question for the owner then, not assumed.

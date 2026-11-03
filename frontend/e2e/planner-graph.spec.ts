@@ -147,7 +147,7 @@ const openIronSite = async (page: Page) => {
 const opacityOf = (el: Locator) => el.evaluate((node) => getComputedStyle(node).opacity);
 const rateOf = (label: Locator) => label.locator(":scope > [data-rate]");
 
-test("hovering a line shows its rate and dims the rest; hovering a card lights all its lines", async ({ page, mockApi }, testInfo) => {
+test("hovering a line shows its rate and dims nothing; hovering a card lights all its lines", async ({ page, mockApi }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "a mouse's hover; the touch project has its own test");
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await mockApi("planner-group-panel");
@@ -167,17 +167,17 @@ test("hovering a line shows its rate and dims the rest; hovering a card lights a
   expect(await layer.evaluate((el) => getComputedStyle(el).willChange)).toBe("transform");
   const before = await ironOre.boundingBox();
 
-  // The line (here its bubbles): the layer fades in (its own opacity, by the motion token) with the cover over everything
-  // else and the line's rate on top, rising in.
+  // The line (here its bubbles): the layer fades in (its own opacity, by the motion token) with the line's rate, rising
+  // in. Nothing else dims (the owner dropped it, 2026-11-03).
   await ironOre.hover();
-  await expect(layer).toHaveAttribute("data-highlight", "dim");
+  await expect(layer).toHaveAttribute("data-highlight", "");
   expect(await layer.evaluate((el) => getComputedStyle(el).transitionDuration)).not.toBe("0s");
   await expect.poll(() => opacityOf(layer)).toBe("1");
   const lit = layer.locator("[data-highlight-rate]");
   await expect(lit).toHaveCount(1);
   await expect(lit).toHaveAttribute("data-highlight-rate", index!);
   await expect(lit).toHaveText("120/min");
-  expect(await layer.locator("[data-highlight-cover]").evaluate((el) => getComputedStyle(el).opacity)).toBe("0.75");
+  await expect(layer.locator("mask, rect, path")).toHaveCount(0);
   // The canvas is not touched: nothing in it changed opacity, and nothing moved (the label's room was reserved).
   const other = svg.locator(`[data-edge-layer="lines"] [data-edge]:not([data-edge="${index}"])`).first();
   expect(await opacityOf(other)).toBe("1");
@@ -209,7 +209,7 @@ test("under reduced motion a hovered line's rate appears at once, with no transi
   const layer = page.locator("[data-highlight-layer]");
   expect(await layer.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
   await svg.locator('[data-edge-label]:has([data-bubble="Desc_OreIron_C"])').first().hover();
-  await expect(layer).toHaveAttribute("data-highlight", "dim");
+  await expect(layer).toHaveAttribute("data-highlight", "");
   expect(await opacityOf(layer)).toBe("1");
   const rates = layer.locator("[data-highlight-rates]");
   expect(await rates.evaluate((el) => getComputedStyle(el).animationDuration)).toBe("0s");
@@ -272,7 +272,7 @@ test("pointing from card to card records its frame times (210 lines)", async ({ 
     await page.waitForTimeout(100);
   }
   const hovering = frameSummary(await measuring);
-  await expect(page.locator("[data-highlight-layer]")).toHaveAttribute("data-highlight", "dim");
+  await expect(page.locator("[data-highlight-layer]")).toHaveAttribute("data-highlight", "");
 
   const result = { project: testInfo.project.name, lines: await svg.locator('[data-edge-layer="lines"] [data-edge]').count(), changes, frameMs: { rest, hovering } };
   await testInfo.attach("hover-frame-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });

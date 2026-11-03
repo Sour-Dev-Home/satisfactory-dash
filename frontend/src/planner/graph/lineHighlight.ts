@@ -29,10 +29,6 @@ export interface Highlight {
   cards: ReadonlySet<string>;
 }
 
-/** How a highlight looks: `dim` covers what is not lit; `labels` only shows the lit lines' rates (item focus or the item
- *  filter own the dimming then). */
-export type HighlightMode = "dim" | "labels";
-
 type EdgeEnds = { index: number; flow: { from: string; to: string } };
 
 export const sameTarget = (a: HighlightTarget | null, b: HighlightTarget | null): boolean =>
