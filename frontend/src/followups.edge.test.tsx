@@ -20,11 +20,16 @@ import { BackendUnreachableError } from "./api/errors";
 import { createQueryClient, POLL_MS, queries, SESSION_KEY } from "./api/queries";
 import { formatMW, roundForDisplay } from "./format";
 import { PowerPanel } from "./power/PowerPanel";
-import { ServerContext } from "./servers/ServerContext";
+import { ServerContext, useSelectedServer } from "./servers/ServerContext";
 import { ServerGate } from "./servers/ServerGate";
 import { AutoPausePanel } from "./settings/AutoPausePanel";
 import { AutoPauseView } from "./settings/AutoPauseView";
-import { StatusView } from "./status/StatusView";
+
+/** A reader of the selected server's status, inside the gate (the Server status card that did this went, ADR-0064). */
+function StatusView() {
+  const status = useQuery(queries.status(useSelectedServer().id));
+  return status.data ? <section aria-label="Server status">{status.data.data.sessionName}</section> : null;
+}
 import { renderWithClient } from "./test/render";
 import { server } from "./test/server";
 

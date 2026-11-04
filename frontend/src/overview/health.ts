@@ -1,5 +1,5 @@
 import { isBackedUpState, ownValue, type FactoryResponse, type PowerResponse, type StatusResponse } from "@satisfactory-dash/shared";
-import { formatMW } from "../format";
+import { formatDuration } from "../format";
 
 /**
  * The Overview's status-page summary (direction B2). Pure: it only aggregates what the
@@ -39,10 +39,8 @@ export function serverHealth({ data, stale }: StatusResponse): SectionHealth {
   // The tick isn't this row's (the owner's call): it lives in the Health card, and tickState
   // below feeds it into the overall health instead.
   if (data.gamePaused) return { health: "paused", summary: "Paused: no players connected" };
-  return {
-    health: "ok",
-    summary: `${data.sessionName} · ${data.connectedPlayers} / ${data.playerLimit} players`,
-  };
+  // ADR-0064: the save and its play time (the Server status card went); the players are the Players card's.
+  return { health: "ok", summary: `${data.sessionName} · ${formatDuration(data.totalGameDurationSeconds)} played` };
 }
 
 /**
@@ -71,12 +69,9 @@ export function powerHealth({ data, stale }: PowerResponse): SectionHealth {
   }
   if (stale) return { health: "degraded", summary: "Showing last known power data", cause: "Power data is stale" };
   if (data.circuits.length === 0) return { health: "ok", summary: "No power circuits yet" };
-  const production = data.circuits.reduce((sum, c) => sum + c.productionMW, 0);
-  const capacity = data.circuits.reduce((sum, c) => sum + c.capacityMW, 0);
-  return {
-    health: "ok",
-    summary: `${plural(data.circuits.length, "circuit", "circuits")} · ${formatMW(production)} of ${formatMW(capacity)} capacity`,
-  };
+  // ADR-0064: the Power card beside it says the load ("X MW of Y MW", consumption); this tile only counts the circuits, so
+  // the page never shows two different power numbers in the same words.
+  return { health: "ok", summary: plural(data.circuits.length, "circuit", "circuits") };
 }
 
 export function factoryHealth({ data, stale }: FactoryResponse): SectionHealth {
@@ -126,6 +121,14 @@ const HEADLINE: Record<Health, string> = {
   unavailable: "Some data is unavailable",
   outage: "Power outage",
 };
+
+/**
+ * ADR-0064: whether the headline says more than the word above it. The generic ones ("Running with warnings" under
+ * DEGRADED) only restate it and are not drawn; the named causes, "Checking…" and "Back in a moment" are.
+ */
+export function headlineSaysMore(overall: { health: string; headline: string }): boolean {
+  return overall.headline !== "" && overall.headline !== ownValue(HEADLINE, overall.health);
+}
 
 /**
  * The worst section decides the banner. Loading sections only hold back an "all clear".

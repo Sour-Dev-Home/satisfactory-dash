@@ -116,7 +116,7 @@ test("the app with ads on: the loader runs under the ads-on CSP, the consent lin
   const { offOrigin, csp } = await adsOn(page, baseURL!);
   await mockApi("default");
   await page.goto("/app");
-  await expect(page.getByRole("region", { name: "Server status" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Health" })).toBeVisible();
 
   expect(csp[0]).toMatch(/script-src 'nonce-[A-Za-z0-9+/]{22}==' 'unsafe-inline' 'unsafe-eval' 'strict-dynamic' https: http:/);
   await expect(page.locator('meta[name="satis-ads"][content="on"]')).toHaveCount(1);

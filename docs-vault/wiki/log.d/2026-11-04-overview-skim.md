@@ -1,0 +1,6 @@
+- 2026-11-04 — Overview cuts (ADR-0064 build PR 3, Decision 4; owner, 2026-11-03).
+  - **No "Server status" card** (`status/StatusView.tsx`, `StatusPanel.tsx` and their tests gone; `Shell.tsx`). The Server tile says the save and its play time ("ExampleSession · 1 d 2 h 50 m played"); the players are the Players card's alone.
+  - **One power number.** The Power tile says only its circuits ("1 circuit") when power is fine; the Power card beside it keeps the load (consumption of capacity). Before, the tile said production of capacity in the same words as the card's consumption.
+  - **Players card with nobody on** is one line, "No players connected (4 slots)", with no row of empty tiles.
+  - **Health card.** A healthy tick is not drawn (it still counts in the health); a slow one, or no game running, is. The headline under the word shows only when it says more (`headlineSaysMore`: named causes, "Checking…", "Back in a moment"); "Running with warnings", "All systems operational" and the like restated the word.
+  - Tests that used the status card or the tick as their "loaded" marker now read the Server tile or the Health card; two server-gate tests keep a small local status reader.

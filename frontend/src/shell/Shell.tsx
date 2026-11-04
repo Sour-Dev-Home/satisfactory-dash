@@ -39,7 +39,6 @@ import { ServerManagementView } from "../serverManagement/ServerManagementView";
 import { ServerSwitcher } from "../servers/ServerSwitcher";
 import { AutoPauseView } from "../settings/AutoPauseView";
 import { AlertSettings } from "../alerts/settings/AlertSettings";
-import { StatusView } from "../status/StatusView";
 import { cn } from "../lib/cn";
 import { chipButton } from "../ui/chip";
 import { PageReveal } from "../ui/PageReveal";
@@ -424,9 +423,8 @@ export function Shell() {
               <Section label="Overview" probe="overview">
                 <OverviewView />
               </Section>
-              <Section label="Server status" probe="status">
-                <StatusView />
-              </Section>
+              {/* No "Server status" card (ADR-0064): its save and play time are the Server tile's, its players the Players
+                  card's, its data age the Health card's. */}
               {/* ADR-0021 amendment 3: one ad slot below the panels, nothing while ads are off (ads/AdSlot.tsx). */}
               <AdSlot placement="overview" queries={pageQueries("/app", server.id)} />
             </Page>

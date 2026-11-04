@@ -33,7 +33,7 @@ describe("App with a crash outside every section", () => {
 
     gate.broken = false;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("region", { name: "Server status" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Health" })).toBeInTheDocument();
     expect(screen.queryByRole("alert", { name: "The dashboard error" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Source code (AGPL-3.0)" })).toBeInTheDocument();
   });

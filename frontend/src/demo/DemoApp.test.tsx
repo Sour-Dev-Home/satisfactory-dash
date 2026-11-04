@@ -38,8 +38,8 @@ describe("the demo app", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enter demo" }));
     expect(await screen.findByText("Demo factory", {}, FIRST_RENDER)).toBeInTheDocument();
     const rows = await screen.findByRole("list", { name: "Sections" }, FIRST_RENDER);
-    // Real clock here: the demo's players come and go, so any count of the 4 slots.
-    expect(await within(rows).findByText(/Demo World · [0-4] \/ 4 players/, {}, FIRST_RENDER)).toBeInTheDocument();
+    // The Server tile: the save and its play time (ADR-0064; the players are the Players card's).
+    expect(await within(rows).findByText(/^Demo World · .+ played$/, {}, FIRST_RENDER)).toBeInTheDocument();
     expect(screen.getByText(/Demo data: nothing here is live/)).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });

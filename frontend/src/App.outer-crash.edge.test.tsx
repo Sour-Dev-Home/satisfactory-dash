@@ -56,7 +56,7 @@ describe("App-level fallback Sign out", () => {
     gate.broken = false;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByLabelText(/password/i)).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Server status" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Health" })).not.toBeInTheDocument();
   });
 
   it("a crash before sign-in: Sign out answered with 401 does not break the fallback", async () => {
@@ -84,7 +84,7 @@ describe("App-level fallback Sign out", () => {
 
     gate.broken = false;
     fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("region", { name: "Server status" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Health" })).toBeInTheDocument();
     expect(screen.queryByText("Couldn't reach the dashboard backend.")).not.toBeInTheDocument();
   });
 });

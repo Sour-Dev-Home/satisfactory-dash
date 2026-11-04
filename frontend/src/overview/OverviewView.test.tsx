@@ -34,12 +34,15 @@ function renderOverview() {
 }
 
 const healthCard = () => screen.getByRole("region", { name: "Health" });
+/** The status read is in: the Server tile's save and play time (ADR-0064; a healthy tick is no longer drawn). */
+const STATUS_LOADED = / played$/;
 
 describe("OverviewView: the Health card's tick", () => {
-  it("shows the status query's tick rate and the backend's own healthy verdict", async () => {
+  it("says nothing about a tick the backend calls healthy (ADR-0064)", async () => {
     renderOverview();
-    expect(await screen.findByText("21.4/s")).toBeInTheDocument();
-    expect(healthCard()).toHaveTextContent("Healthy");
+    expect(await screen.findByText(STATUS_LOADED)).toBeInTheDocument();
+    expect(healthCard()).not.toHaveTextContent("Tick");
+    expect(healthCard()).not.toHaveTextContent("21.4/s");
   });
 
   it("shows the slow verdict and rate the backend classified", async () => {
@@ -113,20 +116,21 @@ describe("OverviewView: the Health card's tick", () => {
 
   it("shows how old the status is in the Health header", async () => {
     renderOverview();
-    expect(await screen.findByText("21.4/s")).toBeInTheDocument();
+    expect(await screen.findByText(STATUS_LOADED)).toBeInTheDocument();
     expect(healthCard().querySelector("[data-age] time")).toHaveAttribute("dateTime", statusRunning.observedAt);
   });
 
   it("keeps showing the last tick when a background refetch fails (data wins over error)", async () => {
+    server.use(http.get(endpoints.status.route, () => HttpResponse.json(statusSlow)));
     const { client } = renderOverview();
-    expect(await screen.findByText("21.4/s")).toBeInTheDocument();
+    expect(await screen.findByText("8.2/s")).toBeInTheDocument();
 
     server.use(http.get(endpoints.status.route, () => HttpResponse.json(errorServiceUnavailable, { status: 503 })));
     await act(() => client.refetchQueries({ type: "active" }));
 
     // The stale data (and its tick) stays on screen; the failed refetch doesn't blank it.
-    expect(screen.getByText("21.4/s")).toBeInTheDocument();
-    expect(healthCard()).toHaveTextContent("Healthy");
+    expect(screen.getByText("8.2/s")).toBeInTheDocument();
+    expect(healthCard()).toHaveTextContent("Slow");
   });
 });
 
@@ -136,14 +140,14 @@ const powerCard = () => screen.getByRole("region", { name: "Power" });
 describe("OverviewView: station tiles and the Power card (#442)", () => {
   it("shows Server, Power and Factory as tiles inside the Health card", async () => {
     renderOverview();
-    await screen.findByText("21.4/s");
+    await screen.findByText(STATUS_LOADED);
     expect(within(healthCard()).getByRole("list", { name: "Sections" })).toBeInTheDocument();
     expect(sectionTiles().map((t) => t.querySelector("svg[data-station]")?.getAttribute("data-station"))).toEqual(["server", "power", "factory"]);
   });
 
   it("links the Server tile to the Servers page only for an operator who can manage servers", async () => {
     renderOverview();
-    await screen.findByText("21.4/s");
+    await screen.findByText(STATUS_LOADED);
     expect(within(sectionTiles()[0]).queryByRole("link")).toBeNull();
     expect(within(sectionTiles()[1]).getByRole("link")).toHaveAttribute("href", "/app/power");
   });

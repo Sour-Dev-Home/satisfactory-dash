@@ -3,7 +3,7 @@ import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 /**
  * The Overview's cards while their reads load (#494): the Health and Players row, then the Power
  * card, each about the size of the loaded card (a phone stacks them taller than a wide screen's
- * side-by-side row). The status panel under them has its own, in StatusView.
+ * side-by-side row).
  */
 export function OverviewSkeleton() {
   return (
