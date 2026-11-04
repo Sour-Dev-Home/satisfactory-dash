@@ -10,7 +10,6 @@ import { treeWorld, withoutParents } from "../test/plannerTree";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { FactoryPanel } from "./FactoryPanel";
-import { FactorySectionsNav } from "./FactorySectionsNav";
 import { FactoryView } from "./FactoryView";
 
 afterEach(() => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0))));
@@ -43,8 +42,8 @@ describe("FactoryPanel grouped by Planner factory and group (ADR-0062 F.2)", () 
     expect(rowNames(constructors)).toEqual(["Constructor", "Constructor", "Constructor", "Constructor"]);
     // Each group's table is named by its heading, so a screen reader tells the page's many tables apart.
     expect(constructors).toHaveAccessibleName("4× Constructor, Iron Plate · 1 backed up");
-    // The summary above still counts the whole factory read.
-    expect(screen.getByText(/^15 machines · 1 backed up/)).toBeInTheDocument();
+    // The filter toggles still count the whole factory read.
+    expect(screen.getByRole("button", { name: /^All 15$/ })).toBeInTheDocument();
   });
 
   it("puts the machines no group names under Other machines, after the factories", () => {
@@ -139,17 +138,17 @@ describe("FactoryPanel grouped by Planner factory and group (ADR-0062 F.2)", () 
     expect(toggle("Constructor, Plate 7")).toBeInTheDocument();
   });
 
-  it("keeps the sticky bar with the nav, the search and the filters above the groups", () => {
+  it("keeps the sticky bar with the filters and the search above the groups", () => {
     const world = groupedFactoriesWorld();
     const { container } = render(
       <BrowserRouter>
-        <FactoryPanel snapshot={world.factory} graph={world.graph} nav={<FactorySectionsNav />} />
+        <FactoryPanel snapshot={world.factory} graph={world.graph} />
       </BrowserRouter>,
     );
     const scope = container.querySelector<HTMLElement>("[data-sticky-scope]")!;
     const bar = scope.querySelector<HTMLElement>("[data-filter-bar]")!;
     expect(bar).toHaveClass("sm:sticky");
-    expect(within(bar).getByRole("navigation", { name: "Factory sections" })).toBeInTheDocument();
+    expect(within(bar).getByRole("group", { name: "Filter machines" })).toBeInTheDocument();
     expect(within(bar).getByRole("searchbox", { name: "Search machines" })).toBeInTheDocument();
     // The groups are in the same scope, after the bar, so the bar sticks while they scroll under it.
     expect(scope.contains(sections())).toBe(true);

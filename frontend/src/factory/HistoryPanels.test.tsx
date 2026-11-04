@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { HistoryItems } from "@satisfactory-dash/shared";
-import { historyItems7d, historyTransitions24h } from "@satisfactory-dash/shared/fixtures";
+import { historyItems7d } from "@satisfactory-dash/shared/fixtures";
 import { describe, expect, it, vi } from "vitest";
 import * as world from "../demo/world";
 import type { ItemLabel } from "./itemLabels";
@@ -37,27 +37,21 @@ describe("SinceYesterdayPanel", () => {
     expect(screen.queryByRole("list", { name: "Up" })).not.toBeInTheDocument();
   });
 
-  it("counts state changes in the last 24 h, with + when the backend held more back", () => {
-    render(<SinceYesterdayPanel history={demo7d} transitions={historyTransitions24h.data} labels={labels} />);
-    expect(screen.getByText("Machines changed state 2+ times in the last 24 h.")).toBeInTheDocument();
+  // ADR-0064: with nothing to say it is nothing, not a box saying so; and no state-change count.
+  it("draws nothing while there isn't enough history", () => {
+    const { container } = render(<SinceYesterdayPanel history={historyItems7d.data} labels={labels} />);
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it("says 1 time, in the singular", () => {
-    const one = { ...historyTransitions24h.data, truncated: false, transitions: historyTransitions24h.data.transitions.slice(0, 1) };
-    render(<SinceYesterdayPanel history={demo7d} transitions={one} labels={labels} />);
-    expect(screen.getByText("Machines changed state 1 time in the last 24 h.")).toBeInTheDocument();
-  });
-
-  it("says there isn't enough history yet, with no empty list", () => {
-    render(<SinceYesterdayPanel history={historyItems7d.data} labels={labels} />);
-    expect(screen.getByText("Not enough history yet: this compares with the same hour yesterday.")).toBeInTheDocument();
-    expect(screen.queryByRole("list")).not.toBeInTheDocument();
-  });
-
-  it("says when nothing changed much", () => {
+  it("draws nothing when nothing changed much", () => {
     const flat: HistoryItems = { ...demo7d, series: demo7d.series.filter((s) => s.item === "Desc_IronPlate_C") };
-    render(<SinceYesterdayPanel history={flat} labels={labels} />);
-    expect(screen.getByText("No big changes since this hour yesterday.")).toBeInTheDocument();
+    const { container } = render(<SinceYesterdayPanel history={flat} labels={labels} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("never counts state changes", () => {
+    render(<SinceYesterdayPanel history={demo7d} labels={labels} />);
+    expect(screen.queryByText(/changed state/)).not.toBeInTheDocument();
   });
 });
 

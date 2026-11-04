@@ -41,6 +41,11 @@ export function isSmallGap(finding: Bottleneck): boolean {
   return kind === "deficit" && supply !== undefined && demand !== undefined && demand > 0 && (demand - supply) / demand < 0.02;
 }
 
+/** ADR-0064: the findings the Factory page shows: a gap under 2% (`isSmallGap`, likely clock rounding) is left out. */
+export function withoutSmallGaps<T extends Pick<Bottlenecks, "findings">>(data: T): T {
+  return { ...data, findings: data.findings.filter((f) => !isSmallGap(f)) };
+}
+
 /**
  * The detail line under a finding's sentence, or null. Only a step kind this build knows (`logistics`) carries one;
  * any other kind, including one a newer backend adds, shows the finding's `text` alone (forward compatibility).
@@ -74,10 +79,15 @@ export function bottleneckSummaryCount(data: Pick<Bottlenecks, "findings" | "tru
  * a mode needs but the backend left out is filled from the mode (so an older FRM never loses its "update FRM" line,
  * and `tooLarge` never gets the FRM one).
  */
-export function sectionNotes(data: Pick<Bottlenecks, "beltData" | "connectionsRefreshMinutes" | "notes">): string[] {
+export function sectionNotes(
+  data: Pick<Bottlenecks, "beltData" | "connectionsRefreshMinutes" | "notes">,
+  { refresh = true }: { refresh?: boolean } = {},
+): string[] {
   // A mode's own note only shows in that mode, so a disagreeing backend never puts the FRM line on `tooLarge`.
+  // `refresh: false` (the Factory page, ADR-0064): the "Connections refresh every N minutes" note is plumbing, left out.
   const notes = data.notes.filter(
     (n) =>
+      (refresh || n.code !== "connectionsRefresh") &&
       (n.code !== "updateFrm" || data.beltData === "unsupported") &&
       (n.code !== "beltDataTooLarge" || data.beltData === "tooLarge") &&
       (n.code !== "beltDataNotReceived" || data.beltData === "notReceived"),
@@ -94,7 +104,7 @@ export function sectionNotes(data: Pick<Bottlenecks, "beltData" | "connectionsRe
     // The backend's own note says the same (bottleneckFinder's BELT_DATA_NOT_RECEIVED_TEXT); this covers an older one.
     out.push("Item-level results only. No belt data has arrived from the game server yet; if this stays, update the Satis Manager mod.");
   }
-  if ((data.beltData === "present" || data.beltData === "stale") && !has("connectionsRefresh")) {
+  if (refresh && (data.beltData === "present" || data.beltData === "stale") && !has("connectionsRefresh")) {
     const m = data.connectionsRefreshMinutes;
     out.push(`Connections refresh every ${m} ${m === 1 ? "minute" : "minutes"}.`);
   }

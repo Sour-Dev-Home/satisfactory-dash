@@ -19,15 +19,13 @@ import { Loadable } from "../ui/Skeleton";
 import { FactorySkeleton } from "./FactorySkeleton";
 import { ItemHistorySection, SinceYesterdayView } from "./FactoryHistory";
 import { BottleneckSummaryView } from "./BottleneckSummary";
-import { BottlenecksView } from "./BottlenecksView";
 import { FactoryPanel } from "./FactoryPanel";
-import { FactorySectionsNav } from "./FactorySectionsNav";
 import { itemLabels } from "./itemLabels";
 
 /**
- * Container: polls factory through the query layer every 30 s (ADR-0005), with what changed since
- * yesterday above the table and the production history below it (ADR-0027). Each history part has
- * its own crash boundary, so a fault there leaves the table working.
+ * Container: polls factory through the query layer every 30 s (ADR-0005): the bottleneck card first, the machine table,
+ * the production history (ADR-0027), then what changed since yesterday (only when something did, ADR-0064). Each part
+ * has its own crash boundary, so a fault there leaves the table working.
  */
 export function FactoryView() {
   const server = useSelectedServer();
@@ -78,19 +76,16 @@ export function FactoryView() {
   // reserved box instead, and the table never waits on it past the page budget.
   return (
     <Loadable pending={firstLoad} skeleton={<FactorySkeleton />} className="grid grid-cols-1 gap-4">
-      {/* The most actionable part first (ADR-0062 F.1), in a fixed-height box so its late read moves nothing below it. */}
-      <ErrorBoundary label="Bottleneck summary">
+      {/* The most actionable part first (ADR-0062 F.1), in a fixed-height box so its late read moves nothing below it; its
+          "Full list" opens in place (ADR-0064). */}
+      <ErrorBoundary label="Bottlenecks">
         <BottleneckSummaryView />
-      </ErrorBoundary>
-      <ErrorBoundary label="Since yesterday">
-        <SinceYesterdayView labels={labels} />
       </ErrorBoundary>
       {error != null && <PanelError error={error} title="Factory" hasData={factory.data !== undefined} />}
       {factory.data && (
         <FactoryPanel
           snapshot={factory.data}
           refetchFailed={factory.isRefetchError}
-          nav={<FactorySectionsNav />}
           graph={graph.data?.data}
           designations={designations.data?.designations}
           groupsUnavailable={graph.data === undefined && graph.isError}
@@ -106,9 +101,10 @@ export function FactoryView() {
       <ErrorBoundary label="Production history">
         <ItemHistorySection labels={labels} item={item} onItem={(value) => setParam(FACTORY_ITEM_PARAM, value)} />
       </ErrorBoundary>
-      {/* The full list last, so its loading and its varying height move nothing above it (ADR-0032's shift budget). */}
-      <ErrorBoundary label="Bottlenecks">
-        <BottlenecksView />
+      {/* Last (ADR-0064): drawn only when it has news, so a late read that turns out to have none goes without moving
+          anything above it. */}
+      <ErrorBoundary label="Since yesterday">
+        <SinceYesterdayView labels={labels} />
       </ErrorBoundary>
     </Loadable>
   );

@@ -1,17 +1,22 @@
-import type { Bottlenecks } from "@satisfactory-dash/shared";
-import type { ComponentProps, ReactNode } from "react";
-import { Link, useLocation } from "react-router";
+import { BOTTLENECKS_DEFAULT_LIMIT, type Bottlenecks } from "@satisfactory-dash/shared";
+import { useId, useState, type ComponentProps, type ReactNode } from "react";
+import { useLocation, useNavigationType } from "react-router";
 import { PanelError } from "../components/PanelError";
 import { cn } from "../lib/cn";
+import { hashId, useHashTarget } from "../lib/useHashTarget";
 import { Loadable, Skeleton, SkeletonStatus } from "../ui/Skeleton";
-import { bottleneckSummaryCount, machineLabel, stateLabel } from "./bottlenecks";
-import { BOTTLENECK_SUMMARY_CAP, BOTTLENECKS_ANCHOR, useBottlenecks } from "./bottlenecksRead";
+import { bottleneckSummaryCount, machineLabel, stateLabel, withoutSmallGaps } from "./bottlenecks";
+import { BottlenecksList, hasFullList } from "./BottlenecksPanel";
+import { BOTTLENECK_SUMMARY_CAP, BOTTLENECKS_ANCHOR, isBottlenecksAnchor, useBottlenecks } from "./bottlenecksRead";
 
 /**
  * One summary line: a line of small text and a hair of padding, the same in every state (a cause, the calm line, a
  * skeleton bar, an empty pad), and cut with an ellipsis rather than wrapped, so the box's height never depends on what it says.
  */
 const ROW = "min-h-lh truncate py-0.5 text-sm";
+
+/** The card's heading: the Planner's links name it (`#bottlenecks-heading`). */
+const HEADING_ID = "bottlenecks-heading";
 
 /** Empty lines that pad the summary to the cap, so one cause stands as tall as three. Decorative. */
 function Pad({ count }: { count: number }) {
@@ -21,7 +26,8 @@ function Pad({ count }: { count: number }) {
 /**
  * The box every state shares: a touch-tall head row, then exactly `BOTTLENECK_SUMMARY_CAP` lines. Its height is fixed by
  * that structure, not by the data: the bottlenecks read is not one the page's reveal waits for (shell/pageQueries.ts), so
- * it often lands after the table is on screen, and the summary sits above the table (ADR-0032's shift budget).
+ * it often lands after the table is on screen, and the summary sits above the table (ADR-0032's shift budget). Only the
+ * reader's own "Full list" grows it.
  */
 function Frame({ head, children, ...props }: { head: ReactNode; children: ReactNode } & ComponentProps<"section">) {
   return (
@@ -34,36 +40,57 @@ function Frame({ head, children, ...props }: { head: ReactNode; children: ReactN
   );
 }
 
+const namesList = (hash: string) => {
+  const id = hashId(hash);
+  return id !== undefined && isBottlenecksAnchor(id);
+};
+
 /**
- * ADR-0062 F.1: the bottlenecks first. A count, the most severe causes in the backend's own rank order (the most output
- * lost first, ADR-0048), state word first so a cut line still says it, and a link down to the full list.
+ * ADR-0062 F.1 and ADR-0064: the page's one bottleneck card, first. A count, the most severe causes in the backend's own
+ * rank order (the most output lost first, ADR-0048), state word first so a cut line still says it; "Full list" opens the
+ * whole list in their place (`BottlenecksList`), and a link to `#bottlenecks` or `#bottlenecks-heading` (the Planner's,
+ * the command bar's) opens it and jumps there. Gaps under 2% are left out everywhere (`withoutSmallGaps`).
  */
-export function BottleneckSummary({ data }: { data: Bottlenecks }) {
+export function BottleneckSummary({ data: read }: { data: Bottlenecks }) {
+  const data = withoutSmallGaps(read);
   const location = useLocation();
+  const navType = useNavigationType();
+  const ids = useId();
+  // Open when the URL names the list, and again whenever a navigation does (a link while on the page); the reader's own
+  // toggles are kept across polls.
+  const [open, setOpen] = useState(() => namesList(location.hash));
+  const [seenKey, setSeenKey] = useState(location.key);
+  if (location.key !== seenKey) {
+    setSeenKey(location.key);
+    // Not a replace: the page's own (typing in the search box) carries the hash along and must not reopen a list the reader closed.
+    if (navType !== "REPLACE" && namesList(location.hash)) setOpen(true);
+  }
+  useHashTarget(isBottlenecksAnchor);
   const top = data.findings.slice(0, BOTTLENECK_SUMMARY_CAP);
+  const full = hasFullList(data);
   const head = (
     <>
-      <h3 className="m-0 min-w-0 truncate">
+      <h3 id={HEADING_ID} className="m-0 min-w-0 truncate">
         {bottleneckSummaryCount(data)}
       </h3>
-      {top.length > 0 && (
+      {full && (
         // The name starts with the visible words (WCAG 2.5.3) and says which list.
-        <Link
-          to={{ search: location.search, hash: `#${BOTTLENECKS_ANCHOR}` }}
-          // Always a push: on the same URL react-router would replace, keep the history index and so the page's
-          // once-per-navigation jump (useHashTarget) would not fire again after the reader scrolled away.
-          replace={false}
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${ids}-body`}
           aria-label="Full list of bottlenecks"
-          className="inline-flex min-h-touch shrink-0 items-center"
+          onClick={() => setOpen((o) => !o)}
+          className="shrink-0"
         >
           Full list
-        </Link>
+        </button>
       )}
     </>
   );
-  return (
-    // A fixed region name: the heading's count changes with every poll.
-    <Frame aria-label="Bottleneck summary" data-bottleneck-summary="" head={head}>
+  // The closed card: the worst causes, one line each, padded to the cap.
+  const summaryLines = (
+    <>
       {top.length === 0 ? (
         <p className={cn(ROW, "m-0 text-muted")}>All machines are fed and flowing.</p>
       ) : (
@@ -75,7 +102,8 @@ export function BottleneckSummary({ data }: { data: Bottlenecks }) {
             <li key={f.buildingId} className="flex min-h-lh min-w-0 gap-1 whitespace-nowrap py-0.5 text-sm">
               {/* Underfed in the info colour and backed up in amber, as in the full list (#586). */}
               <span className={cn("shrink-0", f.state === "underfed" ? "text-info" : "text-warn")}>{stateLabel(f.state)} ·</span>{" "}
-              <span data-machine="" className="min-w-0 truncate text-fg">{machineLabel(f)}</span>
+              {/* No place here (ADR-0064): the full list has it. */}
+              <span data-machine="" className="min-w-0 truncate text-fg">{machineLabel({ buildingName: f.buildingName, recipe: f.recipe })}</span>
               {(f.affectedCount ?? 1) > 1 && (
                 <>
                   {" "}
@@ -87,6 +115,21 @@ export function BottleneckSummary({ data }: { data: Bottlenecks }) {
         </ol>
       )}
       <Pad count={BOTTLENECK_SUMMARY_CAP - Math.max(top.length, 1)} />
+    </>
+  );
+  return (
+    // A fixed region name: the heading's count changes with every poll.
+    <Frame aria-label="Bottlenecks" data-bottleneck-summary="" head={head}>
+      <div id={`${ids}-body`} className="grid min-w-0 grid-cols-1">
+        {open && full ? (
+          // The `#bottlenecks` target: a link jumps here and focuses it (useHashTarget), so it is a group named by the heading.
+          <div id={BOTTLENECKS_ANCHOR} role="group" aria-labelledby={HEADING_ID} className="grid min-w-0 scroll-mt-4 gap-3">
+            <BottlenecksList data={data} limit={BOTTLENECKS_DEFAULT_LIMIT} labelledBy={HEADING_ID} />
+          </div>
+        ) : (
+          summaryLines
+        )}
+      </div>
     </Frame>
   );
 }
@@ -119,15 +162,18 @@ function SummaryError({ error }: { error: unknown }) {
       </div>
       {error != null && (
         <div className="col-start-1 row-start-1 grid min-w-0 grid-cols-1">
-          {/* Its own title, so the page doesn't carry two "Bottlenecks" headings while the full list says the same. */}
-          <PanelError error={error} title="Bottleneck summary" />
+          <PanelError error={error} title="Bottlenecks" />
         </div>
       )}
     </div>
   );
 }
 
-/** Container: the summary at the top of the Factory page, from the same read as the full list (no second fetch). */
+/**
+ * Container: the Factory page's bottleneck card (ADR-0048, #349; ADR-0064), polled with the factory. It is not one of the
+ * page's primary reads (shell/pageQueries.ts), so the page never waits for it, and a failed or unsupported read (an older
+ * backend's 404) shows in this card only.
+ */
 export function BottleneckSummaryView() {
   const { query, firstLoad, error } = useBottlenecks();
   return (

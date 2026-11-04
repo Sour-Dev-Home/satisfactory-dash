@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, MemoryRouter, useLocation, useNavigate } from "react-router";
 import { delay, http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type ServerSummary } from "@satisfactory-dash/shared";
 import {
   errorUpstreamUnreachable,
@@ -14,6 +14,7 @@ import {
   serversSingle,
 } from "@satisfactory-dash/shared/fixtures";
 import { createQueryClient, queries } from "../api/queries";
+import * as world from "../demo/world";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
@@ -24,6 +25,18 @@ import { FactoryView } from "./FactoryView";
 // between a handler responding and the interceptor settling, which happens under CI load (#386).
 // One macrotask before cleanup (this hook runs first) lets every response already sent settle.
 afterEach(() => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0))));
+
+/** factoryMixed's marker: its Backed up toggle (the summary line that said "backed up" went with ADR-0064). */
+const BACKED_UP_TOGGLE = /^Backed up \d+$/;
+
+/**
+ * "Since yesterday" is drawn only when it has news (ADR-0064), and the shared fixture's 7d range is too short for any; the
+ * demo world's has a drop. Every other range answers with the fixture, as the default handlers do.
+ */
+const NEWS_7D = world.historyItems(world.DEMO_EPOCH, "7d");
+const historyAnswer = (request: Request) =>
+  HttpResponse.json(new URL(request.url).searchParams.get("range") === "7d" ? NEWS_7D : historyItems7d);
+beforeEach(() => server.use(http.get(endpoints.history.items.route, ({ request }) => historyAnswer(request))));
 
 function renderView() {
   return renderWithClient(
@@ -68,7 +81,7 @@ function holdSinceYesterday(serverId?: string): () => void {
     http.get(endpoints.history.items.route, async ({ params, request }) => {
       const range = new URL(request.url).searchParams.get("range");
       if (range === "7d" && (!serverId || params.serverId === serverId)) await held;
-      return HttpResponse.json(historyItems7d);
+      return historyAnswer(request);
     }),
   );
   return release;
@@ -200,7 +213,7 @@ describe("FactoryView", () => {
       <SwitchableView initial={serversMultiple.servers[0]} other={serversMultiple.servers[1]} />,
     );
     expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
-    expect(screen.getByText(/backed up/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: BACKED_UP_TOGGLE })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Switch server" }));
     // The previous server's page must not stay up while the new one loads.
@@ -258,7 +271,7 @@ describe("FactoryView", () => {
       ),
     );
     renderWithClient(<CyclingView servers={[serversMultiple.servers[0], serversMultiple.servers[1]]} />);
-    expect(await screen.findByText(/backed up/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: BACKED_UP_TOGGLE })).toBeInTheDocument();
 
     const button = screen.getByRole("button", { name: "Switch server" });
     fireEvent.click(button);
@@ -267,7 +280,7 @@ describe("FactoryView", () => {
     fireEvent.click(button);
     // Back on the already-revealed first server: its cached content shows at once, no reload flash.
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.getByText(/backed up/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: BACKED_UP_TOGGLE })).toBeInTheDocument();
   });
 
   it("settles on the last of several rapid server switches without ever mixing servers' content", async () => {
@@ -277,7 +290,7 @@ describe("FactoryView", () => {
       ),
     );
     renderWithClient(<CyclingView servers={serversMultiple.servers} />);
-    expect(await screen.findByText(/backed up/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: BACKED_UP_TOGGLE })).toBeInTheDocument();
 
     // default -> creative-test -> friends-2 -> default, fired faster than any one settles.
     const button = screen.getByRole("button", { name: "Switch server" });
@@ -286,7 +299,7 @@ describe("FactoryView", () => {
     fireEvent.click(button);
 
     // Whatever lands belongs to "default" alone: creative-test's marker never sticks around.
-    expect(await screen.findByText(/backed up/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: BACKED_UP_TOGGLE })).toBeInTheDocument();
     expect(screen.queryByText("No machines yet.")).not.toBeInTheDocument();
   });
 
@@ -433,7 +446,8 @@ describe("FactoryView deep links", () => {
     await screen.findByRole("group", { name: "Filter machines" });
     expect(filterButton("Backed up")).toHaveAttribute("aria-pressed", "true");
     expect(filterButton("No recipe")).toHaveAttribute("aria-pressed", "true");
-    expect(filterButton("Paused")).toHaveAttribute("aria-pressed", "false");
+    // No machine is paused, so its toggle is not drawn (ADR-0064).
+    expect(screen.queryByRole("button", { name: /^Paused \d+$/ })).not.toBeInTheDocument();
     expect(filterButton("All")).toHaveAttribute("aria-pressed", "false");
     const shown = factoryMixed.data.buildings.filter((b) => ("state" in b && b.state === "backedUp") || b.recipe === null);
     expect(within(screen.getByRole("table")).getAllByRole("rowheader").map((th) => th.textContent)).toEqual(shown.map((b) => b.name));
@@ -493,14 +507,14 @@ describe("FactoryView deep links + #history jump, on a real history (#351)", () 
       </ServerContext>,
     );
     const group = await screen.findByRole("group", { name: "Filter machines" });
-    fireEvent.click(within(group).getByRole("button", { name: /^Paused \d+$/ }));
-    expect(window.location.search).toContain("state=paused");
+    fireEvent.click(within(group).getByRole("button", { name: /^No recipe \d+$/ }));
+    expect(window.location.search).toContain("state=noRecipe");
     expect(window.location.hash).toBe("#history");
     expect(window.history.length).toBe(before);
   });
 
-  // ADR-0062 F.1: the summary sits first and its link jumps down to the full list, keeping the search.
-  it("puts the bottleneck summary above the table, and its link jumps to the full list", async () => {
+  // ADR-0062 F.1 and ADR-0064: the bottleneck card sits first, and its "Full list" opens in place: no jump, no new URL.
+  it("puts the bottleneck card above the table, and opens its full list in place", async () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.history.pushState(null, "", "/app/factory?q=Smelter");
     renderWithClient(
@@ -508,16 +522,21 @@ describe("FactoryView deep links + #history jump, on a real history (#351)", () 
         <BrowserRouter><FactoryView /></BrowserRouter>
       </ServerContext>,
     );
-    const summary = await screen.findByRole("heading", { name: "3 bottlenecks" });
+    // The default read's third cause is a gap under 2%, left out.
+    const summary = await screen.findByRole("heading", { name: "2 bottlenecks" });
     const table = await screen.findByRole("searchbox", { name: "Search machines" });
     expect(summary.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.click(screen.getByRole("link", { name: "Full list of bottlenecks" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Bottlenecks" })).toHaveFocus());
-    expect(window.location.hash).toBe("#bottlenecks");
+    const button = screen.getByRole("button", { name: "Full list of bottlenecks" });
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("list", { name: "2 bottlenecks" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("");
     expect(window.location.search).toBe("?q=Smelter");
+    // One bottleneck section on the page: no second list after the history.
+    expect(screen.getAllByRole("region", { name: "Bottlenecks" })).toHaveLength(1);
   });
 
-  it("the Planner's #bottlenecks-heading link lands on the full list too", async () => {
+  it("the Planner's #bottlenecks-heading link opens the full list and focuses the card's heading", async () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.history.pushState(null, "", "/app/factory#bottlenecks-heading");
     renderWithClient(
@@ -525,7 +544,8 @@ describe("FactoryView deep links + #history jump, on a real history (#351)", () 
         <BrowserRouter><FactoryView /></BrowserRouter>
       </ServerContext>,
     );
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Bottlenecks" })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "2 bottlenecks" })).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Full list of bottlenecks" })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("typing in the machine search doesn't steal focus back from the box, with #history open", async () => {

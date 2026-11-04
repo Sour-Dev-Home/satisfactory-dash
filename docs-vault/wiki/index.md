@@ -120,6 +120,9 @@ added or removed.
   item ports, end labels and dimming (accepted 2026-11-01, five open questions): one item port per card side, one line
   per item, a name-and-rate label at each end with the middle bubble as the fallback, dimming by colour over a pure focus
   set, nothing new focusable, seven build PRs behind `planner.ports`.
+- [`decisions/0064-skimmable-pages.md`](./decisions/0064-skimmable-pages.md) — skimmable pages (accepted 2026-11-03):
+  normal is quiet, one fact in one place, no empty boxes, details fold; Factory, Overview and Power cuts and the folded
+  machine table, five build PRs.
 - [`architecture/`](./architecture/README.md) — D2 architecture diagrams (context, deployed
   containers, backend modules, target) with rendered SVGs and re-render instructions, and the
   [overview cards brief](./architecture/overview-cards.md) (Players, Tick rate, Health).

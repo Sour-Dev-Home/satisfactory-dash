@@ -1,9 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { BrowserRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { factoryMixed, serversSingle } from "@satisfactory-dash/shared/fixtures";
+import { endpoints } from "@satisfactory-dash/shared";
+import { bottlenecksEmpty, factoryMixed, serversSingle } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
+import { server } from "../test/server";
 import { FactoryPanel } from "./FactoryPanel";
 import { FactoryView } from "./FactoryView";
 
@@ -19,15 +22,31 @@ function renderPage() {
   );
 }
 
-const nav = () => screen.getByRole("navigation", { name: "Factory sections" });
+// The page's fragments (#machines, #history, #bottlenecks) keep working for links after the in-page nav went (ADR-0064).
+describe("the Factory page's deep links", () => {
+  it("a #bottlenecks link opens the bottleneck card's full list and focuses it", async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    window.history.pushState(null, "", "/app/factory#bottlenecks");
+    renderPage();
+    await waitFor(() => expect(document.getElementById("bottlenecks")).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Full list of bottlenecks" })).toHaveAttribute("aria-expanded", "true");
+    expect(scroll).toHaveBeenCalled();
+  });
 
-describe("the in-page nav with the search box and deep links (ADR-0062 F.4)", () => {
-  it("keeps the hash while typing a search after a jump, carries the new ?q= in the links, and never steals focus back", async () => {
-    Element.prototype.scrollIntoView = vi.fn();
+  it("no in-page nav, and no button when there are no bottlenecks", async () => {
+    server.use(http.get(endpoints.bottlenecks.route, () => HttpResponse.json({ ...bottlenecksEmpty, data: { ...bottlenecksEmpty.data, notes: [], beltData: "present" } })));
     window.history.pushState(null, "", "/app/factory");
     renderPage();
-    await screen.findByRole("navigation", { name: "Factory sections" });
-    fireEvent.click(within(nav()).getByRole("link", { name: "History" }));
+    expect(await screen.findByRole("heading", { name: "No bottlenecks", level: 3 })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Full list of bottlenecks" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Factory sections" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the hash while typing a search after a #history jump, and never steals focus back", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    window.history.pushState(null, "", "/app/factory#history");
+    renderPage();
     await waitFor(() => expect(screen.getByRole("heading", { name: "Production history" })).toHaveFocus());
 
     const box = screen.getByRole("searchbox", { name: "Search machines" });
@@ -36,7 +55,6 @@ describe("the in-page nav with the search box and deep links (ADR-0062 F.4)", ()
     expect(box).toHaveFocus();
     expect(window.location.hash).toBe("#history");
     expect(window.location.search).toBe("?q=smelter");
-    expect(within(nav()).getByRole("link", { name: "Machines" })).toHaveAttribute("href", "/app/factory?q=smelter#machines");
   });
 
   it("a #machines deep link on load focuses the Factory heading", async () => {
@@ -56,9 +74,8 @@ describe("the in-page nav with the search box and deep links (ADR-0062 F.4)", ()
     expect(screen.getByRole("heading", { name: "Factory", level: 3 })).not.toHaveFocus();
   });
 
-  it("FactoryPanel works standalone, without a router or a nav", () => {
+  it("FactoryPanel works standalone, without a router", () => {
     const { container } = render(<FactoryPanel snapshot={factoryMixed} />);
-    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
     expect(container.querySelector("#machines")).not.toBeNull();
     expect(screen.getByRole("searchbox", { name: "Search machines" })).toBeInTheDocument();
     expect(container.querySelector("[style]")).toBeNull();

@@ -21,7 +21,7 @@ export function pageQueries(path: string, serverId: string): PageQuery[] {
       // ADR-0062 F.2: the machine table is grouped by the Planner's factories and groups, so the reveal waits for the graph
       // and the designations that name the parents (ADR-0061), so the table first paints grouped. Same cache as the Planner.
       const groups = [queries.productionGraph(serverId), queries.plannerDesignations(serverId)];
-      return [queries.factory(serverId), since.history, since.transitions, ...groups].map(asPageQuery);
+      return [queries.factory(serverId), since.history, ...groups].map(asPageQuery);
     }
     case "/app/planner":
       return [queries.productionGraph(serverId)].map(asPageQuery);

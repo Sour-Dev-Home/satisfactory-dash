@@ -50,6 +50,16 @@ async function mergeBothFactories(page: Page) {
   await page.getByRole("button", { name: "Merge", exact: true }).click();
 }
 
+/**
+ * ADR-0064: the bottleneck card's full list opens in place. A click, not a `#bottlenecks` link: the link's jump focuses and
+ * scrolls whenever the read lands, which made the screenshots differ run to run; a mouse click leaves no focus ring.
+ */
+async function openBottlenecks(page: Page) {
+  const button = page.getByRole("button", { name: "Full list of bottlenecks" });
+  await button.click();
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+}
+
 /** A visually hidden button (the canvas's keyboard way into a card), reached as a keyboard user does. */
 async function pressButton(page: Page, name: string | RegExp) {
   // Visible first: the page reveals at once (PageReveal), and focus() on a control still under `invisible` lands nowhere,
@@ -171,7 +181,7 @@ const deleteMyAccount = async (page: Page) => {
 const CASES: StateCase[] = [
   { scenario: "default", shows: "Total play time on this save" },
   { scenario: "default", name: "default-power", path: "/app/power", shows: /Circuit 0/ },
-  { scenario: "default", name: "default-factory", path: "/app/factory", shows: /machines · .* backed up/ },
+  { scenario: "default", name: "default-factory", path: "/app/factory", shows: "Search machines" },
   { scenario: "default", name: "default-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   { scenario: "loading", shows: "Checking session…" },
   // The panels' skeletons (#494), held on screen by reads that never answer: shaped like their
@@ -183,7 +193,7 @@ const CASES: StateCase[] = [
   // Every read answers after 800 ms, past the page budget: the settled page is the same as the default's.
   { scenario: "slow-queries", name: "slow-overview", shows: "Total play time on this save" },
   { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/, ready: ".power-chart .uplot" },
-  { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: /machines · .* backed up/ },
+  { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: "Search machines" },
   { scenario: "slow-queries", name: "slow-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   // The map's world layers (ADR-0038 M5): nothing read yet, one cut to its cap, and the read failing.
   { scenario: "map-world-empty", path: "/app/map", shows: "No rails built yet." },
@@ -289,15 +299,17 @@ const CASES: StateCase[] = [
   { scenario: "factory-grouped", path: "/app/factory", shows: /^Other machines · 1 machine$/ },
   { scenario: "factory-grouped-nested", path: "/app/factory", shows: /^Main base · 5 machines · 1 backed up$/ },
   { scenario: "factory-groups-error", path: "/app/factory", shows: "The Planner's factories could not be read, so the machines are listed in one table." },
-  // ADR-0048 (#349), the Factory page's Bottlenecks section (the default scenario shows findings with a belt cap).
-  { scenario: "default", name: "bottlenecks-belt-cap", path: "/app/factory", shows: /Capped by: Conveyor Belt Mk.1/ },
-  { scenario: "bottlenecks-old-frm", path: "/app/factory", shows: /Update FRM to 1.5.4/ },
-  { scenario: "bottlenecks-too-large", path: "/app/factory", shows: /connection data is too large/ },
-  { scenario: "bottlenecks-not-received", path: "/app/factory", shows: /No belt data has arrived from the game server yet/ },
-  // ADR-0062 F.1, the summary above the table, the read failing (the default shows three causes, bottlenecks-empty none).
+  // ADR-0048 (#349), the bottleneck card's full list, opened in place (ADR-0064). The default scenario's belt cap is named
+  // in the backend's sentence; no "Capped by" line repeats it.
+  { scenario: "default", name: "bottlenecks-belt-cap", path: "/app/factory", shows: /caps Limestone at 60/, act: openBottlenecks },
+  { scenario: "bottlenecks-old-frm", path: "/app/factory", shows: /Update FRM to 1.5.4/, act: openBottlenecks },
+  { scenario: "bottlenecks-too-large", path: "/app/factory", shows: /connection data is too large/, act: openBottlenecks },
+  { scenario: "bottlenecks-not-received", path: "/app/factory", shows: /No belt data has arrived from the game server yet/, act: openBottlenecks },
+  // ADR-0062 F.1, the summary above the table, the read failing (the default shows two causes, its third a small gap left
+  // out; bottlenecks-empty none).
   { scenario: "bottlenecks-error", path: "/app/factory", shows: /credentials for the game server were rejected/ },
   { scenario: "bottlenecks-empty", path: "/app/factory", shows: /No bottlenecks/ },
-  { scenario: "bottlenecks-unknown-kind", path: "/app/factory", shows: /smart splitter upstream filters Limestone/ },
+  { scenario: "bottlenecks-unknown-kind", path: "/app/factory", shows: /smart splitter upstream filters Limestone/, act: openBottlenecks },
   // ADR-0050 task 5, the Planner page. The fixtures were observed at
   // PLANNER_NOW minus 8 s, so the age reads the same every run.
   { scenario: "default", name: "planner-sites", path: "/app/planner", shows: "Iron Plate site", clock: PLANNER_NOW },

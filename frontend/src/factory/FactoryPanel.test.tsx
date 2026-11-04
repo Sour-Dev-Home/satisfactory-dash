@@ -37,9 +37,11 @@ describe("FactoryPanel", () => {
     expect(container.querySelector("section")).not.toHaveAttribute("data-stale");
   });
 
-  it("summarizes the factory, taking the backed-up count from the backend", () => {
+  it("counts on the filter toggles, taking the backed-up count from the backend; no summary line, no toggle at 0 (ADR-0064)", () => {
     render(<FactoryPanel snapshot={factoryMixed} />);
-    expect(screen.getByText("5 machines · 2 backed up · 0 paused · 1 without a recipe")).toBeInTheDocument();
+    const toggles = within(screen.getByRole("group", { name: "Filter machines" })).getAllByRole("button");
+    expect(toggles.map((b) => b.textContent)).toEqual(["All 5", "Backed up 2", "No recipe 1"]);
+    expect(screen.queryByText(/without a recipe/)).not.toBeInTheDocument();
     expect(rows()).toHaveLength(5);
   });
 

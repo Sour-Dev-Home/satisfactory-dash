@@ -1,8 +1,8 @@
 import type { HistoryItems, HistoryItemSeriesSchema } from "@satisfactory-dash/shared";
-import { historyItems7d, historyTransitions24h } from "@satisfactory-dash/shared/fixtures";
+import { historyItems7d } from "@satisfactory-dash/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { latestCompleteHour, NOTABLE_CHANGE, sinceYesterday, transitionCount } from "./sinceYesterday";
+import { hasNews, latestCompleteHour, NOTABLE_CHANGE, sinceYesterday } from "./sinceYesterday";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -85,10 +85,12 @@ describe("sinceYesterday", () => {
   });
 });
 
-describe("transitionCount", () => {
-  it("adds a + when the backend had more than it sent", () => {
-    expect(transitionCount(historyTransitions24h.data)).toBe("2+");
-    expect(transitionCount({ ...historyTransitions24h.data, truncated: false })).toBe("2");
-    expect(transitionCount({ ...historyTransitions24h.data, truncated: false, transitions: [] })).toBe("0");
+describe("hasNews (ADR-0064)", () => {
+  it("is false without enough history, false with no notable change, true with a drop or a rise", () => {
+    expect(hasNews({ enough: false })).toBe(false);
+    expect(hasNews({ enough: true, hour: 0, down: [], up: [] })).toBe(false);
+    const change = { item: "A", before: 10, after: 1, delta: -9, ratio: -0.9 };
+    expect(hasNews({ enough: true, hour: 0, down: [change], up: [] })).toBe(true);
+    expect(hasNews({ enough: true, hour: 0, down: [], up: [{ ...change, after: 20, delta: 10, ratio: 1 }] })).toBe(true);
   });
 });

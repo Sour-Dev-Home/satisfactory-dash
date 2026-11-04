@@ -123,8 +123,8 @@ test.describe("on a phone", () => {
 test.describe("the Factory page's filter bar", () => {
   for (const { name, viewport, bar } of [
     { name: "desktop", viewport: { width: 1440, height: 500 }, bar: "[data-filter-bar]" },
-    // Below `sm` only the nav and search row sticks; the state filters scroll away.
-    { name: "phone", viewport: { width: 390, height: 844 }, bar: "[data-filter-bar] > div:has(nav)" },
+    // Below `sm` only the search row sticks; the state filters scroll away (ADR-0064: the nav that shared it went).
+    { name: "phone", viewport: { width: 390, height: 844 }, bar: "[data-filter-bar] > div:has(input[type=search])" },
   ] as const) {
     test(`sticks to the top while the machine table scrolls (${name})`, async ({ page, mockApi }) => {
       await page.setViewportSize(viewport);

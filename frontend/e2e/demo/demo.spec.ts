@@ -48,7 +48,9 @@ test("every screen works offline: enter, overview, power, factory, settings, log
   await expectNoAxeViolations(page, testInfo);
 
   await nav.getByRole("link", { name: "Factory" }).click();
-  await expect(page.getByText("10 machines · 2 backed up · 0 paused · 0 without a recipe")).toBeVisible();
+  // The filter toggles carry the counts (ADR-0064: no summary line, no toggle at 0).
+  await expect(page.getByRole("button", { name: /^All 10$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Backed up 2$/ })).toBeVisible();
   await expectNoAxeViolations(page, testInfo);
 
   // The map draws the demo world's own building positions (ADR-0026 item 6).
