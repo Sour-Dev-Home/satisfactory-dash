@@ -103,6 +103,9 @@ state tokens, two preference keys. dagre stays a lazy chunk.
 
 ## F. The Factory page (owner answer 4: build all five)
 
+**Amended by ADR-0064 (owner, 2026-11-03).** Item 1's two bottleneck parts become one card at the top, item 2's per-group
+tables become one folded table with a row per group, and item 4's in-page nav goes; items 3 and 5 stay.
+
 Read from `factory/FactoryView.tsx:35-87` and `factory/FactoryPanel.tsx:56-89`, from the code, not a usability test.
 
 **Findings.** One long page of four stacked sections; the most actionable one, bottlenecks, comes last (`FactoryView.tsx:84`), placed

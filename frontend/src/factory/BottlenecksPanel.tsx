@@ -1,28 +1,6 @@
 import type { Bottleneck, Bottlenecks } from "@satisfactory-dash/shared";
 import { cn } from "../lib/cn";
-import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
-import { detailSegments, fixLine, isSmallGap, machineLabel, sectionNotes, stateLabel } from "./bottlenecks";
-import { BOTTLENECKS_ANCHOR } from "./bottlenecksRead";
-
-/**
- * "Capped by: Conveyor Belt Mk.1 · 60 items/min · near (−554, −1278)", each segment kept whole so a narrow screen breaks
- * only at a separator, never leaving a trailing "·" (#586). In the body colour: it's the row's actionable data.
- */
-function CappedBy({ finding }: { finding: Bottleneck }) {
-  const segments = detailSegments(finding);
-  if (segments === null) return null;
-  return (
-    <p className="text-sm text-fg">
-      Capped by:{" "}
-      {segments.map((s, i) => (
-        <span key={i}>
-          {i > 0 && " · "}
-          <span className="whitespace-nowrap">{s}</span>
-        </span>
-      ))}
-    </p>
-  );
-}
+import { fixLine, machineLabel, sectionNotes, stateLabel } from "./bottlenecks";
 
 /** "Affects 61 machines", opening to the list the backend sent (its first 50) and how many more there are (#592). */
 function AffectedMachines({ finding }: { finding: Bottleneck }) {
@@ -48,43 +26,43 @@ function AffectedMachines({ finding }: { finding: Bottleneck }) {
   );
 }
 
+/** The Factory page's bottleneck notes: why belt data is missing, never how often it refreshes (ADR-0064). */
+export const bottleneckNotes = (data: Bottlenecks) => sectionNotes(data, { refresh: false });
+
+/** Whether the full list says more than the summary's lines: any finding, the truncation, or a note. */
+export const hasFullList = (data: Bottlenecks) => data.findings.length > 0 || data.truncated || bottleneckNotes(data).length > 0;
+
 /**
  * ADR-0048 (#349), Decision 4 item 5: the ranked root causes of underfed and backed-up machines, one row per cause
- * (#592). Each row names its machine (recipe and place when the backend sends them), then the backend's own sentence,
- * the capping conveyor beneath it when there is one, what would close a deficit, and the machines the cause affects.
- * The state is a word, never only a colour.
+ * (#592), shown when the bottleneck card's "Full list" is open (ADR-0064). Each row names its machine (recipe and place
+ * when the backend sends them), then the backend's own sentence (which names a capping conveyor, its rate and its place,
+ * so no line repeats it: ADR-0064), what would close a deficit, and the machines the cause affects. The state is a word,
+ * never only a colour. `data` is already without the small gaps (`withoutSmallGaps`). `labelledBy`: the card's heading.
  */
-export function BottlenecksPanel({ data, limit }: { data: Bottlenecks; limit: number }) {
-  const notes = sectionNotes(data);
+export function BottlenecksList({ data, limit, labelledBy }: { data: Bottlenecks; limit: number; labelledBy: string }) {
+  const notes = bottleneckNotes(data);
   return (
-    <section id={BOTTLENECKS_ANCHOR} aria-labelledby="bottlenecks-heading" className="panel scroll-mt-4 content-start">
-      <h3 id="bottlenecks-heading">Bottlenecks</h3>
-      {data.findings.length === 0 ? (
-        <p>No bottlenecks: no machine is underfed or backed up.</p>
-      ) : (
-        // Rows ruled like the Factory table's, so ten of them still read as separate findings on a phone (#586).
-        <ol aria-labelledby="bottlenecks-heading" className="grid">
-          {data.findings.map((f, i) => (
-            <li key={f.buildingId} className="flex gap-3 border-t border-line py-3 first:border-t-0 first:pt-0">
-              <span aria-hidden="true" className="w-6 shrink-0 text-muted tabular-nums">
-                {i + 1}
-              </span>
-              <div className="min-w-0 break-words">
-                <p className="font-semibold text-fg-strong">
-                  {/* Underfed in the info colour, so it can't read as healthy beside the amber "Backed up" (#586). */}
-                  {machineLabel(f)} <span className={cn("font-normal", f.state === "underfed" ? "text-info" : "text-warn")}>· {stateLabel(f.state)}</span>
-                </p>
-                <p>{f.text}</p>
-                <CappedBy finding={f} />
-                {f.fix && <p className="text-sm">Fix: {fixLine(f.fix)}</p>}
-                {isSmallGap(f) && (
-                  <p className="text-sm text-muted">The gap is under 2% of what is wanted, so it may be clock rounding.</p>
-                )}
-                <AffectedMachines finding={f} />
-              </div>
-            </li>
-          ))}
-        </ol>
+    <>
+      {/* Rows ruled like the Factory table's, so ten of them still read as separate findings on a phone (#586). */}
+      {data.findings.length > 0 && (
+      <ol aria-labelledby={labelledBy} className="grid">
+        {data.findings.map((f, i) => (
+          <li key={f.buildingId} className="flex gap-3 border-t border-line py-3 first:border-t-0 first:pt-0">
+            <span aria-hidden="true" className="w-6 shrink-0 text-muted tabular-nums">
+              {i + 1}
+            </span>
+            <div className="min-w-0 break-words">
+              <p className="font-semibold text-fg-strong">
+                {/* Underfed in the info colour, so it can't read as healthy beside the amber "Backed up" (#586). */}
+                {machineLabel(f)} <span className={cn("font-normal", f.state === "underfed" ? "text-info" : "text-warn")}>· {stateLabel(f.state)}</span>
+              </p>
+              <p>{f.text}</p>
+              {f.fix && <p className="text-sm">Fix: {fixLine(f.fix)}</p>}
+              <AffectedMachines finding={f} />
+            </div>
+          </li>
+        ))}
+      </ol>
       )}
       {/* One list: the truncation line is a note like the others (#586). */}
       {(data.truncated || notes.length > 0) && (
@@ -100,25 +78,6 @@ export function BottlenecksPanel({ data, limit }: { data: Bottlenecks; limit: nu
           ))}
         </ul>
       )}
-    </section>
-  );
-}
-
-/** The section while it loads: a heading bar and three rows of a name line and a sentence, like the list. */
-export function BottlenecksSkeleton() {
-  return (
-    <section aria-busy="true" className="panel content-start">
-      <SkeletonStatus>Loading bottlenecks…</SkeletonStatus>
-      <Skeleton className="h-lh w-32 text-xl" />
-      {Array.from({ length: 3 }, (_, i) => (
-        <div key={i} className="grid gap-1">
-          <Skeleton className="h-lh w-40" />
-          <Skeleton className="h-lh w-full max-w-xl" />
-          <Skeleton className="h-lh w-full max-w-64 text-sm" />
-        </div>
-      ))}
-      {/* The notes line, so the card doesn't grow a line when it fills (#586). */}
-      <Skeleton className="h-lh w-56 text-sm" />
-    </section>
+    </>
   );
 }

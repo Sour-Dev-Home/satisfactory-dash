@@ -43,8 +43,8 @@ describe("FactoryPanel row cap (ADR-0062 F.5)", () => {
     expect(names().at(-1)).toBe("Machine 050");
     expect(screen.getByRole("status")).toHaveTextContent("Showing 50 of 51 machines.");
     expect(screen.getByRole("button", { name: "Show all 51 machines" })).toBeInTheDocument();
-    // The summary above still counts every machine.
-    expect(screen.getByText(/^51 machines ·/)).toBeInTheDocument();
+    // The All toggle still counts every machine.
+    expect(screen.getByRole("button", { name: /^All 51$/ })).toBeInTheDocument();
   });
 
   it("Show all reveals the rest in place and moves focus to the first newly shown machine", () => {

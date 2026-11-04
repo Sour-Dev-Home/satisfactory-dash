@@ -1,8 +1,8 @@
-import type { HistoryItems, HistoryTransitions } from "@satisfactory-dash/shared";
+import type { HistoryItems } from "@satisfactory-dash/shared";
 import { formatAmount, formatPerMinute } from "../format";
 import { cn } from "../lib/cn";
 import { labelFor, type ItemLabel } from "./itemLabels";
-import { sinceYesterday, transitionCount, type ItemChange } from "./sinceYesterday";
+import { hasNews, sinceYesterday, type ItemChange } from "./sinceYesterday";
 
 const hourOf = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -39,60 +39,42 @@ function Changes({ title, changes, labels, down }: { title: string; changes: Ite
 
 /**
  * ADR-0027 item 6: what changed since this hour yesterday, in text first. The headline is the
- * biggest drop; then short lists of notable drops and rises, and how often machines changed state.
- * `history` is the 7d range (hourly buckets); `transitions` the last 24 h, or undefined while it
- * loads or if it failed (the comparison still shows).
+ * biggest drop; then short lists of notable drops and rises. `history` is the 7d range (hourly
+ * buckets). ADR-0064: drawn only when there is news (`hasNews`); with too little history or no big
+ * change it is nothing, not a box saying so.
  */
 export function SinceYesterdayPanel({
   history,
-  transitions,
   labels,
   className,
 }: {
   history: HistoryItems;
-  transitions?: HistoryTransitions;
   labels: Map<string, ItemLabel>;
   /** The reserved box's size (FactoryHistory); the content scrolls inside it when longer. */
   className?: string;
 }) {
   const result = sinceYesterday(history);
-  const drop = result.enough ? result.down[0] : undefined;
+  if (!result.enough || !hasNews(result)) return null;
+  const drop = result.down[0];
   return (
     // Focusable, so a keyboard can scroll it when a phone's reserved box is shorter than the lists.
     <section aria-labelledby="since-yesterday-heading" tabIndex={0} className={cn("panel content-start overflow-y-auto", className)}>
       <h3 id="since-yesterday-heading">
         Since yesterday
-        {result.enough && (
-          <>
-            {/* The space outside the span: a name computation trims a span's leading space. */}{" "}
-            <span className="font-normal text-muted">
-              · this hour yesterday (<time dateTime={new Date(result.hour).toISOString()}>{hourOf(result.hour)}</time>)
-            </span>
-          </>
-        )}
+        {/* The space outside the span: a name computation trims a span's leading space. */}{" "}
+        <span className="font-normal text-muted">
+          · this hour yesterday (<time dateTime={new Date(result.hour).toISOString()}>{hourOf(result.hour)}</time>)
+        </span>
       </h3>
-      {!result.enough ? (
-        <p className="text-muted">Not enough history yet: this compares with the same hour yesterday.</p>
-      ) : result.down.length === 0 && result.up.length === 0 ? (
-        <p>No big changes since this hour yesterday.</p>
+      {drop ? (
+        <p className="font-semibold text-fg-strong">Biggest drop: {line(drop, labelFor(labels, drop.item))}</p>
       ) : (
-        <>
-          {drop ? (
-            <p className="font-semibold text-fg-strong">Biggest drop: {line(drop, labelFor(labels, drop.item))}</p>
-          ) : (
-            <p className="font-semibold text-fg-strong">Nothing dropped much since this hour yesterday.</p>
-          )}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Changes title="Down" changes={result.down} labels={labels} down />
-            <Changes title="Up" changes={result.up} labels={labels} down={false} />
-          </div>
-        </>
+        <p className="font-semibold text-fg-strong">Nothing dropped much since this hour yesterday.</p>
       )}
-      {transitions && (
-        <p className="text-sm text-muted">
-          Machines changed state {transitionCount(transitions)} {transitions.transitions.length === 1 && !transitions.truncated ? "time" : "times"} in the last 24 h.
-        </p>
-      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Changes title="Down" changes={result.down} labels={labels} down />
+        <Changes title="Up" changes={result.up} labels={labels} down={false} />
+      </div>
     </section>
   );
 }

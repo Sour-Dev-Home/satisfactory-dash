@@ -23,9 +23,9 @@ function snap(total: number, stateBacked: number): FactoryResponse {
 }
 
 describe("state backedUp vs isBackedUp (issue 201)", () => {
-  it("FactoryPanel header counts a machine its own row labels Backed up", () => {
+  it("FactoryPanel's Backed up toggle counts a machine its own row labels Backed up", () => {
     render(<FactoryPanel snapshot={snap(2, 1)} />);
-    expect(screen.getByText(/^2 machines · 1 backed up/)).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Filter machines" })).getByRole("button", { name: /^Backed up 1$/ })).toBeInTheDocument();
   });
 
   it("the Backed up filter shows a machine whose state is backedUp", () => {

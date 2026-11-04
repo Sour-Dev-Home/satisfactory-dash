@@ -185,9 +185,12 @@ describe("FactoryPanel clock speed", () => {
   });
 });
 
-describe("FactoryPanel summary", () => {
-  it("says 1 machine in the singular", () => {
-    render(<FactoryPanel snapshot={withBuildings(machine)} />);
-    expect(screen.getByText("1 machine · 0 backed up · 0 paused · 0 without a recipe")).toBeInTheDocument();
+describe("FactoryPanel filter toggles (ADR-0064)", () => {
+  it("draws only All when no machine is in any state, and a pressed state at 0 so it can be turned off", () => {
+    const { rerender } = render(<FactoryPanel snapshot={withBuildings(machine)} />);
+    const group = () => screen.getByRole("group", { name: "Filter machines" });
+    expect(within(group()).getAllByRole("button").map((b) => b.textContent)).toEqual(["All 1"]);
+    rerender(<FactoryPanel snapshot={withBuildings(machine)} states={["paused"]} onStates={() => {}} />);
+    expect(within(group()).getByRole("button", { name: /^Paused 0$/ })).toHaveAttribute("aria-pressed", "true");
   });
 });

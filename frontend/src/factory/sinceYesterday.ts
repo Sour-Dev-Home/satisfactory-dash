@@ -1,4 +1,4 @@
-import type { HistoryItems, HistoryTransitions } from "@satisfactory-dash/shared";
+import type { HistoryItems } from "@satisfactory-dash/shared";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -86,8 +86,7 @@ export function sinceYesterday(history: HistoryItems): SinceYesterday {
   };
 }
 
-/** "37", or "500+" when the backend had more than it sent. */
-export function transitionCount(transitions: HistoryTransitions): string {
-  const n = transitions.transitions.length;
-  return transitions.truncated ? `${n}+` : String(n);
+/** ADR-0064: whether "Since yesterday" has anything to say: enough history and at least one notable drop or rise. */
+export function hasNews(result: SinceYesterday): boolean {
+  return result.enough && (result.down.length > 0 || result.up.length > 0);
 }

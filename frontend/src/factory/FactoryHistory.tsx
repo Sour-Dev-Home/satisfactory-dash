@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { HistoryRange } from "@satisfactory-dash/shared";
 import { keepForServer, queries } from "../api/queries";
@@ -12,16 +12,14 @@ import type { ItemLabel } from "./itemLabels";
 import { ItemHistoryPanel } from "./ItemHistoryPanel";
 import { RANGES, rangeLabel, rangeWords } from "./itemHistory";
 import { SinceYesterdayPanel } from "./SinceYesterdayPanel";
+import { hasNews, sinceYesterday } from "./sinceYesterday";
 
-/** The most transitions the backend sends in one answer; more reads "500+". */
-const TRANSITION_LIMIT = 500;
-
-/** The two queries "Since yesterday" reads; FactoryView gives them a short grace (ADR-0032). */
+/**
+ * The query "Since yesterday" reads; the page's reveal waits for it (shell/pageQueries.ts). The state-change count it
+ * also read went with ADR-0064.
+ */
 export function sinceYesterdayQueries(serverId: string) {
-  return {
-    history: queries.historyItems(serverId, "7d"),
-    transitions: queries.historyTransitions(serverId, "24h", TRANSITION_LIMIT),
-  };
+  return { history: queries.historyItems(serverId, "7d") };
 }
 
 const isHistoryAnchor = (id: string) => id === HISTORY_ANCHOR;
@@ -30,24 +28,20 @@ const isHistoryAnchor = (id: string) => id === HISTORY_ANCHOR;
 export const SINCE_YESTERDAY_BOX = "h-since-yesterday-phone sm:h-since-yesterday-mid lg:h-since-yesterday-wide";
 
 /**
- * Container for "Since yesterday" (ADR-0027 item 6): the 7d range's hourly buckets, and the last
- * 24 h of state changes. The comparison shows even if the transitions can't load. Loading, error
- * and content all fill the same reserved box.
+ * Container for "Since yesterday" (ADR-0027 item 6): the 7d range's hourly buckets. Loading, error
+ * and content fill the same reserved box; with no news (ADR-0064) there is no box at all. The page's
+ * reveal waits for this read, so usually that is known before anything is drawn; a read late past the
+ * reveal budget shows its box while it loads, then goes (the known one shift).
  */
 export function SinceYesterdayView({ labels }: { labels: Map<string, ItemLabel> }) {
   const server = useSelectedServer();
-  const since = sinceYesterdayQueries(server.id);
-  const history = useQuery(since.history);
-  const transitions = useQuery(since.transitions);
+  const history = useQuery(sinceYesterdayQueries(server.id).history);
+  const news = useMemo(() => (history.data ? hasNews(sinceYesterday(history.data.data)) : true), [history.data]);
+  if (!news) return null;
   return (
     <Loadable pending={history.isPending} skeleton={<SinceYesterdaySkeleton />} className={SINCE_YESTERDAY_BOX}>
       {history.data ? (
-        <SinceYesterdayPanel
-          history={history.data.data}
-          transitions={transitions.data?.data}
-          labels={labels}
-          className={SINCE_YESTERDAY_BOX}
-        />
+        <SinceYesterdayPanel history={history.data.data} labels={labels} className={SINCE_YESTERDAY_BOX} />
       ) : (
         <div className={cn("grid content-start overflow-y-auto", SINCE_YESTERDAY_BOX)}>
           <ErrorNotice
@@ -78,7 +72,7 @@ export function SinceYesterdaySkeleton() {
 
 /**
  * Production history while it loads, in the loaded panel's shape: the picker row, a line of stats,
- * the chart's slot, its note and the readings table's summary. It sits below the table, so a
+ * the chart's slot and the readings table's summary. It sits below the table, so a
  * one-line status growing into the panel would push the footer (ADR-0032's tab-switch budget). The
  * `invisible` lines hold the height their text will take without showing anything.
  */
@@ -89,9 +83,6 @@ function ItemHistorySkeleton() {
       <Skeleton className="h-touch" />
       <p className="invisible">Loading</p>
       <Skeleton className="h-chart-slot-phone sm:h-chart-slot" />
-      <p className="invisible text-sm">
-        A break in the line means nothing was recorded then (the game was paused or the server couldn't be reached).
-      </p>
       <p className="invisible text-sm">Readings table</p>
     </div>
   );

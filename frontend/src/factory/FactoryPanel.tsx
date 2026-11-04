@@ -44,7 +44,6 @@ export const FACTORY_ROW_CAP = 50;
  * `search`/`onSearch`: the view keeps the search in the URL (?q=, #351); without them it's local.
  * `states`/`onStates`: the state filters that are on (ADR-0062 F.3), which the view keeps in the URL (?state=); without them
  * they're local.
- * `nav`: the page's in-page nav (ADR-0062 F.4), shown in the filter bar so the two stick as one.
  * `graph`, `designations`: the Planner's reads (ADR-0062 F.2), which group the table by factory and group;
  * without the graph the table is flat. `groupsUnavailable`: the graph read failed, so the table says why it is flat.
  */
@@ -55,7 +54,6 @@ export function FactoryPanel({
   onSearch,
   states: statesProp,
   onStates,
-  nav,
   graph,
   designations,
   groupsUnavailable = false,
@@ -66,7 +64,6 @@ export function FactoryPanel({
   onSearch?: (search: string) => void;
   states?: readonly FactoryStateFilter[];
   onStates?: (states: FactoryStateFilter[]) => void;
-  nav?: ReactNode;
   graph?: ProductionGraph | undefined;
   designations?: readonly PlannerDesignation[] | undefined;
   groupsUnavailable?: boolean;
@@ -116,18 +113,12 @@ export function FactoryPanel({
       {snapshot.stale && <p>Showing last known factory data from {formatTime(snapshot.observedAt)}.</p>}
 
       {buildings.length === 0 ? (
-        <div data-sticky-scope="" className={STICKY_SCOPE}>
-          <FilterBar nav={nav} />
-          <p>No machines yet.</p>
-        </div>
+        <p>No machines yet.</p>
       ) : (
         <>
-          <p className="summary">
-            {buildings.length} {buildings.length === 1 ? "machine" : "machines"} · {backedUpCount} backed up · {paused} paused · {noRecipe} without a recipe
-          </p>
+          {/* No summary line (ADR-0064): the filter toggles carry the counts. */}
           <div data-sticky-scope="" className={STICKY_SCOPE}>
             <FilterBar
-              nav={nav}
               search={
                 <label className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
                   Search machines
@@ -135,11 +126,12 @@ export function FactoryPanel({
                 </label>
               }
               filters={
-                // ADR-0062 F.3: the summary's counts as toggles. "All" turns every filter off; each state turns on and off on
-                // its own, and with several on the table shows a machine matching any of them.
+                // ADR-0062 F.3: the counts as toggles. "All" turns every filter off; each state turns on and off on its own,
+                // and with several on the table shows a machine matching any of them. A state at 0 is not drawn unless it is
+                // on (a ?state= link can turn one on), so it can still be turned off (ADR-0064).
                 <div role="group" aria-label="Filter machines">
                   <FilterToggle label="All" count={buildings.length} pressed={states.length === 0} onClick={() => setStates([])} />
-                  {[...STATE_FILTERS].map(([id, f]) => (
+                  {[...STATE_FILTERS].filter(([id]) => (counts.get(id) ?? 0) > 0 || states.includes(id)).map(([id, f]) => (
                     <FilterToggle
                       key={id}
                       label={f.label}
@@ -180,27 +172,23 @@ export function FactoryPanel({
 const STICKY_SCOPE = "flex min-w-0 flex-col gap-3";
 
 /**
- * ADR-0062 F.4: the in-page nav and the table's controls, in one bar that sticks to the top of the screen while the
- * table scrolls under it (one sticky layer, never two stacked). Sticky is bounded by `STICKY_SCOPE`, so it lets go once
- * the table has scrolled past; no ancestor up to the page scrolls on its own (an `overflow` there would turn sticky off).
- * On a phone the whole bar wraps to about four touch rows, a quarter of a 390 x 844 screen, so there only the nav and the
- * search stick (two rows): the outer box becomes `contents`, which makes the inner row a child of the scope and lets it stick there,
- * while the state filters scroll away with the table above them. From `sm` the outer box sticks with all three.
+ * ADR-0062 F.4: the table's controls in one bar that sticks to the top of the screen while the table scrolls under it
+ * (one sticky layer, never two stacked). Sticky is bounded by `STICKY_SCOPE`, so it lets go once the table has scrolled
+ * past; no ancestor up to the page scrolls on its own (an `overflow` there would turn sticky off). On a phone only the
+ * search sticks: the outer box becomes `contents`, which makes the search row a child of the scope and lets it stick
+ * there, while the state filters above it scroll away. From `sm` the outer box sticks as one row, the filters first and
+ * the search at its end (ADR-0064: the in-page nav that had a row of its own went).
  */
-function FilterBar({ nav, search, filters }: { nav?: ReactNode; search?: ReactNode; filters?: ReactNode }) {
-  if (nav == null && search == null && filters == null) return null;
+function FilterBar({ search, filters }: { search: ReactNode; filters: ReactNode }) {
   return (
     <div
       data-filter-bar=""
-      className="contents sm:sticky sm:top-0 sm:z-(--z-sticky) sm:flex sm:flex-col sm:gap-3 sm:border-b sm:border-line sm:bg-surface sm:py-2"
+      className="contents sm:sticky sm:top-0 sm:z-(--z-sticky) sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:border-b sm:border-line sm:bg-surface sm:py-2"
     >
-      {(nav != null || search != null) && (
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 max-sm:sticky max-sm:top-0 max-sm:z-(--z-sticky) max-sm:border-b max-sm:border-line max-sm:bg-surface max-sm:py-2">
-          {nav}
-          {search}
-        </div>
-      )}
       {filters}
+      <div className="flex items-center max-sm:sticky max-sm:top-0 max-sm:z-(--z-sticky) max-sm:border-b max-sm:border-line max-sm:bg-surface max-sm:py-2">
+        {search}
+      </div>
     </div>
   );
 }

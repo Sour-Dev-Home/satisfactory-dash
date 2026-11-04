@@ -289,15 +289,17 @@ const CASES: StateCase[] = [
   { scenario: "factory-grouped", path: "/app/factory", shows: /^Other machines · 1 machine$/ },
   { scenario: "factory-grouped-nested", path: "/app/factory", shows: /^Main base · 5 machines · 1 backed up$/ },
   { scenario: "factory-groups-error", path: "/app/factory", shows: "The Planner's factories could not be read, so the machines are listed in one table." },
-  // ADR-0048 (#349), the Factory page's Bottlenecks section (the default scenario shows findings with a belt cap).
-  { scenario: "default", name: "bottlenecks-belt-cap", path: "/app/factory", shows: /Capped by: Conveyor Belt Mk.1/ },
-  { scenario: "bottlenecks-old-frm", path: "/app/factory", shows: /Update FRM to 1.5.4/ },
-  { scenario: "bottlenecks-too-large", path: "/app/factory", shows: /connection data is too large/ },
-  { scenario: "bottlenecks-not-received", path: "/app/factory", shows: /No belt data has arrived from the game server yet/ },
-  // ADR-0062 F.1, the summary above the table, the read failing (the default shows three causes, bottlenecks-empty none).
+  // ADR-0048 (#349), the bottleneck card's full list, opened by #bottlenecks (ADR-0064: it opens in place). The default
+  // scenario's belt cap is named in the backend's sentence; no "Capped by" line repeats it.
+  { scenario: "default", name: "bottlenecks-belt-cap", path: "/app/factory#bottlenecks", shows: /caps Limestone at 60/ },
+  { scenario: "bottlenecks-old-frm", path: "/app/factory#bottlenecks", shows: /Update FRM to 1.5.4/ },
+  { scenario: "bottlenecks-too-large", path: "/app/factory#bottlenecks", shows: /connection data is too large/ },
+  { scenario: "bottlenecks-not-received", path: "/app/factory#bottlenecks", shows: /No belt data has arrived from the game server yet/ },
+  // ADR-0062 F.1, the summary above the table, the read failing (the default shows two causes, its third a small gap left
+  // out; bottlenecks-empty none).
   { scenario: "bottlenecks-error", path: "/app/factory", shows: /credentials for the game server were rejected/ },
   { scenario: "bottlenecks-empty", path: "/app/factory", shows: /No bottlenecks/ },
-  { scenario: "bottlenecks-unknown-kind", path: "/app/factory", shows: /smart splitter upstream filters Limestone/ },
+  { scenario: "bottlenecks-unknown-kind", path: "/app/factory#bottlenecks", shows: /smart splitter upstream filters Limestone/ },
   // ADR-0050 task 5, the Planner page. The fixtures were observed at
   // PLANNER_NOW minus 8 s, so the age reads the same every run.
   { scenario: "default", name: "planner-sites", path: "/app/planner", shows: "Iron Plate site", clock: PLANNER_NOW },
