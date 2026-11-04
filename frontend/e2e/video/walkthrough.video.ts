@@ -141,7 +141,7 @@ test("walkthrough", async ({ browser, baseURL }) => {
   await clickSlowly(page, enter);
 
   // Overview: the status-page summary.
-  await expect(page.getByRole("list", { name: "Sections" }).getByText(/Demo World · 3 \/ 4 players/)).toBeVisible();
+  await expect(page.getByRole("list", { name: "Sections" }).getByText(/^Demo World · .+ played$/)).toBeVisible();
   await hold(page, 8);
 
   const nav = page.getByRole("navigation", { name: "Main" });
@@ -188,7 +188,7 @@ test("poster", async ({ browser, baseURL }) => {
   const { context, page, problems } = await offlinePage(browser, baseURL!, { viewport: POSTER, deviceScaleFactor: 1 });
   await page.goto("/?clock=fixed");
   await page.getByRole("button", { name: "Enter demo" }).click();
-  await expect(page.getByRole("list", { name: "Sections" }).getByText(/Demo World · 3 \/ 4 players/)).toBeVisible();
+  await expect(page.getByRole("list", { name: "Sections" }).getByText(/^Demo World · .+ played$/)).toBeVisible();
   await page.screenshot({ path: join(OUT, "poster.png"), animations: "disabled" });
   await context.close();
   expect(problems, "the demo must never touch the network").toEqual([]);

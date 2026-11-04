@@ -274,7 +274,8 @@ const CASES: StateCase[] = [
   { scenario: "players-12-of-12", shows: "12 of 12 players connected" },
   { scenario: "no-game", shows: "No save loaded" },
   // The Overview banner: its text also holds the hidden "!" icon, so no ^ anchor.
-  { scenario: "outage", shows: /Power outage$/ },
+  // The Power tile says why (the generic "Power outage" headline under OUTAGE is not drawn, ADR-0064).
+  { scenario: "outage", shows: /circuit has a tripped fuse$/ },
   { scenario: "outage", name: "outage-power", path: "/app/power", shows: /Power outage: 1 circuit has a tripped fuse/ },
   { scenario: "at-risk", path: "/app/power", shows: "1 circuit is at risk." },
   // The live power chart (ADR-0022). default-power above is the normal case.
@@ -954,7 +955,8 @@ test("the Health card keeps its layout as the status ages", async ({ page, mockA
     return [
       await card.getByRole("heading", { name: "Health" }).boundingBox(),
       await card.locator("[data-age]").boundingBox(),
-      await card.locator("svg[data-gauge]").boundingBox(),
+      // No tick gauge here: a healthy tick is not drawn (ADR-0064).
+      await card.locator("[data-statement]").boundingBox(),
       await card.boundingBox(),
     ];
   };
