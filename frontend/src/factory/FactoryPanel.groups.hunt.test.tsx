@@ -47,4 +47,41 @@ describe("FactoryPanel grouping, hunted edges", () => {
     expect(within(table).getAllByRole("rowheader")).toHaveLength(7);
     expect(within(table).queryAllByRole("heading")).toHaveLength(0);
   });
+
+  it("opens a factory and a group independently when a factory's key equals a group's node key", () => {
+    const g = factoriesGraph();
+    const plate = g.factories!.find((f) => f.name === "Iron Plate factory")!;
+    const smelter = g.nodes.find((n) => plate.nodeKeys.includes(n.key) && n.count > 1)!;
+    const { graph, factory } = factoryForGraph({ ...g, factories: g.factories!.map((f) => (f === plate ? { ...f, key: smelter.key } : f)) });
+    render(<FactoryPanel snapshot={factory} graph={graph} />);
+    fireEvent.click(toggle("Iron Plate factory"));
+    const group = screen.getAllByRole("button", { expanded: false }).find((b) => /^\d+× /.test(b.textContent ?? ""))!;
+    fireEvent.click(group);
+    expect(toggle("Iron Plate factory")).toHaveAttribute("aria-expanded", "true");
+    expect(group).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("says 'Several recipes' for a group whose machines changed recipe since the graph, keeping the outputs' names", () => {
+    const { graph, factory } = groupedFactoriesWorld();
+    const ids = graph.nodes.find((n) => n.recipe === "Iron Plate")!.machineIds;
+    const buildings = factory.data.buildings.map((b) => (b.id === ids[0] ? { ...b, recipe: "Alternate: Coated Iron Plate" } : b));
+    render(<FactoryPanel snapshot={{ ...factory, data: { ...factory.data, buildings } }} graph={graph} />);
+    fireEvent.click(toggle("Iron Plate factory"));
+    const row = toggle("4× Constructor").closest("tr")!;
+    expect(within(row).getAllByRole("cell")[0]).toHaveTextContent(/^Several recipes$/);
+    expect(within(row).getByRole("list", { name: "Outputs" }).querySelector(".sr-only")).toBeNull();
+  });
+
+  it("rolls a group's rates up to 0%, never NaN, when its machines can make nothing", () => {
+    const { graph, factory } = groupedFactoriesWorld();
+    const ids = new Set(graph.nodes.find((n) => n.recipe === "Iron Plate")!.machineIds);
+    const buildings = factory.data.buildings.map((b) =>
+      ids.has(b.id) ? { ...b, production: b.production.map((p) => ({ ...p, currentPerMinute: 5, maxPerMinute: 0, percent: 0 })) } : b,
+    );
+    render(<FactoryPanel snapshot={{ ...factory, data: { ...factory.data, buildings } }} graph={graph} />);
+    fireEvent.click(toggle("Iron Plate factory"));
+    const row = toggle("4× Constructor").closest("tr")!;
+    expect(row.textContent).not.toMatch(/NaN|Infinity/);
+    expect(within(row).getByRole("list", { name: "Outputs" })).toHaveTextContent(/\(0%\)$/);
+  });
 });

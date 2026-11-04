@@ -368,6 +368,8 @@ function SectionRow({
     <tr data-machine-factory={kind === "factory" ? "" : undefined} data-machine-other={kind === "other" ? "" : undefined}>
       <td colSpan={columns} className={indentOf(level)}>
         <TreeHeading level={4 + level}>
+          {/* No aria-controls, here or on a group's button: what it opens is the sibling rows after it, never one element
+              to name; aria-expanded carries the state (`ui-reviewer`). */}
           <button type="button" aria-expanded={open} onClick={onToggle} className="inline-flex min-h-touch items-center gap-1 break-words text-left">
             <Chevron open={open} />
             {title}
@@ -436,7 +438,11 @@ function GroupRows({ group, level, state }: { group: MachineGroup; level: number
   if (group.total === 1 && first !== undefined) return <BuildingRow building={first} showInputs={state.showInputs} level={level} />;
   const shown = group.buildings.length;
   const narrowed = state.filtering && shown < group.total;
-  const recipe = first?.recipe ?? null;
+  // A Planner group is one recipe, but a factory read newer than the graph can hold a machine set to another since: then
+  // the row says so rather than show the first machine's (`test-hunter`), and the outputs keep their names.
+  const recipes = new Set(group.buildings.map((b) => b.recipe));
+  const mixed = recipes.size > 1;
+  const recipe = mixed ? null : (first?.recipe ?? null);
   return (
     <>
       <tr data-machine-group="">
@@ -448,7 +454,7 @@ function GroupRows({ group, level, state }: { group: MachineGroup; level: number
           </button>
           {narrowed && <span className="text-xs font-normal text-muted"> · {shown} of {group.total}</span>}
         </th>
-        <td>{recipe ?? "No recipe"}</td>
+        <td>{mixed ? "Several recipes" : (recipe ?? "No recipe")}</td>
         {state.showInputs && (
           <td>
             <Rates rates={sumRates(group.buildings, (b) => b.ingredients)} label="Inputs" recipe={null} />
