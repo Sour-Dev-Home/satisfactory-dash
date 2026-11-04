@@ -218,5 +218,5 @@ The later `native-parity` run 41340686528 (S4-B section above) also passes R8, R
 ### Notes (S4-A)
 
 - **Drone routes, reported not failed:** `pairedId` was judged on 2 ports and only reported on 5 (ambiguous or unpaired in
-  FRM). One cargo item-set difference was reported (a drone port's input: mod empty, FRM one item), under a provisional
-  controller ruling that mirrors the train-routes cargo ruling of 2026-10-27; the owner is to confirm it.
+  FRM). One cargo item-set difference was reported (a drone port's input: mod empty, FRM one item), under the owner's
+  ruling of 2026-11-03 (drone-route cargo differences are reported, never failed), the same rule as train-routes cargo (2026-10-27).
