@@ -1,6 +1,6 @@
 import { BOTTLENECKS_DEFAULT_LIMIT, type Bottlenecks } from "@satisfactory-dash/shared";
 import { useId, useState, type ComponentProps, type ReactNode } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useNavigationType } from "react-router";
 import { PanelError } from "../components/PanelError";
 import { cn } from "../lib/cn";
 import { hashId, useHashTarget } from "../lib/useHashTarget";
@@ -54,6 +54,7 @@ const namesList = (hash: string) => {
 export function BottleneckSummary({ data: read }: { data: Bottlenecks }) {
   const data = withoutSmallGaps(read);
   const location = useLocation();
+  const navType = useNavigationType();
   const ids = useId();
   // Open when the URL names the list, and again whenever a navigation does (a link while on the page); the reader's own
   // toggles are kept across polls.
@@ -61,7 +62,8 @@ export function BottleneckSummary({ data: read }: { data: Bottlenecks }) {
   const [seenKey, setSeenKey] = useState(location.key);
   if (location.key !== seenKey) {
     setSeenKey(location.key);
-    if (namesList(location.hash)) setOpen(true);
+    // Not a replace: the page's own (typing in the search box) carries the hash along and must not reopen a list the reader closed.
+    if (navType !== "REPLACE" && namesList(location.hash)) setOpen(true);
   }
   useHashTarget(isBottlenecksAnchor);
   const top = data.findings.slice(0, BOTTLENECK_SUMMARY_CAP);
@@ -120,8 +122,8 @@ export function BottleneckSummary({ data: read }: { data: Bottlenecks }) {
     <Frame aria-label="Bottlenecks" data-bottleneck-summary="" head={head}>
       <div id={`${ids}-body`} className="grid min-w-0 grid-cols-1">
         {open && full ? (
-          // The `#bottlenecks` target: a link jumps here and focuses it (useHashTarget).
-          <div id={BOTTLENECKS_ANCHOR} className="grid min-w-0 scroll-mt-4 gap-3">
+          // The `#bottlenecks` target: a link jumps here and focuses it (useHashTarget), so it is a group named by the heading.
+          <div id={BOTTLENECKS_ANCHOR} role="group" aria-labelledby={HEADING_ID} className="grid min-w-0 scroll-mt-4 gap-3">
             <BottlenecksList data={data} limit={BOTTLENECKS_DEFAULT_LIMIT} labelledBy={HEADING_ID} />
           </div>
         ) : (

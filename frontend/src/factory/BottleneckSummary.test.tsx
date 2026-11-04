@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { http, HttpResponse, type JsonBodyType } from "msw";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { endpoints, type Bottleneck, type Bottlenecks } from "@satisfactory-dash/shared";
 import {
@@ -232,6 +232,58 @@ describe("the full list, in the same card (ADR-0064)", () => {
     renderSummary(base, "/app/factory#bottlenecks-heading");
     expect(fullListButton()).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("heading", { name: "3 bottlenecks" })).toHaveAttribute("id", "bottlenecks-heading");
+  });
+
+  /** Buttons that navigate like the page does: a push to the link, and a replace that keeps the hash (the search box). */
+  function Nav({ data }: { data: Bottlenecks }) {
+    const navigate = useNavigate();
+    const location = useLocation();
+    return (
+      <>
+        <button onClick={() => navigate("/app/factory#bottlenecks")}>go-link</button>
+        <button onClick={() => navigate({ search: "?q=x", hash: location.hash }, { replace: true })}>type-search</button>
+        <BottleneckSummary data={data} />
+      </>
+    );
+  }
+
+  it("a link while already on the page opens a closed list", () => {
+    render(
+      <MemoryRouter initialEntries={["/app/factory"]}>
+        <Nav data={base} />
+      </MemoryRouter>,
+    );
+    expect(fullListButton()).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByText("go-link"));
+    expect(fullListButton()).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("a replace that keeps the hash (typing in the search box) does not reopen a list the reader closed", () => {
+    render(
+      <MemoryRouter initialEntries={["/app/factory#bottlenecks"]}>
+        <Nav data={base} />
+      </MemoryRouter>,
+    );
+    openFullList(); // closes it
+    expect(fullListButton()).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByText("type-search"));
+    expect(fullListButton()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("an open list whose causes all go away shows the calm line, and the reader's choice (open) is back when one returns", () => {
+    const { rerender } = renderSummary(base);
+    openFullList();
+    const calm = { ...base, findings: [], truncated: false, notes: [], beltData: "present" as const };
+    const wrap = (d: Bottlenecks) => (
+      <MemoryRouter initialEntries={["/app/factory"]}>
+        <BottleneckSummary data={d} />
+      </MemoryRouter>
+    );
+    rerender(wrap(calm));
+    expect(screen.getByText("All machines are fed and flowing.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Full list of bottlenecks" })).toBeNull();
+    rerender(wrap(base));
+    expect(fullListButton()).toHaveAttribute("aria-expanded", "true");
   });
 });
 

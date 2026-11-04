@@ -45,24 +45,24 @@ export function BottlenecksList({ data, limit, labelledBy }: { data: Bottlenecks
     <>
       {/* Rows ruled like the Factory table's, so ten of them still read as separate findings on a phone (#586). */}
       {data.findings.length > 0 && (
-      <ol aria-labelledby={labelledBy} className="grid">
-        {data.findings.map((f, i) => (
-          <li key={f.buildingId} className="flex gap-3 border-t border-line py-3 first:border-t-0 first:pt-0">
-            <span aria-hidden="true" className="w-6 shrink-0 text-muted tabular-nums">
-              {i + 1}
-            </span>
-            <div className="min-w-0 break-words">
-              <p className="font-semibold text-fg-strong">
-                {/* Underfed in the info colour, so it can't read as healthy beside the amber "Backed up" (#586). */}
-                {machineLabel(f)} <span className={cn("font-normal", f.state === "underfed" ? "text-info" : "text-warn")}>· {stateLabel(f.state)}</span>
-              </p>
-              <p>{f.text}</p>
-              {f.fix && <p className="text-sm">Fix: {fixLine(f.fix)}</p>}
-              <AffectedMachines finding={f} />
-            </div>
-          </li>
-        ))}
-      </ol>
+        <ol aria-labelledby={labelledBy} className="grid">
+          {data.findings.map((f, i) => (
+            <li key={f.buildingId} className="flex gap-3 border-t border-line py-3 first:border-t-0 first:pt-0">
+              <span aria-hidden="true" className="w-6 shrink-0 text-muted tabular-nums">
+                {i + 1}
+              </span>
+              <div className="min-w-0 break-words">
+                <p className="font-semibold text-fg-strong">
+                  {/* Underfed in the info colour, so it can't read as healthy beside the amber "Backed up" (#586). */}
+                  {machineLabel(f)} <span className={cn("font-normal", f.state === "underfed" ? "text-info" : "text-warn")}>· {stateLabel(f.state)}</span>
+                </p>
+                <p>{f.text}</p>
+                {f.fix && <p className="text-sm">Fix: {fixLine(f.fix)}</p>}
+                <AffectedMachines finding={f} />
+              </div>
+            </li>
+          ))}
+        </ol>
       )}
       {/* One list: the truncation line is a note like the others (#586). */}
       {(data.truncated || notes.length > 0) && (
