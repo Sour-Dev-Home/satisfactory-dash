@@ -60,6 +60,20 @@ async function openBottlenecks(page: Page) {
   await expect(button).toHaveAttribute("aria-expanded", "true");
 }
 
+/**
+ * ADR-0064: the folded machine table, the Iron Plate factory and then one of its groups opened. Then back to the top with
+ * the mouse away: a click scrolls the button into view, and a full-page screenshot taken scrolled caught the phone's sticky
+ * search row at a different place each time ("two consecutive stable screenshots" failed).
+ */
+async function openGroup(page: Page, group: string) {
+  await page.getByRole("button", { name: "Iron Plate factory", exact: true }).click();
+  const button = page.getByRole("button", { name: group, exact: true });
+  await button.click();
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+  await page.mouse.move(0, 0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+
 /** A visually hidden button (the canvas's keyboard way into a card), reached as a keyboard user does. */
 async function pressButton(page: Page, name: string | RegExp) {
   // Visible first: the page reveals at once (PageReveal), and focus() on a control still under `invisible` lands nowhere,
@@ -295,25 +309,14 @@ const CASES: StateCase[] = [
   },
   // ADR-0062 F.5 per group (F.2): a group of 55 constructors capped at its first 50 with "Show all" under it.
   // ADR-0064: the table starts folded, so the factory and then its group are opened.
-  {
-    scenario: "factory-many-machines",
-    path: "/app/factory",
-    shows: "Showing 50 of 55 machines.",
-    act: async (page) => {
-      await page.getByRole("button", { name: "Iron Plate factory", exact: true }).click();
-      await page.getByRole("button", { name: "55× Constructor", exact: true }).click();
-    },
-  },
+  { scenario: "factory-many-machines", path: "/app/factory", shows: "Showing 50 of 55 machines.", act: (page) => openGroup(page, "55× Constructor") },
   // ADR-0064: a group's one row, opened to its machines (the Planner's factories fixture).
   {
     scenario: "factory-grouped",
     name: "factory-grouped-open",
     path: "/app/factory",
     shows: /^Iron Plate factory · 11 machines · 1 backed up$/,
-    act: async (page) => {
-      await page.getByRole("button", { name: "Iron Plate factory", exact: true }).click();
-      await page.getByRole("button", { name: "4× Constructor", exact: true }).click();
-    },
+    act: (page) => openGroup(page, "4× Constructor"),
   },
   // ADR-0062 F.2: the table grouped by the Planner's factories and groups, then "Other machines"; the flat fallback.
   { scenario: "factory-grouped", path: "/app/factory", shows: /^Other machines · 1 machine$/ },
