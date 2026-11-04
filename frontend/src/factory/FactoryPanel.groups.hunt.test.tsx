@@ -13,20 +13,21 @@ describe("FactoryPanel grouping, hunted edges", () => {
   it("keeps the viewer's choices across a poll that hands it a new snapshot and graph", () => {
     const first = groupedFactoriesWorld();
     const view = render(<FactoryPanel snapshot={first.factory} graph={first.graph} />);
-    fireEvent.click(toggle("Iron Rod factory"));
-    fireEvent.click(toggle("4× Smelter, Iron Ingot"));
+    fireEvent.click(toggle("Iron Plate factory"));
+    fireEvent.click(toggle("4× Smelter"));
     const next = groupedFactoriesWorld();
     view.rerender(<FactoryPanel snapshot={next.factory} graph={next.graph} />);
-    expect(toggle("Iron Rod factory")).toHaveAttribute("aria-expanded", "false");
-    expect(toggle("4× Smelter, Iron Ingot")).toHaveAttribute("aria-expanded", "false");
     expect(toggle("Iron Plate factory")).toHaveAttribute("aria-expanded", "true");
+    expect(toggle("4× Smelter")).toHaveAttribute("aria-expanded", "true");
+    expect(toggle("Iron Rod factory")).toHaveAttribute("aria-expanded", "false");
   });
 
   it("keeps a section the viewer closed closed while filtering", () => {
     const world = groupedFactoriesWorld();
     render(<FactoryPanel snapshot={world.factory} graph={world.graph} />);
-    fireEvent.click(toggle("Iron Plate factory"));
     search("constructor");
+    fireEvent.click(toggle("Iron Plate factory"));
+    search("constructo");
     expect(toggle("Iron Plate factory")).toHaveAttribute("aria-expanded", "false");
     expect(toggle("Iron Rod factory")).toHaveAttribute("aria-expanded", "true");
   });
@@ -39,9 +40,11 @@ describe("FactoryPanel grouping, hunted edges", () => {
     expect(grouping.other.filter((b) => b.id === dup.id)).toEqual([dup]);
   });
 
-  it("counts a designations-less graph with every group in no factory as top-level sections, h4", () => {
+  it("lists a graph without factories as its groups' rows at the top level, with no factory heading", () => {
     const { graph, factory } = factoryForGraph({ ...factoriesGraph(), factories: undefined });
     render(<FactoryPanel snapshot={factory} graph={graph} />);
-    expect(within(screen.getByRole("list", { name: "Machines by factory" })).getAllByRole("heading", { level: 4 })).toHaveLength(7);
+    const table = screen.getByRole("table", { name: "Machines by factory" });
+    expect(within(table).getAllByRole("rowheader")).toHaveLength(7);
+    expect(within(table).queryAllByRole("heading")).toHaveLength(0);
   });
 });

@@ -294,7 +294,27 @@ const CASES: StateCase[] = [
     },
   },
   // ADR-0062 F.5 per group (F.2): a group of 55 constructors capped at its first 50 with "Show all" under it.
-  { scenario: "factory-many-machines", path: "/app/factory", shows: "Showing 50 of 55 machines." },
+  // ADR-0064: the table starts folded, so the factory and then its group are opened.
+  {
+    scenario: "factory-many-machines",
+    path: "/app/factory",
+    shows: "Showing 50 of 55 machines.",
+    act: async (page) => {
+      await page.getByRole("button", { name: "Iron Plate factory", exact: true }).click();
+      await page.getByRole("button", { name: "55× Constructor", exact: true }).click();
+    },
+  },
+  // ADR-0064: a group's one row, opened to its machines (the Planner's factories fixture).
+  {
+    scenario: "factory-grouped",
+    name: "factory-grouped-open",
+    path: "/app/factory",
+    shows: /^Iron Plate factory · 11 machines · 1 backed up$/,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Iron Plate factory", exact: true }).click();
+      await page.getByRole("button", { name: "4× Constructor", exact: true }).click();
+    },
+  },
   // ADR-0062 F.2: the table grouped by the Planner's factories and groups, then "Other machines"; the flat fallback.
   { scenario: "factory-grouped", path: "/app/factory", shows: /^Other machines · 1 machine$/ },
   { scenario: "factory-grouped-nested", path: "/app/factory", shows: /^Main base · 5 machines · 1 backed up$/ },

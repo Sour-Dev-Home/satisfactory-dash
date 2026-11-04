@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isBackedUpState } from "@satisfactory-dash/shared";
+import { isBackedUpState, type FactoryBuilding } from "@satisfactory-dash/shared";
 import { factoryMixed } from "@satisfactory-dash/shared/fixtures";
 import { DEMO_EPOCH, factory as demoFactory, plannerDesignations as demoDesignations, productionGraph as demoGraph } from "../demo/world";
 import { factoriesGraph, factoryForGraph, groupedFactoriesWorld } from "../test/factoryGroups";
 import { treeWorld, withoutParents } from "../test/plannerTree";
-import { backedUpIn, groupMachines, narrowGrouping, startsOpen, type MachineFactory } from "./machineGroups";
+import { backedUpIn, groupMachines, groupTitle, narrowGrouping, notableStates, stateCounts, sumRates, type MachineFactory } from "./machineGroups";
 
 const names = (factories: readonly MachineFactory[]): unknown =>
   factories.map((f) => (f.parts.length > 0 ? { [f.name]: names(f.parts) } : f.name));
@@ -91,8 +91,50 @@ describe("groupMachines (ADR-0062 F.2)", () => {
     expect(grouping.other.length).toBeLessThan(buildings.length / 10);
   });
 
-  it("starts a factory of more than 20 groups closed, like the outline", () => {
-    expect(startsOpen({ groupCount: 20 })).toBe(true);
-    expect(startsOpen({ groupCount: 21 })).toBe(false);
+});
+
+// ADR-0064 Decision 3: what a group's one row says.
+describe("a group's row", () => {
+  const rate = (className: string, name: string, current: number, max: number, unit: "items/min" | "m3/min" | null = "items/min") =>
+    ({ className, name, currentPerMinute: current, maxPerMinute: max, percent: max > 0 ? (current / max) * 100 : 0, unit });
+  const machine = (over: Partial<FactoryBuilding> = {}): FactoryBuilding =>
+    ({ id: "m", name: "Constructor", className: "Build_ConstructorMk1_C", recipe: "Iron Plate", production: [], isProducing: true, isPaused: false, isBackedUp: false, state: "producing", ...over }) as FactoryBuilding;
+
+  it("is titled by its count and building, plain for one", () => {
+    expect(groupTitle({ buildings: [machine(), machine()] })).toBe("2× Constructor");
+    expect(groupTitle({ buildings: [machine()] })).toBe("Constructor");
+    expect(groupTitle({ buildings: [machine()] }, 4)).toBe("4× Constructor");
+  });
+
+  it("sums each item's current and max over its machines, the percent of the sums, in first-seen order", () => {
+    const a = machine({ production: [rate("Plate", "Iron Plate", 12, 20), rate("Scrap", "Scrap", 1, 2)] });
+    const b = machine({ production: [rate("Plate", "Iron Plate", 20, 20)] });
+    const summed = sumRates([a, b], (m) => m.production);
+    expect(summed.map((r) => [r.name, r.currentPerMinute, r.maxPerMinute, r.percent])).toEqual([
+      ["Iron Plate", 32, 40, 80],
+      ["Scrap", 1, 2, 50],
+    ]);
+  });
+
+  it("says 0% for an item nothing can make, and adds nothing for a machine without the list", () => {
+    const idle = machine({ production: [rate("Plate", "Iron Plate", 0, 0)], ingredients: undefined });
+    expect(sumRates([idle], (m) => m.production)[0]?.percent).toBe(0);
+    expect(sumRates([idle, idle], (m) => m.ingredients)).toEqual([]);
+  });
+
+  it("counts the states worth a word, never producing nor an unknown state, and a flag the state doesn't say", () => {
+    const counts = stateCounts([
+      machine(),
+      machine({ state: "backedUp", isBackedUp: true }),
+      machine({ state: "backedUp", isBackedUp: true }),
+      machine({ state: "idle", isPaused: true }),
+      machine({ state: "somethingNew" }),
+    ]);
+    expect(counts.map((c) => [c.view.label, c.count])).toEqual([
+      ["Backed up", 2],
+      ["Idle", 1],
+      ["Paused", 1],
+    ]);
+    expect(notableStates(machine())).toEqual([]);
   });
 });
