@@ -10,6 +10,18 @@ import { dataAgeText } from "./dataAgeText";
  * data look late. Not a live region: it changes every second, and the stale banner already
  * announces a lost connection.
  */
+export function DataAge({ observedAt, late }: { observedAt: string; late: boolean }) {
+  const now = useNow();
+  return (
+    <span data-age="" className={cn(late && "text-warn")}>
+      <time dateTime={observedAt} title={formatTime(observedAt)}>
+        {dataAgeText(observedAt, now)}
+      </time>
+      {late && <span>: newer data is overdue</span>}
+    </span>
+  );
+}
+
 /**
  * A panel's own age line (ADR-0064 Decision 6): only when its data is late. The page's freshness is said once, beside the
  * server picker (`shell/PageAge.tsx`); a panel speaks up only when its reading is overdue.
@@ -20,17 +32,5 @@ export function PanelAge({ observedAt, late }: { observedAt: string; late: boole
     <p className="as-of">
       <DataAge observedAt={observedAt} late />
     </p>
-  );
-}
-
-export function DataAge({ observedAt, late }: { observedAt: string; late: boolean }) {
-  const now = useNow();
-  return (
-    <span data-age="" className={cn(late && "text-warn")}>
-      <time dateTime={observedAt} title={formatTime(observedAt)}>
-        {dataAgeText(observedAt, now)}
-      </time>
-      {late && <span>: newer data is overdue</span>}
-    </span>
   );
 }

@@ -25,7 +25,9 @@ function coarseAge(observedAt: string, now: number): "live" | "< 1 min" | `${num
 export function AgeBadge({ observedAt, late }: { observedAt: string; late: boolean }) {
   const now = useNow();
   const label = late ? "late" : coarseAge(observedAt, now);
-  const exact = dataAgeText(observedAt, now);
+  // "Data updated 8 s ago": beside the server picker a bare "live" could read as the server's own state (`ui-reviewer`).
+  const updated = dataAgeText(observedAt, now);
+  const exact = `Data ${updated.charAt(0).toLowerCase()}${updated.slice(1)}`;
   return (
     <span
       data-age=""

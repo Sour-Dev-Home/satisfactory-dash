@@ -1,5 +1,5 @@
-import { render } from "@testing-library/react";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { render, waitFor } from "@testing-library/react";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -54,5 +54,59 @@ describe("PageAge", () => {
     expect(age.querySelector("[data-age]")).toBeNull();
     await new Promise((r) => setTimeout(r, 50));
     expect(reads).toBe(0);
+  });
+
+  it.each(["/app/", "/nope"])("draws nothing, without crashing, on %s: a page with no primary read", (path) => {
+    expect(renderAt(path)).toBeNull();
+  });
+
+  it("is not late when the response carries no stale flag", () => {
+    const { stale: _stale, ...bare } = powerOk as typeof powerOk & { stale?: boolean };
+    // An older backend's envelope without `stale`: not the contract's type, hence the cast.
+    const age = renderAt("/app/power", (c) => c.setQueryData(queries.power(SERVER.id).queryKey, bare as never));
+    expect(age.querySelector("[data-age]")).not.toHaveClass("text-warn");
+  });
+
+  it("shows the age of the selected server, not the previous one", () => {
+    const client = createQueryClient();
+    const other = { ...SERVER, id: "other" };
+    client.setQueryData(queries.power(SERVER.id).queryKey, powerOk);
+    client.setQueryData(queries.power(other.id).queryKey, { ...powerOk, observedAt: "2020-01-01T00:00:00.000Z" });
+    const ui = (s: typeof SERVER) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/app/power"]}>
+          <ServerContext value={s}>
+            <PageAge />
+          </ServerContext>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const view = render(ui(SERVER));
+    expect(view.container.querySelector("time")).toHaveAttribute("dateTime", powerOk.observedAt);
+    view.rerender(ui(other));
+    expect(view.container.querySelector("time")).toHaveAttribute("dateTime", "2020-01-01T00:00:00.000Z");
+  });
+
+  it("is late after a failed refresh, and does not stop a sibling observer's polling", async () => {
+    let reads = 0;
+    server.use(http.get(endpoints.power.route, () => (reads++, HttpResponse.json({ error: "x" }, { status: 500 }))));
+    const client = createQueryClient();
+    client.setQueryData(queries.power(SERVER.id).queryKey, powerOk);
+    function Panel() {
+      useQuery({ ...queries.power(SERVER.id), refetchInterval: 20, retry: false, staleTime: 0 });
+      return null;
+    }
+    const view = render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/app/power"]}>
+          <ServerContext value={SERVER}>
+            <PageAge />
+            <Panel />
+          </ServerContext>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(reads).toBeGreaterThan(2));
+    expect(view.container.querySelector("[data-age]")).toHaveClass("text-warn");
   });
 });

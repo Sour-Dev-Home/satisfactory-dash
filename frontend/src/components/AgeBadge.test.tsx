@@ -26,8 +26,9 @@ describe("AgeBadge", () => {
   it("keeps the exact age as accessible text and a tooltip", () => {
     const badge = renderAt(8);
     expect(badge.querySelector("time")).toHaveClass("sr-only");
-    expect(badge.querySelector("time")).toHaveTextContent("Updated 8 s ago");
-    expect(badge).toHaveAttribute("title", expect.stringContaining("Updated 8 s ago"));
+    // "Data …": beside the server picker it must not read as the server's state.
+    expect(badge.querySelector("time")).toHaveTextContent("Data updated 8 s ago");
+    expect(badge).toHaveAttribute("title", expect.stringContaining("Data updated 8 s ago"));
   });
 
   it("turns amber and says so when the backend calls the data late", () => {

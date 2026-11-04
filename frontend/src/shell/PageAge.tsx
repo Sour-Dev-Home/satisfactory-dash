@@ -16,13 +16,16 @@ function observed(data: unknown): { observedAt: string; stale: boolean } | null 
  * in every panel (a panel now says its own age only when its data is late). It is the age of the page's first primary
  * read that carries one (`shell/pageQueries.ts`: status on the Overview, power, the factory, the graph...), read from
  * the cache only (`enabled: false`: this never fetches or polls; the page's panels do). `late` is the backend's `stale`
- * or a failed refresh, never this clock. Before the read lands, or on a page without one, it keeps the badge's width
- * empty, so the header never moves.
+ * or a failed refresh, never this clock. Before the read lands it keeps the badge's width empty, so the header never
+ * moves; a page without a primary read draws nothing.
  */
 export function PageAge() {
   const { pathname } = useLocation();
   const server = useSelectedServer();
-  const results = useQueries({ queries: pageQueries(pathname, server.id).map((q) => ({ ...q, enabled: false })) });
+  const primary = pageQueries(pathname, server.id);
+  const results = useQueries({ queries: primary.map((q) => ({ ...q, enabled: false })) });
+  // A page with no primary read (Servers, an unknown path) has no age to say: no slot either (`ui-reviewer`).
+  if (primary.length === 0) return null;
   for (const result of results) {
     const age = observed(result.data);
     if (age !== null) {
