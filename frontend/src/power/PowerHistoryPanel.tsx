@@ -63,8 +63,11 @@ export function RangeRow({ label, range }: { label: string; range: Range }) {
     <div className="grid gap-0.5">
       <dt className="text-xs text-muted">{label}</dt>
       <dd>
-        {formatMW(range.current)}{" "}
-        <span className="text-sm text-muted">
+        {formatMW(range.current)}
+        {/* ADR-0064: the chart shows the range, so on screen this is the latest only; a screen reader, for whom the chart
+            is hidden, still hears the min and max. */}
+        <span className="sr-only">
+          {" "}
           (min {formatMW(range.min)}, max {formatMW(range.max)})
         </span>
       </dd>

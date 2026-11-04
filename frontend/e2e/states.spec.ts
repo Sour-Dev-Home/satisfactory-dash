@@ -194,7 +194,7 @@ const deleteMyAccount = async (page: Page) => {
 
 const CASES: StateCase[] = [
   { scenario: "default", shows: / played$/ },
-  { scenario: "default", name: "default-power", path: "/app/power", shows: /Circuit 0/ },
+  { scenario: "default", name: "default-power", path: "/app/power", shows: / MW capacity$/ },
   { scenario: "default", name: "default-factory", path: "/app/factory", shows: "Search machines" },
   { scenario: "default", name: "default-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   { scenario: "loading", shows: "Checking session…" },
@@ -202,11 +202,11 @@ const CASES: StateCase[] = [
   // panels, with no loading text to read. The page has revealed by then, so the clocks have run.
   { scenario: "loading-panels", name: "loading-factory", path: "/app/factory", shows: "Factory", act: skeletonsShown },
   { scenario: "loading-panels", name: "loading-map", path: "/app/map", shows: "Map", act: skeletonsShown },
-  { scenario: "loading-panels", name: "loading-power", path: "/app/power", shows: /Circuit 0/, act: skeletonsShown },
+  { scenario: "loading-panels", name: "loading-power", path: "/app/power", shows: / MW capacity$/, act: skeletonsShown },
   { scenario: "loading-panels", name: "loading-settings", path: "/app/settings", shows: /Auto-pause when no players/, act: skeletonsShown },
   // Every read answers after 800 ms, past the page budget: the settled page is the same as the default's.
   { scenario: "slow-queries", name: "slow-overview", shows: / played$/ },
-  { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/, ready: ".power-chart .uplot" },
+  { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: / MW capacity$/, ready: ".power-chart .uplot" },
   { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: "Search machines" },
   { scenario: "slow-queries", name: "slow-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   // The map's world layers (ADR-0038 M5): nothing read yet, one cut to its cap, and the read failing.
