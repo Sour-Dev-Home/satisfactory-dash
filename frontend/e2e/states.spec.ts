@@ -955,7 +955,8 @@ test("the header and the Health card keep their layout as the status ages", asyn
   const boxes = async () => {
     await settleAnimations(page);
     return [
-      await page.getByRole("button", { name: "Satisfactory server" }).boundingBox(),
+      // The server chip: a paragraph, not a button, with one server.
+      await page.locator("p", { hasText: "Game server:" }).boundingBox(),
       await age.boundingBox(),
       await page.getByRole("button", { name: "Account" }).boundingBox(),
       await card.locator("[data-statement]").boundingBox(),
