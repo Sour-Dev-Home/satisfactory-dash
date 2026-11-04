@@ -8,7 +8,8 @@ import { PowerPanel } from "./PowerPanel";
 /** The Power panel while it loads: one circuit's card and the "Updated" line under it. */
 function PowerSkeleton() {
   return (
-    <PanelSkeleton label="Loading power…" rows={1} rowClass="h-38 sm:h-25">
+    // ADR-0064: a circuit card is its load line, any warning and "Details", about 126 px at every width (measured).
+    <PanelSkeleton label="Loading power…" rows={1} rowClass="h-32">
       <Skeleton className="h-lh w-28" />
     </PanelSkeleton>
   );
