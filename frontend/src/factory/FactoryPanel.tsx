@@ -445,7 +445,8 @@ function GroupRows({ group, level, state }: { group: MachineGroup; level: number
   const recipe = mixed ? null : (first?.recipe ?? null);
   return (
     <>
-      <tr data-machine-group="">
+      {/* Cells centred on the row: the name is a 44 px tall button, the other cells one line. */}
+      <tr data-machine-group="" className="*:align-middle">
         <th scope="row" className={indentOf(level)}>
           <button type="button" aria-expanded={open} onClick={() => state.toggle(key)} className="inline-flex min-h-touch items-center gap-1 break-words text-left">
             <Chevron open={open} />
