@@ -353,11 +353,13 @@ describe("FactoryView", () => {
 describe("FactoryView's data-age warning", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("doesn't call fresh data late when this PC's clock is a day ahead", async () => {
+  it("doesn't call fresh data late when this PC's clock is a day ahead, so the panel says no age at all", async () => {
     vi.setSystemTime(Date.parse(factoryMixed.observedAt) + 86_400_000);
     server.use(http.get(endpoints.factory.route, () => HttpResponse.json(factoryMixed)));
     renderView();
-    expect(await screen.findByText(/^Updated 1 d /)).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
+    // ADR-0064 Decision 6: a panel says its age only when late; the page's age is the header's.
+    expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument();
     expect(screen.queryByText(/newer data is overdue/)).not.toBeInTheDocument();
   });
 

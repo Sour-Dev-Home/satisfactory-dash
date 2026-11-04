@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HealthCard } from "./HealthCard";
 
 describe("HealthCard", () => {
@@ -54,54 +54,9 @@ describe("HealthCard", () => {
     expect(screen.queryByText(/Tick/)).not.toBeInTheDocument();
   });
 
-  describe("the freshness badge", () => {
-    const OBSERVED = "2026-09-22T22:25:00.000Z";
-    const at = (seconds: number) => new Date(Date.parse(OBSERVED) + seconds * 1000);
-    const badge = () => screen.getByRole("region").querySelector("[data-age]")!;
-    const renderAt = (seconds: number, late = false) => {
-      vi.useFakeTimers({ now: at(seconds) });
-      // A slow tick, so the tick line is drawn (a healthy one is not, ADR-0064) and the badge's place beside it is tested.
-      render(<HealthCard overall={{ health: "degraded", headline: "x" }} tick={{ rate: 8, health: "slow" }} age={{ observedAt: OBSERVED, late }} />);
-    };
-    afterEach(() => vi.useRealTimers());
-
-    it.each([
-      [3, "live"],
-      [14, "live"],
-      [15, "< 1 min"],
-      [59, "< 1 min"],
-      [60, "1 min"],
-      [200, "3 min"],
-    ])("reads %d s old as %s", (seconds, label) => {
-      renderAt(seconds);
-      expect(badge().querySelector("[data-age-label]")).toHaveTextContent(label);
-    });
-
-    it("sits in the header with the heading, not in the tick line", () => {
-      renderAt(8);
-      const header = screen.getByRole("heading", { name: "Health" }).parentElement!;
-      expect(header).toContainElement(badge() as HTMLElement);
-      expect(screen.getByText("Tick").closest("div")).not.toContainElement(badge() as HTMLElement);
-      expect(screen.getByText("Tick").closest("div")).not.toHaveTextContent(/live|ago/);
-    });
-
-    it("keeps the exact age as accessible text and a tooltip", () => {
-      renderAt(8);
-      expect(screen.getByText("Updated 8 s ago")).toHaveClass("sr-only");
-      expect(badge()).toHaveAttribute("title", expect.stringContaining("Updated 8 s ago"));
-    });
-
-    it("turns amber and says so when the backend calls the data late", () => {
-      renderAt(8, true);
-      expect(badge()).toHaveClass("text-warn");
-      expect(badge().querySelector("[data-age-label]")).toHaveTextContent("late");
-      expect(badge()).toHaveTextContent("newer data is overdue");
-    });
-
-    it("is not shown without an age", () => {
-      render(<HealthCard overall={{ health: "ok", headline: "x" }} />);
-      expect(screen.getByRole("region").querySelector("[data-age]")).toBeNull();
-    });
+  it("carries no freshness badge: the page's is beside the server picker (ADR-0064 Decision 6)", () => {
+    render(<HealthCard overall={{ health: "degraded", headline: "x" }} tick={{ rate: 8, health: "slow" }} />);
+    expect(screen.getByRole("region").querySelector("[data-age]")).toBeNull();
   });
 
   it("offers dismissal only when asked to, and reports the click", () => {

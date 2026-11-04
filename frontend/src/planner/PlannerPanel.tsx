@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Bottleneck, PlannerNode, PlannerSite, ProductionGraphResponse } from "@satisfactory-dash/shared";
-import { DataAge } from "../components/DataAge";
+import { PanelAge } from "../components/DataAge";
 import { formatTime } from "../format";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { BottleneckBadge, BottleneckLine } from "./BottleneckBadge";
@@ -696,9 +696,7 @@ export function PlannerPanel({
         </ul>
       </details>
 
-      <p className="as-of">
-        <DataAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
-      </p>
+      <PanelAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
     </section>
   );
 }

@@ -1,7 +1,6 @@
 import type { Ref } from "react";
 import { cn } from "../../lib/cn";
 import { headlineSaysMore } from "../health";
-import { AgeBadge } from "./AgeBadge";
 import { Rivets } from "./Rivets";
 import { StationTiles, type OverviewSection } from "./StationTiles";
 import { tickTone, toneClass } from "./tick";
@@ -36,9 +35,6 @@ function Heart({ health, quiet }: { health: Shown; quiet: boolean }) {
   );
 }
 
-/** How fresh the status is: its snapshot's time, and whether the backend says it's late. */
-export type Age = { observedAt: string; late: boolean };
-
 /** The one tick line under the status (#616): rate and verdict, then the bar. Fixed size, so nothing moves. */
 function TickRow({ tick }: { tick: Tick }) {
   if (tick === null) return <p className="mb-0 text-sm text-muted">Tick: no game running.</p>;
@@ -65,7 +61,6 @@ function TickRow({ tick }: { tick: Tick }) {
 export function HealthCard({
   overall,
   tick,
-  age,
   sections = [],
   hidden = false,
   onDismiss,
@@ -74,8 +69,6 @@ export function HealthCard({
   overall: { health: Shown; headline: string };
   /** Left out while the status loads or fails: the card then shows no tick. */
   tick?: Tick;
-  /** The status snapshot's age, the badge beside the heading (exact: "Updated 8 s ago"). */
-  age?: Age;
   /** Server, Power and Factory, as station tiles. */
   sections?: OverviewSection[];
   /** The operator hid this warning (see canDismiss): shown neutral, without the headline. */
@@ -99,7 +92,7 @@ export function HealthCard({
         <h3 id="health-heading" ref={headingRef} tabIndex={-1} className="mb-0">
           Health
         </h3>
-        {age && <AgeBadge observedAt={age.observedAt} late={age.late} />}
+        {/* The page's freshness is the header's now, beside the server picker (ADR-0064 Decision 6). */}
         {onDismiss && !hidden && (
           <button
             type="button"

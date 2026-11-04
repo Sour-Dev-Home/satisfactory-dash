@@ -1,5 +1,5 @@
 import { ownValue, type PowerCircuit, type PowerCircuitStatus, type PowerResponse } from "@satisfactory-dash/shared";
-import { DataAge } from "../components/DataAge";
+import { PanelAge } from "../components/DataAge";
 import { formatMW, formatMWh, formatPercent, formatTime, roundForDisplay } from "../format";
 import { circuitAnchor, isCircuitAnchor } from "../lib/deepLinks";
 import { useHashTarget } from "../lib/useHashTarget";
@@ -61,9 +61,7 @@ export function PowerPanel({ snapshot, refetchFailed = false }: { snapshot: Powe
         </ul>
       )}
 
-      <p className="as-of">
-        <DataAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
-      </p>
+      <PanelAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
     </section>
   );
 }

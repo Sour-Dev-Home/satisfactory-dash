@@ -8,7 +8,7 @@ import {
   type ProductionRate,
 } from "@satisfactory-dash/shared";
 import { formatPercent, formatRate, formatTime } from "../format";
-import { DataAge } from "../components/DataAge";
+import { PanelAge } from "../components/DataAge";
 import { cn } from "../lib/cn";
 import { MACHINES_ANCHOR, type FactoryStateFilter } from "../lib/deepLinks";
 import { useHashTarget } from "../lib/useHashTarget";
@@ -159,9 +159,7 @@ export function FactoryPanel({
         </>
       )}
 
-      <p className="as-of">
-        <DataAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
-      </p>
+      <PanelAge observedAt={snapshot.observedAt} late={snapshot.stale || refetchFailed} />
     </section>
   );
 }

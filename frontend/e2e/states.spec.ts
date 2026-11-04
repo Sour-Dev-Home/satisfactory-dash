@@ -941,21 +941,23 @@ for (const { scenario, shows, path = "/app", name = scenario, act, clock, browse
   });
 }
 
-// #616: the age badge's label changes, nothing in the Health card moves.
-test("the Health card keeps its layout as the status ages", async ({ page, mockApi }) => {
+// #616, then ADR-0064 Decision 6: the page's age badge sits beside the server picker; its label changes, nothing in the
+// header or the Health card moves.
+test("the header and the Health card keep their layout as the status ages", async ({ page, mockApi }) => {
   await mockApi("default");
   await page.clock.setFixedTime(LIVE_NOW);
   await page.goto("/app");
+  const age = page.locator("[data-page-age]");
   const card = page.getByRole("region", { name: "Health" });
-  const badge = card.locator("[data-age-label]");
+  const badge = age.locator("[data-age-label]");
   await expect(badge).toHaveText("live");
   // Measured once the page's entrance animations end: mid-reveal the card is still sliding by a fraction of a pixel.
   const boxes = async () => {
     await settleAnimations(page);
     return [
-      await card.getByRole("heading", { name: "Health" }).boundingBox(),
-      await card.locator("[data-age]").boundingBox(),
-      // No tick gauge here: a healthy tick is not drawn (ADR-0064).
+      await page.getByRole("button", { name: "Satisfactory server" }).boundingBox(),
+      await age.boundingBox(),
+      await page.getByRole("button", { name: "Account" }).boundingBox(),
       await card.locator("[data-statement]").boundingBox(),
       await card.boundingBox(),
     ];

@@ -1,7 +1,7 @@
-import { formatTime } from "../../format";
-import { cn } from "../../lib/cn";
-import { useNow } from "../../lib/useNow";
-import { dataAgeText } from "../../components/dataAgeText";
+import { formatTime } from "../format";
+import { cn } from "../lib/cn";
+import { useNow } from "../lib/useNow";
+import { dataAgeText } from "./dataAgeText";
 
 /** Under this many seconds the status reads "live"; the backend polls well inside it. */
 const LIVE_UNDER_S = 15;
@@ -17,8 +17,8 @@ function coarseAge(observedAt: string, now: number): "live" | "< 1 min" | `${num
 }
 
 /**
- * How fresh the status is, in the card header (#616): a dot and a coarse label in a fixed-width slot,
- * so a label change never moves the Hide button. The exact age ("Updated 8 s ago") is the tooltip and
+ * How fresh the page's data is, beside the server picker (ADR-0064 Decision 6; first the Overview's Health card header,
+ * #616): a dot and a coarse label in a fixed-width slot, so a label change never moves what is beside it. The exact age ("Updated 8 s ago") is the tooltip and
  * visually hidden text; `late` (the backend's call, never this clock) turns it amber. Not a live
  * region: it counts up every second.
  */

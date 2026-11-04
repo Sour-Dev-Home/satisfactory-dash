@@ -112,12 +112,6 @@ describe("HealthCard: one health statement (#442)", () => {
     expect(within(screen.getByRole("list", { name: "Sections" })).getAllByText("Degraded")).toHaveLength(1);
   });
 
-  it("shows how old the status is beside the tick", () => {
-    const observedAt = new Date(Date.now() - 8_000).toISOString();
-    render(<HealthCard overall={{ health: "ok", headline: "x" }} tick={{ rate: 29.6, health: "healthy" }} age={{ observedAt, late: false }} />);
-    expect(screen.getByRole("region", { name: "Health" })).toHaveTextContent(/Updated \d+ s ago/);
-  });
-
   it("gives the card its corner rivets, hidden from screen readers", () => {
     render(<HealthCard overall={{ health: "ok", headline: "x" }} />);
     const rivets = screen.getByRole("region").querySelectorAll("[data-rivet]");

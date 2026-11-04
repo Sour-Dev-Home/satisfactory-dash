@@ -37,6 +37,7 @@ import { LeftStatus } from "../servers/LeftStatus";
 import { useSelectedServer, useServerSwitch } from "../servers/ServerContext";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
 import { ServerSwitcher } from "../servers/ServerSwitcher";
+import { PageAge } from "./PageAge";
 import { AutoPauseView } from "../settings/AutoPauseView";
 import { AlertSettings } from "../alerts/settings/AlertSettings";
 import { cn } from "../lib/cn";
@@ -390,7 +391,11 @@ export function Shell() {
           ))}
         </nav>
         <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3 pb-2">
-          <ServerSwitcher />
+          {/* The page's freshness sits with the server it is about (ADR-0064 Decision 6). */}
+          <div className="flex min-w-0 items-center gap-3">
+            <ServerSwitcher />
+            <PageAge />
+          </div>
           {/* The bell sits with the account: both are about you, not the game. */}
           <div className="flex items-center gap-2">
             {/* Search (#351): Ctrl+K / Cmd+K anywhere, or this button on touch. */}
