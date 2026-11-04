@@ -94,9 +94,15 @@ function CircuitCard({ circuit, named }: { circuit: PowerCircuit; named: boolean
         <span className="text-muted"> of {formatMW(circuit.capacityMW)} capacity</span>
       </p>
       {couldOverload && <p className="warning">Could overload: peak demand is above capacity.</p>}
-      <details className="text-sm">
-        {/* A 44 px target: on a phone it is the only way to the readings (`ui-reviewer`). */}
-        <summary className="flex min-h-touch cursor-pointer items-center text-muted">Details</summary>
+      <details className="group text-sm">
+        {/* A 44 px target: on a phone it is the only way to the readings (`ui-reviewer`). A flex summary loses the
+            browser's marker, so it draws the chevron the bottleneck list's "Affects N machines" does. */}
+        <summary className="flex min-h-touch cursor-pointer items-center gap-2 text-muted">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="disclosure-chevron size-chevron flex-none group-open:rotate-90">
+            <path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" />
+          </svg>
+          Details
+        </summary>
         <dl>
           <dt>Production</dt>
           <dd>{formatMW(circuit.productionMW)}</dd>
