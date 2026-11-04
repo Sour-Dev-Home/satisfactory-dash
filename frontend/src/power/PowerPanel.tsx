@@ -95,7 +95,8 @@ function CircuitCard({ circuit, named }: { circuit: PowerCircuit; named: boolean
       </p>
       {couldOverload && <p className="warning">Could overload: peak demand is above capacity.</p>}
       <details className="text-sm">
-        <summary className="cursor-pointer text-muted">Details</summary>
+        {/* A 44 px target: on a phone it is the only way to the readings (`ui-reviewer`). */}
+        <summary className="flex min-h-touch cursor-pointer items-center text-muted">Details</summary>
         <dl>
           <dt>Production</dt>
           <dd>{formatMW(circuit.productionMW)}</dd>
