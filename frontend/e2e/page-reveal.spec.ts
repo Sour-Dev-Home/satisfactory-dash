@@ -28,7 +28,8 @@ interface PageCase {
 const PAGES: readonly PageCase[] = [
   { name: "Overview", path: "/app", ready: "Total play time on this save" },
   { name: "Power", path: "/app/power", ready: /Circuit 0/ },
-  { name: "Factory", path: "/app/factory", ready: /machines · .* backed up/ },
+  // The machine panel's search label: drawn once the factory read is in (ADR-0064 removed the summary line).
+  { name: "Factory", path: "/app/factory", ready: "Search machines" },
   { name: "Planner", path: "/app/planner", ready: "Production planner" },
   { name: "Map", path: "/app/map", ready: "Buildings in view" },
   { name: "Settings", path: "/app/settings", ready: /Auto-pause when no players/ },

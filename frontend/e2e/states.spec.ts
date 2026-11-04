@@ -171,7 +171,7 @@ const deleteMyAccount = async (page: Page) => {
 const CASES: StateCase[] = [
   { scenario: "default", shows: "Total play time on this save" },
   { scenario: "default", name: "default-power", path: "/app/power", shows: /Circuit 0/ },
-  { scenario: "default", name: "default-factory", path: "/app/factory", shows: /machines · .* backed up/ },
+  { scenario: "default", name: "default-factory", path: "/app/factory", shows: "Search machines" },
   { scenario: "default", name: "default-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   { scenario: "loading", shows: "Checking session…" },
   // The panels' skeletons (#494), held on screen by reads that never answer: shaped like their
@@ -183,7 +183,7 @@ const CASES: StateCase[] = [
   // Every read answers after 800 ms, past the page budget: the settled page is the same as the default's.
   { scenario: "slow-queries", name: "slow-overview", shows: "Total play time on this save" },
   { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/, ready: ".power-chart .uplot" },
-  { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: /machines · .* backed up/ },
+  { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: "Search machines" },
   { scenario: "slow-queries", name: "slow-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
   // The map's world layers (ADR-0038 M5): nothing read yet, one cut to its cap, and the read failing.
   { scenario: "map-world-empty", path: "/app/map", shows: "No rails built yet." },
