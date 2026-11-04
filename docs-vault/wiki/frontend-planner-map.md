@@ -163,11 +163,9 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   line and its cards, or a card, all its lines and their far cards). The pointer's target lives in `pointerStore`, outside
   React state, so pointing never re-renders the canvas or re-runs layout. `HighlightLayer.tsx` draws it: a third `<svg>`
   after `MarchLayer`, the same box and transform, `aria-hidden`, `pointer-events-none`, `will-change-transform`, always
-  mounted. In `dim` mode a `fill-surface` cover at `--opacity-graph-cover` (0.75, one minus the dim) with a luminance
-  mask holed for the lit cards, labels and lines (`marchHoles` plus each lit route stroked `HIGHLIGHT_LINE_HOLE` wide),
-  then the lit lines' rates (`rateAnchor`, the canvas's own spot) rising in (`animate-reveal`, keyed by target). The layer
-  fades by its own opacity (`transition-opacity`); reduced motion zeroes both. Item focus or the item filter set `labels`
-  mode: rates only, no cover. Off during a make-room glide; a pan, a pinch or a new layout ends the pointer's target. A
+  mounted. It draws only the lit lines' rates (`rateAnchor`, the canvas's own spot) rising in (`animate-reveal`, keyed by
+  target); nothing else dims (the owner dropped the hover dimming, 2026-11-03; item focus and the item filter keep theirs).
+  The layer fades by its own opacity (`transition-opacity`); reduced motion zeroes both. Off during a make-room glide; a pan, a pinch or a new layout ends the pointer's target. A
   finger or pen highlights only where `ratesHideAtRest()` (`RATES_HIDE_QUERY`, the `hover-pointer` variant in
   `index.css`): a hybrid device; on a touch screen it ends a mouse's highlight instead.
 - Stalled marks (ADR-0062 build PR 2): a card whose product reads 0 with all its machines backed up, underfed, paused or

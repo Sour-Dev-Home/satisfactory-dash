@@ -1,0 +1,4 @@
+- 2026-11-03 — Planner hover no longer dims (owner, 2026-11-03: "Drop the dimm on hover, keep the rest of the behavior"; ADR-0063 amendment's "Change ... no dimming on hover").
+  - `HighlightLayer.tsx` draws only the lit lines' rates: the canvas-coloured cover, its mask and holes, the `dim`/`labels` modes (`HighlightMode`) and `--opacity-graph-cover` are removed. `data-highlight` is now a plain on/off attribute.
+  - Unchanged: rates hidden at rest with a mouse, shown at rest on touch, rising in mid-line for a pointed-at or focused line or card; item focus and the item filter keep their own dimming.
+  - Docs: the ADR-0063 change note and `frontend-planner-map.md`.

@@ -87,7 +87,7 @@ import { CanvasOverlay } from "./CanvasOverlay";
 import { placeOverlay, screenRect, stageBesideOverlay } from "./overlayPlacement";
 import { useLargeScreen } from "./useWideScreen";
 import { CARD_RX, bubbleCentre, bubbleRowOrigin, itemCardText } from "./itemCardText";
-import { pointerStore, rateAnchor, ratesHideAtRest, targetAt, type HighlightMode, type HighlightTarget } from "./lineHighlight";
+import { pointerStore, rateAnchor, ratesHideAtRest, targetAt, type HighlightTarget } from "./lineHighlight";
 import { HighlightLayer } from "./HighlightLayer";
 import { tweenMs, useTween } from "./useTween";
 import { itemIconUrl } from "./itemIcons";
@@ -1126,16 +1126,14 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const edgeLit = (e: LaidEdge) => (focus !== null ? edgeKeyOf(e.flow) === focus.edgeKey : reach === null || e.parts.some((i) => reach.edges.has(i)));
 
   // The highlight (ADR-0063 amendment, 2026-11-03): the line or card under the mouse, else the line whose bubble or the card
-  // whose button the keyboard is on. It lights that line and its cards (a card: all its lines), dims the rest and shows the
-  // lit lines' rates, all drawn by `HighlightLayer` over the canvas. The pointer's target is in a store only that layer
-  // reads, so pointing never re-renders the canvas, re-runs layout or repaints it. Item focus and the item filter own the
-  // dimming: then a highlight only shows the rates.
+  // whose button the keyboard is on. It shows the rates of that line (a card: all its lines), drawn by `HighlightLayer`
+  // over the canvas; nothing else dims (the owner dropped it, 2026-11-03). The pointer's target is in a store only that
+  // layer reads, so pointing never re-renders the canvas, re-runs layout or repaints it.
   const keyTarget = useMemo((): HighlightTarget | null => {
     const stopEdge = keyStop === null ? undefined : edgeByKey.get(keyStop.edgeKey);
     if (stopEdge !== undefined) return { kind: "edge", index: stopEdge.index };
     return focusKey === null ? null : { kind: "card", key: focusKey };
   }, [keyStop, focusKey, edgeByKey]);
-  const highlightMode: HighlightMode = focus !== null || reach !== null ? "labels" : "dim";
   // A line's target is its index in this layout: a new layout (a poll that reorders the lines) ends the pointer's highlight
   // rather than light another line under a still mouse. The next pointerover sets it again.
   useEffect(() => hoverStore.set(null), [layout, hoverStore]);
@@ -1531,17 +1529,13 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           <HighlightLayer
             store={hoverStore}
             keyTarget={keyTarget}
-            mode={highlightMode}
             enabled={ghost === null}
             edges={layout.edges}
             nodes={layout.nodes}
-            decor={Math.max(BADGE_H, PILL_H)}
             showRates={detail.full}
-            bounds={{ width: layout.width, height: layout.height }}
             stage={stage}
             viewport={viewport}
             shape={shape}
-            maskId={`${ids}-highlight-mask`}
             height={canvasH}
           />
           {/* A fade on each edge the drawing runs past: a cue that there is more, eased in and out. */}
