@@ -79,6 +79,8 @@ groups, "Other machines", from the Planner's reads) is unchanged.
 - **A factory is a row,** across the table: a disclosure button with its name, then its counts ("· 11 machines · 1 backed up").
   Factories start **folded**, except when there is only one top-level factory (folding the only one hides everything) and while
   a filter or search is on (as today, so a search shows its hits). A part of a parent factory is a factory row one step in.
+  ADR-0062 F.2's "over 20 groups starts closed" rule (the outline's) no longer applies here: every factory starts folded. The
+  viewer's own choices are kept across polls and filters, as before.
 - **A group is one row:** "4× Smelter" in the Machine column, its recipe, its outputs summed over its machines per item
   ("120 / 120 items/min (100%)": current and max added, the percent of the sums), and its state column counts what is not
   normal ("1 backed up"). Its disclosure lists its machines under it, one step in, capped at `FACTORY_ROW_CAP` (50) with "Show

@@ -67,8 +67,13 @@ describe("FactoryPanel ingredients", () => {
 });
 
 describe("FactoryPanel machine state", () => {
+  it("says nothing for a producing machine: normal is quiet (ADR-0064)", () => {
+    render(<FactoryPanel snapshot={factoryStatesAndIngredients} />);
+    expect(stateText(rowFor("Iron Plate"))).toBe("");
+    expect(screen.queryByText("Producing")).not.toBeInTheDocument();
+  });
+
   it.each([
-    ["Iron Plate", "Producing", "text-ok"],
     ["Packaged Fuel", "Underfed", "text-warn"],
     ["No recipe", "Idle", "text-muted"],
     ["Screw", "Backed up", "text-warn"],
@@ -181,7 +186,8 @@ describe("FactoryPanel clock speed", () => {
     render(<FactoryPanel snapshot={withBuildings({ ...machine, clockSpeedPercent: 160 })} />);
     const row = onlyRow();
     expect(lines(row, "Outputs")).toEqual(["Iron Plate: 20 / 20 items/min (100%)"]);
-    expect(stateText(row)).toBe("Producing");
+    // A producing machine's State cell is empty (ADR-0064), and the clock is not in it either.
+    expect(stateText(row)).toBe("");
   });
 });
 

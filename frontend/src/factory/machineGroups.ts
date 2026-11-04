@@ -1,8 +1,15 @@
-import { isBackedUpState, type FactoryBuilding, type PlannerDesignation, type PlannerNode, type ProductionGraph } from "@satisfactory-dash/shared";
+import {
+  isBackedUpState,
+  type FactoryBuilding,
+  type PlannerDesignation,
+  type PlannerNode,
+  type ProductionGraph,
+  type ProductionRate,
+} from "@satisfactory-dash/shared";
 import { buildFactoryTree, type TreeNode } from "../planner/factoryTree";
 import { factoryOfNode } from "../planner/graph/hierarchy";
-import { OUTLINE_OPEN_MAX } from "../planner/outlineModel";
 import { groupLabel } from "../planner/plannerText";
+import { machineState, type MachineStateView } from "./machineState";
 
 /**
  * ADR-0062 F.2, pure: the Factory page's machines grouped the way the Planner shows them, by factory (with ADR-0061's
@@ -138,8 +145,71 @@ export function narrowGrouping(grouping: MachineGrouping, match: ((b: FactoryBui
   };
 }
 
-/** The outline's rule (ADR-0062 Decision 3): a factory of more than `OUTLINE_OPEN_MAX` groups starts closed. */
-export const startsOpen = (f: Pick<MachineFactory, "groupCount">): boolean => f.groupCount <= OUTLINE_OPEN_MAX;
+/**
+ * ADR-0064: a group's row in the folded table, "4× Smelter": its count and its building (a Planner group is one building
+ * and one recipe; the recipe has its own column). `count` is what the row lists (the filter's narrowed count).
+ */
+export function groupTitle(group: Pick<MachineGroup, "buildings">, count = group.buildings.length): string {
+  const name = group.buildings[0]?.name ?? "";
+  return count > 1 ? `${count}× ${name}` : name;
+}
+
+/**
+ * ADR-0064: a group's rates as one row, per item in first-seen order: current and max added over its machines, the percent
+ * that of the sums (0 when nothing can be made). The unit is the first machine's for that item (one item, one unit).
+ * `pick` reads a machine's outputs or inputs; a machine without the list (an older backend's inputs) adds nothing.
+ */
+export function sumRates(buildings: readonly FactoryBuilding[], pick: (b: FactoryBuilding) => readonly ProductionRate[] | undefined): ProductionRate[] {
+  // Class names come from the game server: a Map.
+  const byItem = new Map<string, ProductionRate>();
+  for (const b of buildings) {
+    for (const rate of pick(b) ?? []) {
+      const seen = byItem.get(rate.className);
+      byItem.set(
+        rate.className,
+        seen === undefined
+          ? { ...rate }
+          : { ...seen, currentPerMinute: seen.currentPerMinute + rate.currentPerMinute, maxPerMinute: seen.maxPerMinute + rate.maxPerMinute },
+      );
+    }
+  }
+  return [...byItem.values()].map((r) => ({ ...r, percent: r.maxPerMinute > 0 ? (r.currentPerMinute / r.maxPerMinute) * 100 : 0 }));
+}
+
+/** One state the group's row counts: its view (word and tone), the backend's state string, and how many machines are in it. */
+export interface StateCount {
+  state: string;
+  view: MachineStateView;
+  count: number;
+}
+
+/**
+ * A machine's states worth a word (ADR-0064: normal says nothing): its backend state and any flag the state doesn't already
+ * say (backed up, paused), minus "producing" and any state this frontend doesn't know (`machineState`).
+ */
+export function notableStates(b: FactoryBuilding): { state: string; view: MachineStateView }[] {
+  const states = [
+    b.state,
+    b.isBackedUp && b.state !== "backedUp" ? "backedUp" : undefined,
+    b.isPaused && b.state !== "paused" ? "paused" : undefined,
+  ];
+  return states.flatMap((state) => {
+    const view = machineState(state);
+    return state === undefined || state === "producing" || view === null ? [] : [{ state, view }];
+  });
+}
+
+/** A group's row's State column (ADR-0064): how many of its machines are in each state worth a word, in first-seen order. */
+export function stateCounts(buildings: readonly FactoryBuilding[]): StateCount[] {
+  const byState = new Map<string, StateCount>();
+  for (const b of buildings) {
+    for (const { state, view } of notableStates(b)) {
+      const seen = byState.get(state);
+      byState.set(state, seen === undefined ? { state, view, count: 1 } : { ...seen, count: seen.count + 1 });
+    }
+  }
+  return [...byState.values()];
+}
 
 /** A section's backed-up machines, for its counts. */
 export function backedUpIn(f: MachineFactory | MachineGroup): number {
