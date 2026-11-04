@@ -40,7 +40,10 @@ export function serverHealth({ data, stale }: StatusResponse): SectionHealth {
   // below feeds it into the overall health instead.
   if (data.gamePaused) return { health: "paused", summary: "Paused: no players connected" };
   // ADR-0064: the save and its play time (the Server status card went); the players are the Players card's.
-  return { health: "ok", summary: `${data.sessionName} · ${formatDuration(data.totalGameDurationSeconds)} played` };
+  // A blank session name must not leave a dangling " · " in front.
+  const played = `${formatDuration(data.totalGameDurationSeconds)} played`;
+  const name = data.sessionName.trim();
+  return { health: "ok", summary: name === "" ? played : `${name} · ${played}` };
 }
 
 /**
