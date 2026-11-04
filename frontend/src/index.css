@@ -448,6 +448,17 @@
     text-transform: inherit;
     letter-spacing: inherit;
   }
+  /* The Factory table's disclosures (ADR-0064: "the dropdowns look a bit odd and cluttered"): the row's own words and a
+     chevron, not a button-styled pill; still the 44 px target, and the hover and focus cues of any control. */
+  [data-machine-groups] button[aria-expanded] {
+    padding-inline: 0;
+    border-color: transparent;
+    background: transparent;
+  }
+  [data-machine-groups] button[aria-expanded]:hover {
+    border-color: transparent;
+    color: var(--color-accent);
+  }
   /* The Planner canvas's rate labels (ADR-0063 amendment, 2026-11-03). With a mouse or trackpad the canvas never shows them:
      the highlight layer (planner/graph/HighlightLayer.tsx) draws a highlighted line's rate over it, rising in. A touch
      screen (no hover) shows every one at rest. The label keeps its room either way (opacity only), so nothing moves. */

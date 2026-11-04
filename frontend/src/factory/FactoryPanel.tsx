@@ -336,7 +336,7 @@ function FoldedTable({
 function Counts({ shown, total, backedUp, filtering }: { shown: number; total: number; backedUp: number; filtering: boolean }) {
   const count = filtering && shown < total ? `${shown} of ${machines(total)}` : machines(total);
   return (
-    <span className="text-xs font-normal normal-case tracking-normal text-muted">
+    <span className="text-sm font-normal normal-case tracking-normal text-muted">
       {` · ${count}`}
       {backedUp > 0 && ` · ${backedUp} backed up`}
     </span>
