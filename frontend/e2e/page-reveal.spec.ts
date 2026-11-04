@@ -27,7 +27,8 @@ interface PageCase {
 
 const PAGES: readonly PageCase[] = [
   { name: "Overview", path: "/app", ready: "Total play time on this save" },
-  { name: "Power", path: "/app/power", ready: /Circuit 0/ },
+  // A circuit's load line (ADR-0064: the only healthy circuit's "Circuit 0" heading is for a screen reader).
+  { name: "Power", path: "/app/power", ready: / MW capacity$/ },
   // The machine panel's search label: drawn once the factory read is in (ADR-0064 removed the summary line).
   { name: "Factory", path: "/app/factory", ready: "Search machines" },
   { name: "Planner", path: "/app/planner", ready: "Production planner" },

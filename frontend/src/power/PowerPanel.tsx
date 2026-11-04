@@ -54,7 +54,8 @@ export function PowerPanel({ snapshot, refetchFailed = false }: { snapshot: Powe
         <ul className="circuits">
           {ordered.map((circuit) => (
             <li key={circuit.circuitGroupId}>
-              <CircuitCard circuit={circuit} />
+              {/* ADR-0064: one healthy circuit needs no name on screen ("Circuit 0" says nothing then). */}
+              <CircuitCard circuit={circuit} named={circuits.length > 1 || circuit.status !== "ok"} />
             </li>
           ))}
         </ul>
@@ -67,10 +68,16 @@ export function PowerPanel({ snapshot, refetchFailed = false }: { snapshot: Powe
   );
 }
 
-function CircuitCard({ circuit }: { circuit: PowerCircuit }) {
+/**
+ * One circuit (ADR-0064): its load, consumption of capacity, and what is wrong; production and peak demand fold into
+ * "Details". The status word shows only when it is not OK. `named`: false for the only circuit while it is OK, whose
+ * heading is then for a screen reader only (the article keeps its name, and `#circuit-N` links still land on it).
+ */
+function CircuitCard({ circuit, named }: { circuit: PowerCircuit; named: boolean }) {
   const tripped = circuit.fuseTriggered;
   // Capacity reads 0 while tripped, so the overload comparison means nothing then.
   const couldOverload = !tripped && circuit.maxConsumptionMW > circuit.capacityMW;
+  const label = circuit.status === "ok" ? null : (ownValue(STATUS_LABEL, circuit.status) ?? circuit.status);
 
   return (
     <article
@@ -78,21 +85,28 @@ function CircuitCard({ circuit }: { circuit: PowerCircuit }) {
       aria-label={`Circuit ${circuit.circuitGroupId}`}
       className={`circuit circuit-${circuit.status}`}
     >
-      <h4>
-        Circuit {circuit.circuitGroupId} <span className="badge">{ownValue(STATUS_LABEL, circuit.status) ?? circuit.status}</span>
+      <h4 className={named ? undefined : "sr-only"}>
+        Circuit {circuit.circuitGroupId} {label !== null && <span className="badge">{label}</span>}
       </h4>
       {tripped && <p>Reads 0 MW while the fuse is tripped.</p>}
-      <dl>
-        <dt>Production</dt>
-        <dd>{formatMW(circuit.productionMW)}</dd>
-        <dt>Consumption</dt>
-        <dd>{formatMW(circuit.consumptionMW)}</dd>
-        <dt>Capacity</dt>
-        <dd>{formatMW(circuit.capacityMW)}</dd>
-        <dt>Peak demand</dt>
-        <dd>{formatMW(circuit.maxConsumptionMW)}</dd>
-      </dl>
+      <p className="mb-0" data-load="">
+        <span className="font-semibold text-fg-strong">{formatMW(circuit.consumptionMW)}</span>
+        <span className="text-muted"> of {formatMW(circuit.capacityMW)} capacity</span>
+      </p>
       {couldOverload && <p className="warning">Could overload: peak demand is above capacity.</p>}
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted">Details</summary>
+        <dl>
+          <dt>Production</dt>
+          <dd>{formatMW(circuit.productionMW)}</dd>
+          <dt>Consumption</dt>
+          <dd>{formatMW(circuit.consumptionMW)}</dd>
+          <dt>Capacity</dt>
+          <dd>{formatMW(circuit.capacityMW)}</dd>
+          <dt>Peak demand</dt>
+          <dd>{formatMW(circuit.maxConsumptionMW)}</dd>
+        </dl>
+      </details>
       {circuit.batteryCapacityMWh > 0 && <Battery circuit={circuit} />}
     </article>
   );

@@ -1,0 +1,5 @@
+- 2026-11-04 — Power page cuts (ADR-0064 build PR 4, Decision 5; owner, 2026-11-03).
+  - **A circuit says its load**: "2,915.6 MW of 4,083.3 MW capacity" (consumption of capacity), and the overload warning when it applies. Production, consumption, capacity and peak demand fold into a "Details" disclosure in the card (`PowerPanel.tsx` `CircuitCard`).
+  - **Normal is quiet.** The status badge shows only when a circuit is not OK. The only circuit, while OK, has no name on screen: its "Circuit 0" heading is `sr-only`, and the article keeps its name, so `#circuit-N` links and the text path are unchanged.
+  - **History.** "(min …, max …)" after each figure is `sr-only` now (`RangeRow`): the chart shows the range on screen, and a screen reader, for whom the chart is hidden, still hears it.
+  - e2e markers for the Power page read the load line instead of "Circuit 0".

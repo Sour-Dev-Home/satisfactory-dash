@@ -30,10 +30,14 @@ describe("PowerPanel", () => {
     expect(container.querySelector("section")).not.toHaveAttribute("data-stale");
   });
 
-  it("shows a healthy circuit's readings in MW without alarms", () => {
+  it("shows a healthy circuit's load, its other readings under Details, and no alarm, OK word or name on screen", () => {
     render(<PowerPanel snapshot={powerOk} />);
     const main = circuit(0);
-    expect(within(main).getByText("OK")).toBeInTheDocument();
+    // ADR-0064: normal says nothing; the only circuit's name is for a screen reader.
+    expect(within(main).queryByText("OK")).not.toBeInTheDocument();
+    expect(within(main).getByRole("heading", { name: /^Circuit 0/ })).toHaveClass("sr-only");
+    expect(main.querySelector("[data-load]")).toHaveTextContent("2,915.6 MW of 4,083.3 MW capacity");
+    expect(within(main).getByText("Details").closest("details")).not.toHaveAttribute("open");
     expect(valueIn(main, "Production")).toHaveTextContent("3,633.3 MW");
     expect(valueIn(main, "Consumption")).toHaveTextContent("2,915.6 MW");
     expect(valueIn(main, "Capacity")).toHaveTextContent("4,083.3 MW");
