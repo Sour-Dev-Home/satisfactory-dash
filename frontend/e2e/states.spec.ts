@@ -193,7 +193,7 @@ const deleteMyAccount = async (page: Page) => {
 };
 
 const CASES: StateCase[] = [
-  { scenario: "default", shows: "Total play time on this save" },
+  { scenario: "default", shows: / played$/ },
   { scenario: "default", name: "default-power", path: "/app/power", shows: /Circuit 0/ },
   { scenario: "default", name: "default-factory", path: "/app/factory", shows: "Search machines" },
   { scenario: "default", name: "default-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
@@ -205,7 +205,7 @@ const CASES: StateCase[] = [
   { scenario: "loading-panels", name: "loading-power", path: "/app/power", shows: /Circuit 0/, act: skeletonsShown },
   { scenario: "loading-panels", name: "loading-settings", path: "/app/settings", shows: /Auto-pause when no players/, act: skeletonsShown },
   // Every read answers after 800 ms, past the page budget: the settled page is the same as the default's.
-  { scenario: "slow-queries", name: "slow-overview", shows: "Total play time on this save" },
+  { scenario: "slow-queries", name: "slow-overview", shows: / played$/ },
   { scenario: "slow-queries", name: "slow-power", path: "/app/power", shows: /Circuit 0/, ready: ".power-chart .uplot" },
   { scenario: "slow-queries", name: "slow-factory", path: "/app/factory", shows: "Search machines" },
   { scenario: "slow-queries", name: "slow-settings", path: "/app/settings", shows: /Auto-pause when no players/ },
@@ -262,19 +262,20 @@ const CASES: StateCase[] = [
   { scenario: "basic-data", name: "basic-data-power", path: "/app/power", shows: /Basic data:/ },
   // 1024 px, where the Health card is at its narrowest beside Players: a long status word must never sit
   // under the tick gauge (#593).
-  { scenario: "default", name: "default-narrow-desktop", shows: "Total play time on this save", width: 1024 },
+  { scenario: "default", name: "default-narrow-desktop", shows: / played$/, width: 1024 },
   { scenario: "stale", name: "stale-narrow-desktop", shows: /Showing last known data from/, width: 1024 },
   // The Health card's tick bar and line (the red zone is below 10 ticks/s).
   { scenario: "slow-tick", shows: "8.2/s" },
   // With FicsitRemoteMonitoring, the online names show under the count (ADR-0029).
   { scenario: "players-some", shows: "Pioneer-Alpha" },
   { scenario: "players-many", shows: "10 of 12 players connected" },
-  { scenario: "players-0-of-12", shows: "0 of 12 players connected" },
+  { scenario: "players-0-of-12", shows: "No players connected (12 slots)" },
   { scenario: "players-7-of-12", shows: "Pioneer-07" },
   { scenario: "players-12-of-12", shows: "12 of 12 players connected" },
   { scenario: "no-game", shows: "No save loaded" },
   // The Overview banner: its text also holds the hidden "!" icon, so no ^ anchor.
-  { scenario: "outage", shows: /Power outage$/ },
+  // The Power tile says why (the generic "Power outage" headline under OUTAGE is not drawn, ADR-0064).
+  { scenario: "outage", shows: /circuit has a tripped fuse$/ },
   { scenario: "outage", name: "outage-power", path: "/app/power", shows: /Power outage: 1 circuit has a tripped fuse/ },
   { scenario: "at-risk", path: "/app/power", shows: "1 circuit is at risk." },
   // The live power chart (ADR-0022). default-power above is the normal case.
@@ -669,7 +670,7 @@ const CASES: StateCase[] = [
   { scenario: "metrics-unavailable", path: "/app/metrics", shows: "The daily delivery feed isn't set up on this backend." },
   { scenario: "metrics-rate-limited", path: "/app/metrics", shows: /asked for too often/ },
   { scenario: "metrics-error", path: "/app/metrics", shows: "Retry" },
-  { scenario: "metrics-forbidden", path: "/app/metrics", shows: "Total play time on this save" },
+  { scenario: "metrics-forbidden", path: "/app/metrics", shows: / played$/ },
   { scenario: "metrics-loading", path: "/app/metrics", shows: "Refresh", act: skeletonsShown },
   {
     scenario: "servers-lan-refused",
@@ -704,7 +705,7 @@ const CASES: StateCase[] = [
   },
   // Alerts (ADR-0027 PR 9): the header bell's dropdown, opened. "alerts" also shows the bell's badge.
   { scenario: "alerts", shows: /Delivery is off \(shadow week\)/, act: openAlerts },
-  { scenario: "alerts", name: "alerts-badge-overview", shows: "Total play time on this save" },
+  { scenario: "alerts", name: "alerts-badge-overview", shows: / played$/ },
   // An alert expanded in place.
   {
     scenario: "alerts",
@@ -954,7 +955,8 @@ test("the Health card keeps its layout as the status ages", async ({ page, mockA
     return [
       await card.getByRole("heading", { name: "Health" }).boundingBox(),
       await card.locator("[data-age]").boundingBox(),
-      await card.locator("svg[data-gauge]").boundingBox(),
+      // No tick gauge here: a healthy tick is not drawn (ADR-0064).
+      await card.locator("[data-statement]").boundingBox(),
       await card.boundingBox(),
     ];
   };

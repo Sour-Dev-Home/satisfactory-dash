@@ -26,7 +26,14 @@ import { ServerGate } from "./servers/ServerGate";
 import { ServerSwitcher } from "./servers/ServerSwitcher";
 import { useSelectedServer } from "./servers/ServerContext";
 import { AutoPausePanel } from "./settings/AutoPausePanel";
-import { StatusView } from "./status/StatusView";
+import { useQuery } from "@tanstack/react-query";
+import { queries } from "./api/queries";
+
+/** A reader of the selected server's status, inside the gate (the Server status card that did this went, ADR-0064). */
+function StatusView() {
+  const status = useQuery(queries.status(useSelectedServer().id));
+  return status.data ? <section aria-label="Server status">{status.data.data.sessionName}</section> : null;
+}
 import { renderWithClient } from "./test/render";
 import { server } from "./test/server";
 

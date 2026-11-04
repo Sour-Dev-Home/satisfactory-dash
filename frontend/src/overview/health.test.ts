@@ -74,10 +74,8 @@ describe("powerHealth", () => {
     expect(powerHealth(powerAtRisk)).toEqual({ health: "degraded", summary: "1 circuit is at risk", cause: "Power at risk" });
   });
 
-  it("is ok otherwise, with production and capacity", () => {
-    const h = powerHealth(powerOk);
-    expect(h.health).toBe("ok");
-    expect(h.summary).toMatch(/^1 circuit · .+ MW of .+ MW capacity$/);
+  it("is ok otherwise, counting the circuits only: the Power card beside it says the load (ADR-0064)", () => {
+    expect(powerHealth(powerOk)).toEqual({ health: "ok", summary: "1 circuit" });
   });
 
   it("is ok with no circuits yet", () => {

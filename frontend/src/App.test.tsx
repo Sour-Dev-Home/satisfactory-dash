@@ -18,7 +18,8 @@ describe("App", () => {
     expect(await screen.findByText(serversSingle.servers[0].displayName)).toBeInTheDocument();
     expect(await screen.findByText(PAUSED_BANNER)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "Overview" }));
-    expect(await screen.findByRole("region", { name: "Server status" })).toHaveTextContent("ExampleSession");
+    // The Server tile (ADR-0064: the Server status card went); this game is paused, so the tile says so.
+    expect(await screen.findByText("Paused: no players connected")).toBeInTheDocument();
   });
 });
 

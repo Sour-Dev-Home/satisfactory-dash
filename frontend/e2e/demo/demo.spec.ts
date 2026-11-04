@@ -36,7 +36,8 @@ test("every screen works offline: enter, overview, power, factory, settings, log
 
   await enter.click();
   const sections = page.getByRole("list", { name: "Sections" });
-  await expect(sections.getByText(/Demo World · 3 \/ 4 players/)).toBeVisible();
+  // The Server tile: the save and its play time (ADR-0064; the players are the Players card's).
+  await expect(sections.getByText(/^Demo World · .+ played$/)).toBeVisible();
   await expect(page.getByText(/Demo data: nothing here is live/)).toBeVisible();
   await expectNoAxeViolations(page, testInfo);
 

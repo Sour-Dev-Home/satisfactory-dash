@@ -79,7 +79,7 @@ describe("ad slot placements, ads on", () => {
     window.history.pushState(null, "", "/app");
     renderWithClient(<App />);
     await screen.findByRole("region", { name: "Overview" }, { timeout: 5_000 });
-    await screen.findByRole("region", { name: "Server status" });
+    await screen.findByText(/ played$/);
     expect(slots()).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Privacy and cookie settings" })).not.toBeInTheDocument();
     expect(window.adsbygoogle).toBeUndefined();

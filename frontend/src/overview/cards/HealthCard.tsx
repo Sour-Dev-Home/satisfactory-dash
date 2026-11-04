@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 import { cn } from "../../lib/cn";
+import { headlineSaysMore } from "../health";
 import { AgeBadge } from "./AgeBadge";
 import { Rivets } from "./Rivets";
 import { StationTiles, type OverviewSection } from "./StationTiles";
@@ -125,12 +126,16 @@ export function HealthCard({
             >
               {wordFor(overall.health)}
             </span>
-            <span className={hidden ? "text-sm text-muted" : "text-sm text-fg-strong"}>
-              {hidden ? "Warning hidden until something changes." : overall.headline}
-            </span>
+            {/* ADR-0064: only a headline that says more than the word (named causes, "Checking…"). */}
+            {(hidden || headlineSaysMore(overall)) && (
+              <span className={hidden ? "text-sm text-muted" : "text-sm text-fg-strong"}>
+                {hidden ? "Warning hidden until something changes." : overall.headline}
+              </span>
+            )}
           </p>
         </div>
-        {tick !== undefined && <TickRow tick={tick} />}
+        {/* ADR-0064: a healthy tick says nothing (it still counts in the health); a slow one, or none, says so. */}
+        {tick !== undefined && (tick === null || tick.health === "slow") && <TickRow tick={tick} />}
       </div>
       <StationTiles sections={sections} />
     </section>
