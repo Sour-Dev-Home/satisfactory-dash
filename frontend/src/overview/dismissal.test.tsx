@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +28,12 @@ async function refetchAll(client: ReturnType<typeof renderOverview>["client"]) {
   await act(() => client.refetchQueries({ type: "active" }));
 }
 
+/**
+ * The Health card's state word: in the warning's colour while the warning shows, muted once hidden. (The generic headline
+ * that said "Running with warnings" under it is no longer drawn, ADR-0064.)
+ */
+const statement = () => document.querySelector("[data-statement]");
+
 afterEach(() => {
   window.localStorage.clear();
   vi.restoreAllMocks();
@@ -37,7 +43,7 @@ describe("dismissing the warnings banner", () => {
   it("hides the warning but keeps the Health card and the section rows", async () => {
     renderOverview();
     fireEvent.click(await screen.findByRole("button", DISMISS));
-    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+    expect(statement()).not.toHaveClass("text-warn");
     expect(screen.getByRole("region", { name: "Health" })).toHaveTextContent("Warning hidden until something changes.");
     expect(screen.getByRole("list", { name: "Sections" })).toHaveTextContent("Degraded");
   });
@@ -59,7 +65,7 @@ describe("dismissing the warnings banner", () => {
 
     renderOverview();
     await screen.findByText("2 of 5 machines backed up");
-    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+    expect(statement()).not.toHaveClass("text-warn");
   });
 
   it("does not steal focus to the Health heading on a reload with an already-stored dismissal", async () => {
@@ -80,7 +86,7 @@ describe("dismissing the warnings banner", () => {
 
     server.use(http.get(endpoints.power.route, () => HttpResponse.json(powerAtRisk)));
     await refetchAll(client);
-    expect(await screen.findByText("Running with warnings")).toBeInTheDocument();
+    await waitFor(() => expect(statement()).toHaveClass("text-warn"));
   });
 
   it("comes back when the tick turns slow, even though the tick has no row of its own", async () => {
@@ -100,12 +106,12 @@ describe("dismissing the warnings banner", () => {
     );
     const { client } = renderOverview();
     fireEvent.click(await screen.findByRole("button", DISMISS));
-    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+    expect(statement()).not.toHaveClass("text-warn");
 
     // Only the tick is warning here, and it comes back with the same health both times: the
     // dismissal must survive, since nothing about the warning itself changed.
     await refetchAll(client);
-    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+    expect(statement()).not.toHaveClass("text-warn");
   });
 
   it("keeps a tick warning dismissed through a failed background refetch (data wins over error)", async () => {
@@ -115,11 +121,11 @@ describe("dismissing the warnings banner", () => {
     );
     const { client } = renderOverview();
     fireEvent.click(await screen.findByRole("button", DISMISS));
-    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+    expect(statement()).not.toHaveClass("text-warn");
 
     server.use(http.get(endpoints.status.route, () => HttpResponse.json({ error: "boom" }, { status: 500 })));
     await act(() => client.refetchQueries({ type: "active" }).catch(() => undefined));
-    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+    expect(statement()).not.toHaveClass("text-warn");
   });
 
   it("can't hide an outage, and an outage shows even after a dismissal", async () => {
@@ -128,7 +134,8 @@ describe("dismissing the warnings banner", () => {
 
     server.use(http.get(endpoints.power.route, () => HttpResponse.json(powerOutage)));
     await refetchAll(client);
-    expect(await screen.findByText("Power outage")).toBeInTheDocument();
+    await waitFor(() => expect(statement()).toHaveTextContent(/^Outage$/));
+    expect(statement()).toHaveClass("text-bad");
     expect(screen.queryByRole("button", DISMISS)).not.toBeInTheDocument();
   });
 
@@ -138,12 +145,12 @@ describe("dismissing the warnings banner", () => {
 
     server.use(http.get(endpoints.factory.route, () => HttpResponse.json(factoryEmpty)));
     await refetchAll(client);
-    expect(await screen.findByText("All systems operational")).toBeInTheDocument();
+    await waitFor(() => expect(statement()).toHaveTextContent(/^Operational$/));
     expect(screen.queryByRole("button", DISMISS)).not.toBeInTheDocument();
 
     server.resetHandlers();
     await refetchAll(client);
-    expect(await screen.findByText("Running with warnings")).toBeInTheDocument();
+    await waitFor(() => expect(statement()).toHaveClass("text-warn"));
   });
 
   it("still hides for this visit when the browser won't store it", async () => {
@@ -155,7 +162,7 @@ describe("dismissing the warnings banner", () => {
     });
     renderOverview();
     fireEvent.click(await screen.findByRole("button", DISMISS));
-    expect(screen.queryByText("Running with warnings")).not.toBeInTheDocument();
+    expect(statement()).not.toHaveClass("text-warn");
   });
 
   it("keeps each server's dismissal apart", async () => {

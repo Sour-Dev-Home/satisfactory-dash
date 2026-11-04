@@ -3,10 +3,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { HealthCard } from "./HealthCard";
 
 describe("HealthCard", () => {
-  it("is a card with its own heading, announcing the state and headline as a status", () => {
-    render(<HealthCard overall={{ health: "ok", headline: "All systems operational" }} />);
+  it("is a card with its own heading, announcing the state as a status, and a headline only when it says more", () => {
+    const { rerender } = render(<HealthCard overall={{ health: "ok", headline: "All systems operational" }} />);
     expect(screen.getByRole("region", { name: "Health" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("OperationalAll systems operational");
+    // ADR-0064: the generic headline restates the word, so it is not drawn.
+    expect(screen.getByRole("status")).toHaveTextContent(/^Operational$/);
+    rerender(<HealthCard overall={{ health: "degraded", headline: "Running with warnings" }} />);
+    expect(screen.getByRole("status")).not.toHaveTextContent("Running with warnings");
+    rerender(<HealthCard overall={{ health: "degraded", headline: "Server tick is slow · Factory backed up" }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Server tick is slow · Factory backed up");
+    rerender(<HealthCard overall={{ health: "pending", headline: "Checking…" }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Checking…");
   });
 
   const heart = () => screen.getByRole("region").querySelector('svg[data-icon="heart"]')!;
@@ -27,18 +34,16 @@ describe("HealthCard", () => {
     expect(screen.getByRole("status").firstElementChild).toHaveClass(colour);
   });
 
-  it("shows the tick as one line with a bar gauge, with the backend's own slow verdict", () => {
+  it("shows a slow tick as one line with a bar gauge, and a healthy one not at all (ADR-0064)", () => {
     const { rerender } = render(<HealthCard overall={{ health: "ok", headline: "x" }} tick={{ rate: 21.94, health: "healthy" }} />);
     const card = screen.getByRole("region", { name: "Health" });
-    expect(card).toHaveTextContent("Tick 21.9/s · Healthy");
-    // The bar is decoration: hidden, clamped to its 0-30 scale.
-    expect(card.querySelector("svg[data-gauge]")).toHaveAttribute("aria-hidden", "true");
+    expect(card).not.toHaveTextContent("Tick");
+    expect(card.querySelector("svg[data-gauge]")).toBeNull();
     rerender(<HealthCard overall={{ health: "degraded", headline: "x" }} tick={{ rate: 8.2, health: "slow" }} />);
     expect(screen.getByText("Slow")).toHaveClass("text-bad");
     expect(card).toHaveTextContent("Tick 8.2/s · Slow");
-    rerender(<HealthCard overall={{ health: "ok", headline: "x" }} tick={{ rate: 60, health: "healthy" }} />);
-    expect(card.querySelector("svg[data-gauge]")).toHaveAttribute("data-gauge", "30");
-    expect(card).toHaveTextContent("Tick 60.0/s");
+    // The bar is decoration: hidden, clamped to its 0-30 scale.
+    expect(card.querySelector("svg[data-gauge]")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("says no game is running instead of a bar, and shows no tick while the status loads", () => {
@@ -55,7 +60,8 @@ describe("HealthCard", () => {
     const badge = () => screen.getByRole("region").querySelector("[data-age]")!;
     const renderAt = (seconds: number, late = false) => {
       vi.useFakeTimers({ now: at(seconds) });
-      render(<HealthCard overall={{ health: "ok", headline: "x" }} tick={{ rate: 20, health: "healthy" }} age={{ observedAt: OBSERVED, late }} />);
+      // A slow tick, so the tick line is drawn (a healthy one is not, ADR-0064) and the badge's place beside it is tested.
+      render(<HealthCard overall={{ health: "degraded", headline: "x" }} tick={{ rate: 8, health: "slow" }} age={{ observedAt: OBSERVED, late }} />);
     };
     afterEach(() => vi.useRealTimers());
 

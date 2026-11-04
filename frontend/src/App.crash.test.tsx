@@ -25,7 +25,7 @@ describe("App with a crashing section", () => {
     fireEvent.click(screen.getByRole("link", { name: "Factory" }));
     expect(await screen.findByRole("region", { name: "Factory" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("link", { name: "Overview" }));
-    expect(await screen.findByRole("region", { name: "Server status" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Health" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Satis Manager");
     expect(screen.getByRole("link", { name: "Source code (AGPL-3.0)" })).toBeInTheDocument();
   });

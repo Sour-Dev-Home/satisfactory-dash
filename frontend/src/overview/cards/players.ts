@@ -20,5 +20,7 @@ export function initials(name: string): string {
 
 /** The one sentence the Players card means; the tiles only illustrate it. */
 export function playersText(status: Status): string {
+  // ADR-0064: nobody on says so first; the slots are the detail.
+  if (status.connectedPlayers === 0) return `No players connected (${status.playerLimit} ${status.playerLimit === 1 ? "slot" : "slots"})`;
   return `${status.connectedPlayers} of ${status.playerLimit} ${status.playerLimit === 1 ? "player" : "players"} connected`;
 }

@@ -66,7 +66,7 @@ describe("session lifecycle", () => {
     };
     server.use(http.get(endpoints.status.route, guard(statusRunning)));
     renderWithClient(<App />);
-    await screen.findByRole("heading", { name: "Server status" });
+    await screen.findByText(/ played$/);
 
     expired = true;
     act(() => void vi.advanceTimersByTime(POLL_MS.status));
@@ -91,7 +91,8 @@ describe("session lifecycle", () => {
       }),
     );
     const { client } = renderWithClient(<App />);
-    await screen.findByText("Old session save");
+    // The Server tile names the save ("<save> · <time> played", ADR-0064).
+    await screen.findByText(/^Old session save · /);
     phase = "expired";
     await act(() => client.refetchQueries({ type: "active" }));
     await screen.findByRole("heading", { name: "Sign in" });
@@ -99,8 +100,8 @@ describe("session lifecycle", () => {
     phase = "after";
     submitLogin();
     await screen.findByRole("button", { name: "Account" });
-    expect(screen.queryByText("Old session save")).not.toBeInTheDocument();
-    expect(await screen.findByText(statusRunning.data.sessionName)).toBeInTheDocument();
+    expect(screen.queryByText(/^Old session save · /)).not.toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(`^${statusRunning.data.sessionName} · `))).toBeInTheDocument();
   });
 
   it("is not signed out again by a 401 from a request that started before re-login", async () => {
@@ -149,10 +150,10 @@ describe("session lifecycle", () => {
     );
     renderWithClient(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Satisfactory server" }));
-    await screen.findByRole("heading", { name: "Server status" });
+    await screen.findByText(/ played$/);
     fireEvent.click(screen.getByRole("button", { name: "Change server" }));
     fireEvent.click(await screen.findByRole("button", { name: "Creative test world" }));
-    await screen.findByRole("heading", { name: "Server status" });
+    await screen.findByText(/ played$/);
     await waitFor(() => expect(counts["creative-test"]).toBe(1));
     const oldServerCalls = counts.default;
 
@@ -175,7 +176,7 @@ describe("session lifecycle", () => {
       }),
     );
     renderWithClient(<App />);
-    await screen.findByRole("heading", { name: "Server status" });
+    await screen.findByText(/ played$/);
     const beforeHidden = statusCalls;
     act(() => focusManager.setFocused(false));
     act(() => void vi.advanceTimersByTime(POLL_MS.status * 3));

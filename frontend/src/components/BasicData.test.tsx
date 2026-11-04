@@ -83,7 +83,8 @@ describe("OverviewView on a vanilla-only server", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByText(NOTICE)).toBeInTheDocument();
-    expect(screen.getByText("21.4/s")).toBeInTheDocument();
+    // The game's facts: the Server tile's save and play time (a healthy tick is not drawn, ADR-0064).
+    expect(screen.getByText(/ played$/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Power/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Factory/ })).not.toBeInTheDocument();
   });

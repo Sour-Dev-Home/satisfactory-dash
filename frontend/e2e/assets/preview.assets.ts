@@ -50,7 +50,7 @@ test("overview preview", async ({ browser }) => {
 
   await page.goto(`${ORIGIN}/?clock=fixed`);
   await page.getByRole("button", { name: "Enter demo" }).click();
-  await expect(page.getByRole("list", { name: "Sections" }).getByText(/Demo World · 3 \/ 4 players/)).toBeVisible();
+  await expect(page.getByRole("list", { name: "Sections" }).getByText(/^Demo World · .+ played$/)).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
   // The app's column from its tab row down: the landing's own header already shows the logo, so the
   // still starts at the tabs, with the column's gutters as its margin.

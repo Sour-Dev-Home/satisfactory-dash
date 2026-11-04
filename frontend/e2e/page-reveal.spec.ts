@@ -26,7 +26,8 @@ interface PageCase {
 }
 
 const PAGES: readonly PageCase[] = [
-  { name: "Overview", path: "/app", ready: "Total play time on this save" },
+  // The Server tile's save and play time (ADR-0064: the Server status card that said "Total play time" went).
+  { name: "Overview", path: "/app", ready: / played$/ },
   // A circuit's load line (ADR-0064: the only healthy circuit's "Circuit 0" heading is for a screen reader).
   { name: "Power", path: "/app/power", ready: / MW capacity$/ },
   // The machine panel's search label: drawn once the factory read is in (ADR-0064 removed the summary line).
@@ -193,7 +194,7 @@ test.describe("prefetch", () => {
   test("hovering a tab starts its reads, so the click finds them cached", async ({ page, mockApi }) => {
     await mockApi("default");
     await page.goto("/app");
-    await expect(page.getByText("Total play time on this save")).toBeVisible();
+    await expect(page.getByText(/ played$/)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Main" });
 
     // The Overview already read the factory and power; settings is a page the Overview never touches.
@@ -205,7 +206,7 @@ test.describe("prefetch", () => {
   test("focusing a tab link with the keyboard starts its reads too", async ({ page, mockApi }) => {
     await mockApi("default");
     await page.goto("/app");
-    await expect(page.getByText("Total play time on this save")).toBeVisible();
+    await expect(page.getByText(/ played$/)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Main" });
 
     const rulesRequest = page.waitForRequest((r) => /\/alerts\/rules$/.test(new URL(r.url()).pathname));

@@ -93,8 +93,9 @@ groups, "Other machines", from the Planner's reads) is unchanged.
 
 ### 4. Overview (build PR 3)
 
-- **The "Server status" card goes** (`status/StatusPanel.tsx` from the Overview). The save and players are the Server tile's;
-  total play time joins that tile's line; the data age is the page's (Decision 6).
+- **The "Server status" card goes** (`status/StatusPanel.tsx` from the Overview). The Server tile says the save and its play
+  time ("ExampleSession · 1 d 2 h 50 m played"); the players, which the tile also said, are the Players card's alone (built:
+  one fact, one place); the data age is the Health card's badge until Decision 6.
 - **The Power tile shows consumption,** as the Power card does, so the page has one power number; with the card beside it the tile
   says only its circuits ("1 circuit", or what is wrong), and the card keeps the bar and "X MW of Y MW".
 - **The Players card** with nobody on draws no empty figures: it says "No players connected (4 slots)" on one line.

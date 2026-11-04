@@ -34,8 +34,13 @@ describe("PlayersCard", () => {
     for (const svg of container.querySelectorAll("svg")) expect(svg).toHaveAttribute("aria-hidden", "true");
   });
 
+  it("with nobody on, says so on one line and draws no empty tiles (ADR-0064)", () => {
+    const { container } = render(<PlayersCard state={running({ connectedPlayers: 0, playerLimit: 12 })} />);
+    expect(figures(container)).toEqual({ connected: 0, free: 0 });
+    expect(screen.getByText("No players connected (12 slots)")).toBeInTheDocument();
+  });
+
   it.each([
-    [0, { connected: 0, free: 12 }],
     [7, { connected: 7, free: 5 }],
     [12, { connected: 12, free: 0 }],
   ])("draws all 12 slots of the default limit with %i connected, and no \"+N\"", (connectedPlayers, expected) => {
@@ -58,8 +63,11 @@ describe("PlayersCard", () => {
   });
 
   it("says 1 player in the singular", () => {
+    const { unmount } = render(<PlayersCard state={running({ connectedPlayers: 1, playerLimit: 1 })} />);
+    expect(screen.getByText("1 of 1 player connected")).toBeInTheDocument();
+    unmount();
     render(<PlayersCard state={running({ connectedPlayers: 0, playerLimit: 1 })} />);
-    expect(screen.getByText("0 of 1 player connected")).toBeInTheDocument();
+    expect(screen.getByText("No players connected (1 slot)")).toBeInTheDocument();
   });
 
   it("is neutral with no game running: no figures, no alarm", () => {

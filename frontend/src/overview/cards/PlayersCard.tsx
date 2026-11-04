@@ -53,6 +53,15 @@ function PlayersBody({ state, roster }: { state: PlayersState; roster?: ServerPl
   const { status } = state;
   if (!status.isGameRunning) return <p className="text-muted">No game running.</p>;
   if (status.playerLimit === 0) return <p className="text-muted">The server allows no players.</p>;
+  // ADR-0064: nobody on is one line, not a row of empty tiles.
+  if (status.connectedPlayers === 0) {
+    return (
+      <>
+        <p className="font-display text-lg font-semibold tracking-wide text-fg-strong uppercase">{playersText(status)}</p>
+        {status.gamePaused && <p className="text-sm text-muted">The game is paused.</p>}
+      </>
+    );
+  }
 
   const slots = Math.min(status.playerLimit, MAX_FIGURES);
   const filled = Math.min(status.connectedPlayers, slots);
