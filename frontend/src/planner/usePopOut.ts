@@ -21,19 +21,28 @@ export function usePopOut(source: SplitSource | null, onStale: () => void) {
       ? undefined
       : (node: PlannerNode): Promise<void> =>
           staleAware(() => {
-            const picked = splitMachines([node]);
-            if (!picked.ok) throw new PlanProblem(picked.reason);
-            const name = popOutName(node);
-            const built = splitRequest({
-              source: source.designation,
-              memberBuildingIds: source.match.memberBuildingIds,
-              machineIds: picked.machineIds,
-              name,
-              intent: "pop_out",
-            });
+            const built = popOutRequest(source, node);
             if (!built.ok) throw new PlanProblem(built.reason);
-            return changes.apply(built, { message: `Popped ${groupLabel(node)} out into its own factory, ${name}.`, undoLabel: "Undo" });
+            return changes.apply(built, { message: `Popped ${groupLabel(node)} out into its own factory, ${built.name}.`, undoLabel: "Undo" });
           }, onStale);
   const popOut = write === undefined ? undefined : (node: PlannerNode) => void run(() => write(node));
-  return { popOut, write, busy, error };
+  // Offered only where it can work: a group with none of the factory's members (a storage card: designations hold the
+  // Factory read's buildings only) or with all of them would only fail. A group too large to split whole keeps the
+  // button, which says why.
+  const canPopOut = (node: PlannerNode): boolean => source !== null && (!splitMachines([node]).ok || popOutRequest(source, node).ok);
+  return { popOut, write, canPopOut, busy, error };
+}
+
+function popOutRequest(source: SplitSource, node: PlannerNode) {
+  const picked = splitMachines([node]);
+  if (!picked.ok) return picked;
+  const name = popOutName(node);
+  const built = splitRequest({
+    source: source.designation,
+    memberBuildingIds: source.match.memberBuildingIds,
+    machineIds: picked.machineIds,
+    name,
+    intent: "pop_out",
+  });
+  return built.ok ? { ...built, name } : built;
 }
