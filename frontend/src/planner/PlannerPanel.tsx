@@ -416,7 +416,7 @@ function Detail({
       : (node: PlannerNode) => (
           <>
             <SelectToggle name={node.name} pressed={picked.has(node.key)} onToggle={() => selection.toggle(node.key)} />
-            {pop.popOut !== undefined && (
+            {pop.popOut !== undefined && pop.canPopOut(node) && (
               <button type="button" disabled={pop.busy} aria-label={`Pop out ${groupLabel(node)}`} onClick={() => pop.popOut?.(node)} className="min-h-touch text-sm">
                 Pop out
               </button>
@@ -493,6 +493,10 @@ function Detail({
                   if (node !== undefined) await pop.write?.(node);
                 }
           }
+          canPopOut={(key) => {
+            const node = byKey.get(key);
+            return node !== undefined && pop.canPopOut(node);
+          }}
           current={{ key: current, onChange: setCurrent }}
         />
       )}

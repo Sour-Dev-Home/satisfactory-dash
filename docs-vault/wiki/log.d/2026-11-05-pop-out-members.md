@@ -1,0 +1,3 @@
+- 2026-11-05 — The planner offers Pop out only where it can work (owner report: Pop out on a Storage Container card said "None of the selected machines are listed in this factory."). A designation holds the Factory read's buildings only, so a storage card has no members to move, and the only listed group is the whole factory; both now get no Pop out, in the outline's rows and the graph's group panel. A group too large to split whole keeps the button, which says why.
+  - `usePopOut` gains `canPopOut(node)`, the same split check the write runs; `SiteGraph` gains `canPopOut`.
+  - Tests: `PlannerView.mergeSplit.test.tsx` (no Pop out on either card when the designation holds only one group's machines, in the outline and the panel); both fail without the fix.

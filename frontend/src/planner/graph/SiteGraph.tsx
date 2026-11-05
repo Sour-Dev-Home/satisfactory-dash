@@ -317,6 +317,8 @@ export interface SiteGraphProps {
    * when the write fails, and the panel shows why.
    */
   onPopOut?: ((nodeKey: string) => Promise<void>) | undefined;
+  /** Whether that group can pop out at all; without it, every group's panel offers it. */
+  canPopOut?: ((nodeKey: string) => boolean) | undefined;
   /**
    * ADR-0062 Decision 3, graph sync: the one selection shared with the outline. A key given as the canvas mounts ("Show in
    * graph") brings the card standing for it into view and gives its button the keyboard; focusing or opening a card here
@@ -350,7 +352,7 @@ function toggled<T>(set: ReadonlySet<T>, key: T): Set<T> {
  * draws a lasso that picks the cards whose centre it encloses (ADR-0055 Decision 5); in Select mode a click (or a card's
  * button) picks or unpicks one card instead of opening it.
  */
-export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, factoryPicks, onPopOut, current }: SiteGraphProps) {
+export default function SiteGraph({ graph, target, findings, onOpenFactory, selection, factoryPicks, onPopOut, canPopOut, current }: SiteGraphProps) {
   // View state of this session, per factory (it outlives this canvas: foldMemory): which bubbles differ from their
   // default, which folds are open; and the viewer's saved choices: whose upstream is hidden, storage shown, motion.
   // Blow-up (ADR-0061 Decision 5) works on a level of the factory tree; its choices are remembered per path, like folds.
@@ -1862,7 +1864,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               findings={findings}
               machineId={openMachine === null ? undefined : (machineWords.get(openNode.key)?.find((m) => m.key === openMachine)?.id ?? undefined)}
               onClose={close}
-              onPopOut={onPopOut === undefined ? undefined : () => onPopOut(openNode.key)}
+              onPopOut={onPopOut === undefined || canPopOut?.(openNode.key) === false ? undefined : () => onPopOut(openNode.key)}
               feedsAndNeeds={
                 portsOn ? { on: feedsKey === openNode.key, onToggle: () => setFeedsKey((k) => (k === openNode.key ? null : openNode.key)) } : undefined
               }

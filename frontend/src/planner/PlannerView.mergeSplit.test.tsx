@@ -53,8 +53,9 @@ interface Sent {
 let sent: Sent[];
 let listReads: number;
 
-function serve(opts: { revision?: boolean; connected?: boolean; replace?: (n: number) => Response | undefined } = {}) {
+function serve(opts: { revision?: boolean; connected?: boolean; members?: PlannerDesignationMember[]; replace?: (n: number) => Response | undefined } = {}) {
   const revised = opts.revision ?? true;
+  const members = opts.members ?? rodWorks;
   const factories = BASE.data.factories!.map((f) => (f.key === ROD ? { ...f, name: "Rod works", designationId: DESIGNATION, sideProducts: [] } : f));
   const apart = opts.connected === false;
   const data = {
@@ -64,11 +65,11 @@ function serve(opts: { revision?: boolean; connected?: boolean; replace?: (n: nu
     transports: apart ? [] : BASE.data.transports,
     factories,
   };
-  const designation = { id: DESIGNATION, name: "Rod works", mode: "core", members: rodWorks, createdAt: CREATED, updatedAt: CREATED, ...(revised ? { revision: 2 } : {}) };
+  const designation = { id: DESIGNATION, name: "Rod works", mode: "core", members, createdAt: CREATED, updatedAt: CREATED, ...(revised ? { revision: 2 } : {}) };
   const list = {
     designations: [designation],
     matches: [
-      { designationId: DESIGNATION, matched: rodWorks.length, missing: 0, ...(revised ? { memberBuildingIds: rodWorks.map((m) => m.id) } : {}) },
+      { designationId: DESIGNATION, matched: members.length, missing: 0, ...(revised ? { memberBuildingIds: members.map((m) => m.id) } : {}) },
     ],
   };
   server.use(
@@ -265,6 +266,13 @@ describe("splitting a designated factory", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("offers no row's Pop out for a group with none of the factory's members, or with all of them", async () => {
+    serve({ members: rodIds.map(memberOf) });
+    renderView();
+    await openRodWorks();
+    expect(screen.queryByRole("button", { name: /^Pop out/ })).not.toBeInTheDocument();
+  });
+
   it("pops a row's group out at once, named after it", async () => {
     serve();
     renderView();
@@ -374,6 +382,23 @@ describe("the selection bars and the pop-out's errors (#753 review)", () => {
     expect(alert.textContent).not.toBe("");
     // The page says nothing of it: every alert on the page is the panel's.
     for (const a of screen.getAllByRole("alert")) expect(panel).toContainElement(a);
+  });
+
+  // A storage card's machines are never a designation's members (they hold the Factory read's buildings only): Pop out
+  // there could only fail ("None of the selected machines are listed in this factory"). Nor can the only listed group go.
+  it("offers no Pop out for a group with none of the factory's members, or with all of them", async () => {
+    wideScreen();
+    serve({ members: rodIds.map(memberOf) });
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: /^Open factory: Rod works/ }, { timeout: 3_000 }));
+    await screen.findByRole("img", { name: /^Graph of Rod works/ }, { timeout: 3_000 });
+    const cards = screen.getByRole("list", { name: "Cards in the graph" });
+    for (const name of [/Constructor/, /Sink/]) {
+      fireEvent.click(within(cards).getAllByRole("button", { name })[0]!);
+      const panel = await screen.findByRole("complementary");
+      expect(within(panel).queryByRole("button", { name: /^Pop out/ })).not.toBeInTheDocument();
+      fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
+    }
   });
 
   it("still shows a failed pop-out from a table row on the page", async () => {
