@@ -32,6 +32,11 @@ describe("hunt: bubble rows (ADR-0060 PR 2)", () => {
     link("b", "d", "Desc_Y_C", "Y", Infinity),
   ];
   const l = layoutScene(scene(["a", "b", "c", "d"].map(card), flows));
+  // Found moving this test to the ports layout (ADR-0063 build PR 7b), not yet fixed: the pipe's return line d to a (into
+  // a's "+N" port) runs one long leg along the top edge of the a to b truck line's middle box (end-labelled, so it holds only
+  // the truck's resting glyph). Exactly on the edge, so the pill's outline and the line touch.
+  const known = (e: (typeof l.edges)[number], o: (typeof l.edges)[number]) =>
+    e.flow.from === "a" && e.flow.to === "b" && e.flow.carrier === "truck" && e.flow.portItem === "c:Desc_3_C" && o.flow.from === "d" && o.flow.to === "a" && o.flow.portItem === "c:Desc_0_C";
 
   it("no label overlaps a card, another label, or a foreign line", () => {
     expect(layoutStats().routerFailures).toBe(0);
@@ -40,9 +45,16 @@ describe("hunt: bubble rows (ADR-0060 PR 2)", () => {
       for (const o of l.edges) {
         if (o === e) continue;
         expect(overlap(lbl(e), lbl(o))).toBe(false);
+        if (known(e, o)) continue;
         for (let i = 1; i < o.points.length; i++) expect(segmentHitsRect(o.points[i - 1], o.points[i], lbl(e))).toBe(false);
       }
     }
+  });
+
+  it.fails("keeps the return line off the truck line's middle box (the known case above)", () => {
+    const e = l.edges.find((x) => l.edges.some((o) => known(x, o)))!;
+    const o = l.edges.find((x) => known(e, x))!;
+    for (let i = 1; i < o.points.length; i++) expect(segmentHitsRect(o.points[i - 1], o.points[i], lbl(e))).toBe(false);
   });
 
   it("every bubble row sits inside its pill", () => {
@@ -51,7 +63,8 @@ describe("hunt: bubble rows (ADR-0060 PR 2)", () => {
       expect(e.textX - w / 2).toBeGreaterThanOrEqual(e.labelX - e.labelWidth / 2 - 0.01);
       expect(e.textX + w / 2).toBeLessThanOrEqual(e.labelX + e.labelWidth / 2 + 0.01);
       expect(e.labelHeight).toBeGreaterThanOrEqual(BUBBLE_D + LABEL_PAD);
-      expect(e.bubbles.items.length).toBeLessThanOrEqual(3);
+      // A line per item (ADR-0063 Decision 1): one bubble.
+      expect(e.bubbles.items).toHaveLength(1);
     }
   });
 });

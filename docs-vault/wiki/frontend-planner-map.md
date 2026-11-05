@@ -146,8 +146,8 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   item card (`marchHoles`), so a stroke never shows over them; nothing marches while a lasso is drawn. Each stroke stops at the arrowhead's base (`MARCH_TRIM`), so the canvas's
   arrowhead is never painted over.
 - Item bubbles (ADR-0060 build PR 2): an edge's label box draws the items it carries as icon bubbles, not words
-  (`bubbleRow.ts`). Distinct items by summed rate (then name), at most `BUBBLE_MAX` (3) then a "+k" chip, with the rate
-  text under the row; links of no known item share one "?" bubble. The box dagre reserves
+  (`bubbleRow.ts`). Since ADR-0063 a line carries one item, so its row is one bubble, with the rate text under it; links
+  of no known item share one "?" line and bubble (the "+k" chip and its item list went in build PR 7b). The box dagre reserves
   is `bubbleRowSize` (plus `GLYPH_INSET` for a transport), so the router keeps it clear as it did the words. A bubble
   draws its item's 32 px icon (64 px once that would stretch: `bubbleDetail`), the name's initials when there is none or
   it fails to load, never blank; below zoom `BUBBLE_DETAIL_ZOOM` (0.4) only plain discs. `LaidEdge.labelLines` keeps
@@ -170,13 +170,14 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   `index.css`): a hybrid device; on a touch screen it ends a mouse's highlight instead.
 - Ports (ADR-0063 build PR 2; always on since build PR 7, 2026-11-05, after the owner's demo review: `SiteGraph`'s
   `LAYOUT_OPTIONS`; the `planner.ports` and `planner.portArrows` flags are gone): `ports.ts` (pure) gives each card a
-  port per side, direction and item, folding past `PORTS_MAX` into "+N"; `bundleFlows(flows, true)` draws a line per item
-  (`CanvasFlow.portItem`, part of `edgeKeyOf`). `layoutScene(scene, hash, focus, { ports })` grows cards to hold their
+  port per side, direction and item, folding past `PORTS_MAX` into "+N"; `bundleFlows(flows)` draws a line per item
+  (`CanvasFlow.portItem`, part of `edgeKeyOf`). `layoutScene(scene, hash, focus)` grows cards to hold their
   ports, passes sides and ports to the router (`RouteEdge.srcPort`..., `RouteOutput.portAt`), ends a line at its target
-  disc's edge and hangs `LaidPort`s on each `LaidNode`. `SiteGraph` draws them (`PortDiscs`, inside the card's group, no
-  focusable element). Every line keeps its arrowhead, into a port too (open question 5: the owner kept it). Until build
-  PR 7b, `layoutScene`'s `ports: false` path, `bundleFlows`' several-items-per-line form and the "+k" chip are still in
-  the code, unused by the canvas.
+  disc's edge and hangs `LaidPort`s on each `LaidNode`. A return flow leaves its source's left and enters its target's
+  right; a self-loop keeps a forward line's sides (out right, in left), as dagre routes it. `SiteGraph` draws them
+  (`PortDiscs`, inside the card's group, no focusable element). Every line keeps its arrowhead, into a port too (open
+  question 5: the owner kept it). The router (`orthogonalRoute.ts`) still has its no-ports end spreading, which only
+  its own unit tests reach.
 - End labels (ADR-0063 build PR 3): `endLabels.ts` (pure) gives each port's words, its band and `endLabelFit`.
   dagre gets each card widened by its two bands; the router's `RouteCard.insetL`/`insetR` attach ends at the drawn edge.
   A line whose two labels fit gets `LaidEdge.endLabels` and draws no middle bubble (the box stays reserved); otherwise its
@@ -223,15 +224,13 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   the rate, not the belt"; the three widths, 2, 3, 4, each with its word). Every sample is still.
 - Item focus (ADR-0060 build PR 3), behind `planner.itemFocus` in `plannerPrefs.ts`. It is off by default and has no
   control: set the key to `on` in the browser's localStorage. Build PR 6 removes the flag after the owner's review.
-  - Focus is `{ edgeKey, item }` (`edgeKeyOf`: ends, carrier, kind and unit, as `bundleFlows` groups them, so a poll that reorders edges keeps it). It clears
+  - Focus is `{ edgeKey, item }` (`edgeKeyOf`: ends, carrier, kind, unit and item, as `bundleFlows` groups them, so a poll that reorders edges keeps it). It clears
     when the line or the item leaves the graph.
   - Hop-1 dimming: only the focused line and its two cards stay lit, and the item filter's dimming waits until focus ends.
   - `ItemFocusLayer.tsx` holds the `sr-only` bubble buttons, one tab stop for all of them (a roving tabindex). Arrow
     keys, Home and End move between them, in the cards' tab order (`bubbleStops`). They are named by `bubbleName`.
-  - The "+k" chip's button opens `ItemList`, the line's full item list, in the group panel's place. Each item in it can be
-    focused.
-  - Escape works in this order: the list, then focus (back to the bubble's button, or the chip's when the item has no
-    bubble), then the existing chain.
+  - Escape works in this order: a port's line list (`PortLineList`), then focus (back to the bubble's button), then the
+    existing chain.
   - A click on a drawn bubble focuses it, and a second click leaves. A click on the background leaves too, but a click on
     a card does not.
   - The status line stays mounted while the flag is on and says "Focused <item> from A to B" and "Overview".

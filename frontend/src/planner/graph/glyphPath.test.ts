@@ -3,7 +3,7 @@ import { ProductionGraphResponseSchema, type PlannerNode, type ProductionGraph }
 import { productionGraphFactories } from "@satisfactory-dash/shared/fixtures";
 import { EMPTY_VIEW, factoryScene, groupCard, type CanvasFlow, type Scene } from "./canvasScene";
 import { factoryModels } from "./hierarchy";
-import { BUBBLE_D, CHIP_H, CHIP_W, bubbleOffsets } from "./bubbleRow";
+import { BUBBLE_D, bubbleOffsets } from "./bubbleRow";
 import { motionPathAround, piecesOutside } from "./edgeShapes";
 import { bubbleRowOrigin } from "./itemCardText";
 import { LABEL_PAD, clearLayoutMemo, labelBox, labelWidth, layoutScene, type LaidEdge } from "./layoutSite";
@@ -135,28 +135,30 @@ function trainScene(items: number, rateText = true): Scene {
   };
 }
 
-/** The glyph's halo at rest, each bubble (and the chip) and the rate text, as boxes. */
+/** The glyph's halo at rest, each bubble and the rate text, as boxes. */
 function restBoxes(e: LaidEdge) {
   const glyph = { x: e.mid.x - GLYPH_HALO_RADIUS, y: e.mid.y - GLYPH_HALO_RADIUS, width: 2 * GLYPH_HALO_RADIUS, height: 2 * GLYPH_HALO_RADIUS };
   const { left, cy } = bubbleRowOrigin(e);
-  const at = bubbleOffsets(e.bubbles);
-  const bubbles = at.bubbles.map((x) => ({ x: left + x - BUBBLE_D / 2, y: cy - BUBBLE_D / 2, width: BUBBLE_D, height: BUBBLE_D }));
-  if (at.chip !== null) bubbles.push({ x: left + at.chip - CHIP_W / 2, y: cy - CHIP_H / 2, width: CHIP_W, height: CHIP_H });
+  const bubbles = bubbleOffsets(e.bubbles).map((x) => ({ x: left + x - BUBBLE_D / 2, y: cy - BUBBLE_D / 2, width: BUBBLE_D, height: BUBBLE_D }));
   const top = e.labelY - e.labelHeight / 2 + LABEL_PAD / 2;
   const text = e.bubbles.rateText === null ? null : { x: e.textX - labelWidth(e.bubbles.rateText) / 2, y: top + BUBBLE_D, width: labelWidth(e.bubbles.rateText), height: 16 };
   return { glyph, bubbles, text };
 }
 
 describe("a transport glyph at rest", () => {
-  it.each([1, 2, 3, 5])("stands inside its pill and clear of the bubbles and the rate text (%i items)", (items) => {
+  // A line per item (ADR-0063 Decision 1): `items` trains between one pair draw that many lines, each with its glyph.
+  it.each([1, 2, 3, 5])("stands inside its pill and clear of the bubble and the rate text (%i items)", (items) => {
     for (const withRate of [true, false]) {
-      const e = layoutScene(trainScene(items, withRate)).edges[0];
-      const { glyph, bubbles, text } = restBoxes(e);
-      const pill = labelBox(e);
-      expect(glyph.x).toBeGreaterThanOrEqual(pill.x);
-      expect(glyph.y).toBeGreaterThanOrEqual(pill.y - 0.01);
-      for (const b of bubbles) expect(overlap(glyph, b)).toBe(false);
-      if (text !== null) expect(overlap(glyph, text)).toBe(false);
+      const edges = layoutScene(trainScene(items, withRate)).edges;
+      expect(edges).toHaveLength(items);
+      for (const e of edges) {
+        const { glyph, bubbles, text } = restBoxes(e);
+        const pill = labelBox(e);
+        expect(glyph.x).toBeGreaterThanOrEqual(pill.x);
+        expect(glyph.y).toBeGreaterThanOrEqual(pill.y - 0.01);
+        for (const b of bubbles) expect(overlap(glyph, b)).toBe(false);
+        if (text !== null) expect(overlap(glyph, text)).toBe(false);
+      }
     }
   });
 

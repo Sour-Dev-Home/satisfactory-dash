@@ -20,7 +20,7 @@ const flow = (from: string, to: string, itemName: string | null, ratePerMinute: 
   quality: ratePerMinute === null ? "unknown" : "measured",
   ...extra,
 });
-const drawnOf = (flows: CanvasFlow[]) => bundleFlows(flows, true).map((b) => b.flow);
+const drawnOf = (flows: CanvasFlow[]) => bundleFlows(flows).map((b) => b.flow);
 
 // ADR-0063 Decision 1.
 describe("the port spacing", () => {
@@ -44,10 +44,9 @@ describe("the port spacing", () => {
 });
 
 describe("bundleFlows by item", () => {
-  it("draws a line per item between the same two cards, each naming its item; with ports off, one line", () => {
+  it("draws a line per item between the same two cards, each naming its item", () => {
     const flows = [flow("a", "b", "Iron Plate", 30), flow("a", "b", "Screw", 60), flow("a", "b", "Iron Plate", 10)];
-    expect(bundleFlows(flows)).toHaveLength(1);
-    const byItem = bundleFlows(flows, true);
+    const byItem = bundleFlows(flows);
     expect(byItem.map((b) => [b.flow.portItem, b.members])).toEqual([
       ["c:Desc_IronPlate_C", [0, 2]],
       ["c:Desc_Screw_C", [1]],
@@ -56,7 +55,7 @@ describe("bundleFlows by item", () => {
   });
 
   it("keeps links of no known item on one '?' line", () => {
-    const byItem = bundleFlows([flow("a", "b", null, null), flow("a", "b", null, 5)], true);
+    const byItem = bundleFlows([flow("a", "b", null, null), flow("a", "b", null, 5)]);
     expect(byItem).toHaveLength(1);
     expect(byItem[0].flow.portItem).toBe("n:");
   });

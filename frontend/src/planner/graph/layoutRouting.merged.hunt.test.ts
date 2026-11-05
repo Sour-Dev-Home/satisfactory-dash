@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import type { Card, CanvasFlow, Scene } from "./canvasScene";
 import { segmentHitsRect } from "./edgeShapes";
 import { clearLayoutMemo, layoutScene, layoutStats } from "./layoutSite";
+import { PORT_D } from "./ports";
 
 // Make dagre throw on its first layout per scene, so the merged form (the fallback) runs.
 const state = vi.hoisted(() => ({ calls: 0 }));
@@ -66,9 +67,10 @@ it("merged fallback with a reversed pair (a->b, b->a) and a chain: routes run so
   for (const e of l.edges) {
     const from = l.nodes.find((n) => n.key === e.flow.from)!;
     const to = l.nodes.find((n) => n.key === e.flow.to)!;
-    const side = (p: { x: number }, n: R) => Math.abs(p.x - n.x) < 0.5 || Math.abs(p.x - n.x - n.width) < 0.5;
+    // A line leaves from its source port's centre on the card's side and ends at its target port's disc edge (ADR-0063).
+    const side = (p: { x: number }, n: R, out = 0) => Math.abs(p.x - (n.x - out)) < 0.5 || Math.abs(p.x - (n.x + n.width + out)) < 0.5;
     expect(side(e.points[0], from)).toBe(true);
-    expect(side(e.points[e.points.length - 1], to)).toBe(true);
+    expect(side(e.points[e.points.length - 1], to, PORT_D / 2)).toBe(true);
     for (const n of l.nodes) {
       if (n === from || n === to) continue;
       for (let i = 1; i < e.points.length; i++) expect(segmentHitsRect(e.points[i - 1], e.points[i], n)).toBe(false);

@@ -7,11 +7,6 @@ import { itemIconText } from "./itemIcons";
  *  then 32 still too small, both 2026-10-27). */
 export const BUBBLE_D = 40;
 export const BUBBLE_GAP = 4;
-/** A line shows at most this many bubbles, then a "+k" chip (owner answer 5). */
-export const BUBBLE_MAX = 3;
-/** The "+k" chip's width and height, in step with the bubble. */
-export const CHIP_W = 38;
-export const CHIP_H = 30;
 /** The icon's size inside a bubble: the disc less a thin ring. */
 export const BUBBLE_ICON = BUBBLE_D - 4;
 /** Below this zoom a bubble is a plain disc: no image, no initials, no rate text (ADR-0060 Decision 7). */
@@ -41,12 +36,10 @@ export interface BubbleItem {
   quality: FlowQuality;
 }
 
-/** A line's bubbles: the shown items, every item (for the "+k" list), how many more the chip counts, and the short rate
- *  text drawn under them (every line has one; "?/min" when unknown). */
+/** A line's bubbles: its items (one, since `bundleFlows` draws a line per item), and the short rate text drawn under them
+ *  (every line has one; "?/min" when unknown). */
 export interface BubbleRow {
   items: BubbleItem[];
-  all: BubbleItem[];
-  more: number;
   rateText: string;
 }
 
@@ -62,8 +55,8 @@ export function summedQuality(parts: readonly CanvasFlow[]): FlowQuality {
 }
 
 /**
- * A line's identity across polls (ADR-0060 Decision 2): its ends, carrier, kind and unit, which `bundleFlows` groups by,
- * and with ports on (ADR-0063 Decision 1) its one item, since a pair of cards then draws a line per item.
+ * A line's identity across polls (ADR-0060 Decision 2): its ends, carrier, kind, unit and item (ADR-0063 Decision 1),
+ * which `bundleFlows` groups by.
  */
 export const edgeKeyOf = (flow: Pick<CanvasFlow, "from" | "to" | "carrier" | "flow" | "unit" | "portItem">): string =>
   [flow.from, flow.to, flow.carrier, flow.flow, flow.unit, ...(flow.portItem === undefined ? [] : [flow.portItem])].join("|");
@@ -104,33 +97,31 @@ export function bubbleItems(flow: CanvasFlow): BubbleItem[] {
 }
 
 /**
- * A line's bubble row: up to `BUBBLE_MAX` items, a "+k" for the rest, and its rate in the canvas's short form
+ * A line's bubble row: its item, and its rate in the canvas's short form
  * (`shortRateText`: "20/min", "~20/min", "?/min"; ADR-0063 amendment, 2026-11-03). "Mixed" and "excess" are not drawn:
  * the line's style says mixed, and both stay in the line's `<title>`, its button and the outline, as ADR-0063 Decision 2
  * rules for end labels.
  */
 export function bubbleRow(flow: CanvasFlow): BubbleRow {
-  const all = bubbleItems(flow);
-  const items = all.slice(0, BUBBLE_MAX);
-  return { items, all, more: all.length - items.length, rateText: shortRateText(flow) };
+  return { items: bubbleItems(flow), rateText: shortRateText(flow) };
 }
 
 /** What focus mode holds (ADR-0060 Decision 2): a line by its key, and one of its items by `BubbleItem.key`. */
 export type ItemFocus = { edgeKey: string; item: string };
 
-/** One keyboard stop in the bubble layer: a bubble (its item's key) or a line's "+k" chip (`item` null). */
+/** One keyboard stop in the bubble layer: a bubble, by its line and its item's key. */
 export interface BubbleStop {
   id: string;
   edgeKey: string;
-  item: string | null;
+  item: string;
 }
 
-/** A stop's id: the line's key and the item's, or "+" for the chip. */
-export const stopId = (edgeKey: string, item: string | null): string => `${edgeKey}#${item ?? "+"}`;
+/** A stop's id: the line's key and the item's. */
+export const stopId = (edgeKey: string, item: string): string => `${edgeKey}#${item}`;
 
 /**
  * The bubble layer's stops in keyboard order (Decision 5): the lines by their source card's place in `order` (the cards'
- * own tab order), then their destination's, and within a line its bubbles left to right, then its chip.
+ * own tab order), then their destination's, and within a line its bubbles left to right.
  */
 export function bubbleStops(edges: readonly { flow: CanvasFlow; bubbles: BubbleRow }[], order: readonly string[]): BubbleStop[] {
   const rank = new Map(order.map((key, i) => [key, i]));
@@ -138,8 +129,7 @@ export function bubbleStops(edges: readonly { flow: CanvasFlow; bubbles: BubbleR
   const lines = [...edges].sort((a, b) => at(a.flow.from) - at(b.flow.from) || at(a.flow.to) - at(b.flow.to));
   return lines.flatMap((e) => {
     const edgeKey = edgeKeyOf(e.flow);
-    const bubbles = e.bubbles.items.map((i) => ({ id: stopId(edgeKey, i.key), edgeKey, item: i.key }));
-    return e.bubbles.more > 0 ? [...bubbles, { id: stopId(edgeKey, null), edgeKey, item: null }] : bubbles;
+    return e.bubbles.items.map((i) => ({ id: stopId(edgeKey, i.key), edgeKey, item: i.key }));
   });
 }
 
@@ -148,18 +138,13 @@ export function bubbleName(item: BubbleItem, unit: CanvasFlow["unit"], from: str
   return `${item.name ?? "Item unknown"}, ${itemRateText(item, unit)}, from ${from} to ${to}`;
 }
 
-/** The "+k" chip's keyboard name. */
-export const chipName = (more: number, from: string, to: string): string => `${more} more ${more === 1 ? "item" : "items"} from ${from} to ${to}`;
-
-/** The width of the bubbles and the chip, side by side. */
-export function bubblesWidth(row: Pick<BubbleRow, "items" | "more">): number {
+/** The width of the bubbles, side by side. */
+export function bubblesWidth(row: Pick<BubbleRow, "items">): number {
   const n = row.items.length;
-  return n * BUBBLE_D + Math.max(0, n - 1) * BUBBLE_GAP + (row.more > 0 ? BUBBLE_GAP + CHIP_W : 0);
+  return n * BUBBLE_D + Math.max(0, n - 1) * BUBBLE_GAP;
 }
 
-/** Each bubble's centre x, and the chip's, from the left of the bubbles. */
-export function bubbleOffsets(row: Pick<BubbleRow, "items" | "more">): { bubbles: number[]; chip: number | null } {
-  const bubbles = row.items.map((_, i) => i * (BUBBLE_D + BUBBLE_GAP) + BUBBLE_D / 2);
-  const chip = row.more > 0 ? row.items.length * (BUBBLE_D + BUBBLE_GAP) + CHIP_W / 2 : null;
-  return { bubbles, chip };
+/** Each bubble's centre x, from the left of the bubbles. */
+export function bubbleOffsets(row: Pick<BubbleRow, "items">): number[] {
+  return row.items.map((_, i) => i * (BUBBLE_D + BUBBLE_GAP) + BUBBLE_D / 2);
 }

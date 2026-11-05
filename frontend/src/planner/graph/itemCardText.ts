@@ -35,15 +35,14 @@ export interface ItemCardText {
 }
 
 /** What the card says about an item on a line from `from` to `to`. */
-export function itemCardText(item: BubbleItem, flow: CanvasFlow, others: number, from: string, to: string): ItemCardText {
+export function itemCardText(item: BubbleItem, flow: CanvasFlow, from: string, to: string): ItemCardText {
   const name = item.name ?? "Item unknown";
   // As the label words it: plain when measured, "about" when estimated, "at least" when a part has no number.
   const rate = item.quality === "unknown" ? "Rate unknown" : itemRateText(item, flow.unit);
   const transport = flow.carrier === "belt" || flow.carrier === "pipe" ? [] : [`${carrierWord(flow.carrier)}${flow.routeName === undefined ? "" : `, route ${flow.routeName}`}`];
   // An unknown item says so plainly, with the raw class when the server sent one.
   const unknown = item.name === null ? [item.className === null ? "Not reported by the game" : `Class ${item.className}`] : [];
-  const shared = others > 0 ? [`${others} other ${others === 1 ? "item" : "items"} here`] : [];
-  const facts = [rate, `From ${from}`, `To ${to}`, ...transport, ...unknown, ...shared];
+  const facts = [rate, `From ${from}`, `To ${to}`, ...transport, ...unknown];
   return { title: fit(name, TITLE_CHARS), lines: facts.slice(0, CARD_MAX_LINES).map((l) => fit(l, LINE_CHARS)), full: [name, ...facts].join(". ") };
 }
 
@@ -52,11 +51,9 @@ export function bubbleRowOrigin(edge: Pick<LaidEdge, "labelY" | "labelHeight" | 
   return { left: edge.textX - bubblesWidth(edge.bubbles) / 2, cy: edge.labelY - edge.labelHeight / 2 + LABEL_PAD / 2 + BUBBLE_D / 2 };
 }
 
-/** The centre of an item's bubble on its line, or of the "+k" chip for an item only in the full list. */
+/** The centre of an item's bubble on its line (the label's centre for an item the line does not carry). */
 export function bubbleCentre(edge: Pick<LaidEdge, "labelX" | "labelY" | "labelHeight" | "textX" | "bubbles">, item: string): { x: number; y: number } {
   const { left, cy } = bubbleRowOrigin(edge);
-  const at = bubbleOffsets(edge.bubbles);
   const i = edge.bubbles.items.findIndex((b) => b.key === item);
-  if (i >= 0) return { x: left + at.bubbles[i], y: cy };
-  return at.chip === null ? { x: edge.labelX, y: cy } : { x: left + at.chip, y: cy };
+  return i >= 0 ? { x: left + bubbleOffsets(edge.bubbles)[i], y: cy } : { x: edge.labelX, y: cy };
 }

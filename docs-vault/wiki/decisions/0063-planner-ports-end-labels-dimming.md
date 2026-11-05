@@ -735,3 +735,22 @@ entry fall away); whether the highlight should dim in PR 1's colours is a new qu
   `chipName`, and moves their unit tests to the ports picture.
 - **e2e:** the three dim states no longer set the flag; the ports frame-time test records the ports canvas only (its
   comparison with the ports-off canvas went with the flag). Every planner baseline is regenerated.
+
+## Build note, PR 7b (2026-11-05): the code without ports deleted
+
+- **Deleted.** `LayoutOptions` and its `ports` flag (`layoutScene(scene, hash, focus)` always lays out with ports, and
+  `layoutSite` with it); `bundleFlows`' `byItem` parameter (always by item) and `BUNDLE_NAMES`'s "+k more" words; the "+k"
+  chip (`BUBBLE_MAX`, `CHIP_W`, `CHIP_H`, `chipName`, `BubbleRow.all` and `more`, the chip's keyboard stop) and its list
+  (`ItemList`, the list's state, Escape step and overlay in `SiteGraph`); `itemCardText`'s "N other items here", always 0.
+  The middle bubble fallback and `PortLineList` stay. The router's own no-ports end spreading (`orthogonalRoute.ts`) stays,
+  reached only by its unit tests. No baseline changes: the canvas draws what PR 7a drew.
+- **A bug found moving the tests:** `returnFlows` counts a self-loop as a return flow, so its ports took the return sides
+  (out of the card's left, into its right) while dagre routes a self-loop out of the right and round into the left; both end
+  legs crossed the card. A self-loop now keeps a forward line's sides (`portModel`), with a test. The scenes the canvas
+  draws from groups drop self-loops (`hierarchy.ts`), so only a site's raw node self-edge reached it.
+- **Known, not fixed:** in the dense bubble-row hunt scene, a return line into a "+N" port runs one long leg exactly along
+  the top edge of another line's (end-labelled) middle box, where a truck's resting glyph stands. An expected-fail test
+  records it.
+- **Tests that measured the two forms** now measure ports only: the dense scene's crossings bound is against the ports-off
+  numbers recorded in PR 2 (36 over 65 lines), and the fixture iron site's width bound is 1800 (1798 with the end-label
+  bands, PR 3) where its fit at 0.75 still holds.

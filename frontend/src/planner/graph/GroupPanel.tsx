@@ -48,7 +48,7 @@ export function GroupPanel({
    */
   onPopOut?: (() => Promise<void>) | undefined;
   /**
-   * ADR-0063 Decision 3, state 2 (behind the ports flag): "Show what <group> feeds and needs" lights the group and
+   * ADR-0063 Decision 3, state 2: "Show what <group> feeds and needs" lights the group and
    * everything upstream and downstream of it. Worded apart from the item card's "Show the whole path" (the item filter).
    */
   feedsAndNeeds?: { on: boolean; onToggle: () => void } | undefined;

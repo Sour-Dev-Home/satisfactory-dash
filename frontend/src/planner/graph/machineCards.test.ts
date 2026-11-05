@@ -16,6 +16,7 @@ import {
   machineSlots,
 } from "./layoutSite";
 import { machineCardKey, machineCards } from "./machineCards";
+import { PORT_D } from "./ports";
 
 const FIXTURE: ProductionGraph = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
 const SMELTER = FIXTURE.nodes.find((n) => n.className === "Build_SmelterMk1_C")!;
@@ -79,7 +80,9 @@ describe("an opened group in the factory scene", () => {
     expect(touching.length).toBeGreaterThan(0);
     for (const e of touching) {
       const end = e.flow.to === SMELTER.key ? e.points[e.points.length - 1] : e.points[0];
-      const onX = end.x >= frame.x - 1 && end.x <= frame.x + frame.width + 1;
+      // A line into the frame ends at its port disc's edge, half a disc out (ADR-0063 Decision 1).
+      const out = e.flow.to === SMELTER.key ? PORT_D / 2 : 0;
+      const onX = end.x >= frame.x - out - 1 && end.x <= frame.x + frame.width + out + 1;
       const onY = end.y >= frame.y - 1 && end.y <= frame.y + frame.height + 1;
       expect(onX && onY).toBe(true);
     }

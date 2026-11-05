@@ -68,13 +68,10 @@ import { useSettled } from "./useSettled";
 import {
   BUBBLE_D,
   BUBBLE_ICON,
-  CHIP_H,
-  CHIP_W,
   bubbleDetail,
   bubbleName,
   bubbleOffsets,
   bubbleStops,
-  chipName,
   edgeKeyOf,
   stopId,
   type BubbleDetail,
@@ -82,7 +79,7 @@ import {
   type BubbleStop,
   type ItemFocus,
 } from "./bubbleRow";
-import { BubbleButtons, ItemList, PortLineList } from "./ItemFocusLayer";
+import { BubbleButtons, PortLineList } from "./ItemFocusLayer";
 import { CapButtons, CapMarchStroke, CapRow } from "./DestinationCaps";
 import { capCandidates, capStops, marchingCaps, type CapMarch, type CapStop } from "./capLayout";
 import { ItemCard } from "./ItemCard";
@@ -123,8 +120,6 @@ const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
 const PILL_MIN_W = 24;
-// ADR-0063 ports: item ports on the card edges, one line per item (the flag removed in build PR 7, 2026-11-05).
-const LAYOUT_OPTIONS = { ports: true } as const;
 /** Why the toolbar's blow-up "Expand all" is disabled: every card here would pass `EXPAND_MAX_CARDS`. */
 const NOTHING_FITS = "Nothing here fits under the cap; open a factory to see its parts.";
 /** A lasso adds a point once the pointer is this far (stage units) from the last one. */
@@ -390,7 +385,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           : factoryScene(graph, target.model, view),
     [target, graph, view, expanded],
   );
-  const overview = useMemo(() => layoutScene(scene, graph.topologyHash, undefined, LAYOUT_OPTIONS), [scene, graph.topologyHash]);
+  const overview = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
   const rates = useMemo(() => minedRates(graph.edges), [graph.edges]);
   // Item focus (ADR-0060 builds PR 3 and 4), behind its flag, here because the picture makes room for the focused line.
   // A focus whose line (or item) left the graph (a poll) clears: lines are found by key, not index.
@@ -398,12 +393,12 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const [itemFocus, setItemFocus] = useState<ItemFocus | null>(null);
   const overviewByKey = useMemo(() => new Map(overview.edges.map((e) => [edgeKeyOf(e.flow), e])), [overview]);
   const focusEdge = itemFocus === null ? undefined : overviewByKey.get(itemFocus.edgeKey);
-  const focus = itemFocusOn && focusEdge !== undefined && focusEdge.bubbles.all.some((i) => i.key === itemFocus!.item) ? itemFocus : null;
+  const focus = itemFocusOn && focusEdge !== undefined && focusEdge.bubbles.items.some((i) => i.key === itemFocus!.item) ? itemFocus : null;
   // Make room (Decision 3): the focused line's box is laid out at the detail card's size. A layout over the budget is not
   // drawn: focus then only dims. Both layouts are remembered, so moving between them costs nothing after the first time.
   const roomFor = focus?.edgeKey ?? null;
   const room = useMemo(
-    () => (roomFor === null ? null : layoutScene(scene, graph.topologyHash, { edgeKey: roomFor, width: FOCUS_CARD_W, height: FOCUS_CARD_H }, LAYOUT_OPTIONS)),
+    () => (roomFor === null ? null : layoutScene(scene, graph.topologyHash, { edgeKey: roomFor, width: FOCUS_CARD_W, height: FOCUS_CARD_H })),
     [scene, graph.topologyHash, roomFor],
   );
   const layout = room !== null && room.placeMs <= FOCUS_LAYOUT_BUDGET_MS ? room : overview;
@@ -488,9 +483,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     focusAfter.current = null;
     el.focus();
   });
-  // Item focus's other state: the line whose "+k" list is open, the bubble stop that holds the tab stop and the one the
-  // keyboard is on (ringed), and what the status line last said.
-  const [listKey, setListKey] = useState<string | null>(null);
+  // Item focus's other state: the bubble stop that holds the tab stop and the one the keyboard is on (ringed), and what
+  // the status line last said.
   // The port whose lines' list is open (ADR-0063 Decision 2: an end label of a port with several lines).
   const [portListId, setPortListId] = useState<string | null>(null);
   const [activeStop, setActiveStop] = useState<string | null>(null);
@@ -521,10 +515,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const reach = useMemo(() => (activeItem === ALL_ITEMS ? null : reachFor(activeItem, layout.flows)), [activeItem, layout]);
   // The drawn lines by key, where they are now (the focused layout's when it makes room).
   const edgeByKey = useMemo(() => new Map(layout.edges.map((e) => [edgeKeyOf(e.flow), e])), [layout]);
-  const listEdge = itemFocusOn && listKey !== null ? edgeByKey.get(listKey) : undefined;
-  // Forget what a poll took away, so a line that comes back does not reopen its list (and take the keyboard), and say so
-  // when focus ended that way. Adjusting state while rendering, guarded so it settles in one extra pass.
-  if (listKey !== null && listEdge === undefined) setListKey(null);
+  // Forget a focus a poll took away, and say so. Adjusting state while rendering, guarded so it settles in one extra pass.
   if (itemFocus !== null && focus === null) {
     setItemFocus(null);
     if (itemFocusOn) setAnnounced("Overview");
@@ -621,7 +612,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
   const clipped = clippedEdges(viewport, layout, stage);
   const overflowing = isClipped(clipped);
-  // The floating card (the group panel, or a line's "+k" list): from lg beside what was clicked, below lg across the
+  // The floating card (the group panel, or a port's line list): from lg beside what was clicked, below lg across the
   // canvas's bottom. It is placed from the view on every render, so it follows a pan or a zoom (closing on a pan would lose
   // what the user was reading for a small move of the picture). Its content's height is measured by CanvasOverlay.
   const wide = useLargeScreen();
@@ -642,7 +633,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     const n = layout.nodes.find((x) => x.ports?.some((p) => p.id === portListId));
     return n?.ports?.find((p) => p.id === portListId)?.label?.box ?? n;
   }, [portListId, layout]);
-  const overlayBox = openLaid ?? (listEdge === undefined ? portListAt : labelBox(listEdge));
+  const overlayBox = openLaid ?? portListAt;
   const overlayPlace = overlayBox === undefined ? null : placeOverlay(screenRect(viewport, overlayBox), overlayH, stage, wide);
 
   // When it opens over what was clicked (no side had room, or below lg the card is in the bottom half), the view moves the
@@ -652,14 +643,12 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   useEffect(() => {
     const large = wideRef.current;
     const laid = layoutRef.current;
-    const n = openKey === null ? undefined : laid.nodes.find((node) => node.key === openKey);
-    const e = n !== undefined || listKey === null ? undefined : laid.edges.find((edge) => edgeKeyOf(edge.flow) === listKey);
-    const box = n ?? (e === undefined ? undefined : labelBox(e));
+    const box = openKey === null ? undefined : laid.nodes.find((node) => node.key === openKey);
     if (box === undefined) return;
     const s = stageRef.current;
     const place = placeOverlay(screenRect(viewRef.current, box), overlayHRef.current, s, large);
     if (place.covers) setView((v) => revealRect(v, box, stageBesideOverlay(place, s, large)));
-  }, [openKey, listKey]);
+  }, [openKey]);
 
   // A bubble that just opened: if the user has moved the view, bring its frame into sight.
   const revealFrame = useRef<string | null>(null);
@@ -811,19 +800,15 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     if (key !== null) ((machine === null ? undefined : machineButtons.current.get(machine)) ?? buttons.current.get(key))?.focus();
   };
 
-  // Item focus (ADR-0060 Decisions 2 and 5). A focused item outside the first three is reached through its line's chip.
+  // Item focus (ADR-0060 Decisions 2 and 5).
   const titleOf = (key: string) => laidByKey.get(key)?.title ?? "";
-  const itemStop = (f: ItemFocus): string => {
-    const e = edgeByKey.get(f.edgeKey);
-    return e !== undefined && e.bubbles.items.some((i) => i.key === f.item) ? stopId(f.edgeKey, f.item) : stopId(f.edgeKey, null);
-  };
   const leaveFocus = () => {
     if (focus === null) return;
     // The card runs its morph backwards to the bubble, then goes (at once with no motion).
     setClosingCard(focus);
     setItemFocus(null);
     setAnnounced("Overview");
-    bubbleButtons.current.get(itemStop(focus))?.focus();
+    bubbleButtons.current.get(stopId(focus.edgeKey, focus.item))?.focus();
   };
   // "Show the whole path" (owner answer 1): the item filter lights the item's supply path, which focus's dimming would hide.
   const showPath = (className: string) => {
@@ -835,9 +820,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // its supply path can be shown (an item the filter knows; never for an unknown item).
   const cardOf = (f: ItemFocus) => {
     const edge = edgeByKey.get(f.edgeKey);
-    const item = edge?.bubbles.all.find((i) => i.key === f.item);
+    const item = edge?.bubbles.items.find((i) => i.key === f.item);
     if (edge === undefined || item === undefined) return null;
-    const text = itemCardText(item, edge.flow, edge.bubbles.all.length - 1, titleOf(edge.flow.from), titleOf(edge.flow.to));
+    const text = itemCardText(item, edge.flow, titleOf(edge.flow.from), titleOf(edge.flow.to));
     const path = item.className !== null && items.some((i) => i.className === item.className) ? item.className : null;
     return { edge, item, text, from: bubbleCentre(edge, item.key), path };
   };
@@ -879,22 +864,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setItemFocus({ edgeKey, item: item.key });
     setAnnounced(`Focused ${item.name ?? "Item unknown"} from ${titleOf(e?.flow.from ?? "")} to ${titleOf(e?.flow.to ?? "")}`);
   };
-  const closeList = () => {
-    const key = listKey;
-    setListKey(null);
-    if (key !== null) bubbleButtons.current.get(stopId(key, null))?.focus();
-  };
-  const openList = (edgeKey: string) => {
-    if (dragged.current) return;
-    if (listKey === edgeKey) {
-      closeList();
-      return;
-    }
-    // The list takes the group panel's place over the canvas.
-    setOpenKey(null);
-    setPortListId(null);
-    setListKey(edgeKey);
-  };
   // ADR-0063 Decision 2: a port's end label. A port of one line focuses that line's item, as its bubble would; a port of
   // several opens the list of its lines (`PortLineList`), each focusable as a bubble is.
   const portLines = (portId: string) => layout.edges.filter((e) => e.srcPort === portId || e.tgtPort === portId);
@@ -915,14 +884,14 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setPortListId(null);
     // Back to the first line's bubble stop: the label itself is a picture, not a stop.
     const first = lines[0];
-    const item = first?.bubbles.all[0];
+    const item = first?.bubbles.items[0];
     if (first !== undefined && item !== undefined) bubbleButtons.current.get(stopId(edgeKeyOf(first.flow), item.key))?.focus();
   };
   const onPortLabel = (port: LaidPort) => {
     if (dragged.current) return;
     const lines = portLines(port.id);
     const only = lines.length === 1 ? lines[0] : undefined;
-    const item = only?.bubbles.all[0];
+    const item = only?.bubbles.items[0];
     if (only !== undefined && item !== undefined) {
       focusItem(edgeKeyOf(only.flow), item);
       return;
@@ -932,35 +901,29 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       return;
     }
     setOpenKey(null);
-    setListKey(null);
     setPortListId(port.id);
   };
   const activateStop = (stop: BubbleStop) => {
     // A key press, not the end of a drag.
     dragged.current = false;
-    if (stop.item === null) {
-      openList(stop.edgeKey);
-      return;
-    }
-    const item = edgeByKey.get(stop.edgeKey)?.bubbles.all.find((i) => i.key === stop.item);
+    const item = edgeByKey.get(stop.edgeKey)?.bubbles.items.find((i) => i.key === stop.item);
     if (item !== undefined) focusItem(stop.edgeKey, item);
   };
-  // A press on the canvas's background (not a bubble, a chip or a card) leaves focus, or else closes the floating card;
+  // A press on the canvas's background (not a bubble or a card) leaves focus, or else closes the floating card;
   // the end of a drag is not a press. The press already moved focus to the viewport, so it stays there (handing it to the
   // card's hidden button would move the view after a click that meant to leave).
   const onCanvasClick = (event: ReactMouseEvent<SVGSVGElement>) => {
     if (dragged.current) return;
     const on = (selector: string) => event.target instanceof Element && event.target.closest(selector) !== null;
     // An end label (ADR-0063) is a target of its own, like a bubble: its click is not a press on the background.
-    if (on("[data-bubble], [data-bubble-more], [data-card], [data-item-card], [data-end-label]")) return;
+    if (on("[data-bubble], [data-card], [data-item-card], [data-end-label]")) return;
     if (focus !== null) {
       leaveFocus();
       return;
     }
-    if ((openKey === null && listKey === null && portListId === null) || on("[data-frame-collapse]")) return;
+    if ((openKey === null && portListId === null) || on("[data-frame-collapse]")) return;
     setOpenKey(null);
     setFeedsKey(null);
-    setListKey(null);
     setPortListId(null);
     viewportRef.current?.focus({ preventScroll: true });
   };
@@ -968,17 +931,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "Escape") {
-      // One thing at a time: a "+k" list, the focused item, the panel, then what is picked, then the last card whose
-      // upstream was hidden.
+      // One thing at a time: a port's line list (ADR-0063 Decision 2), the focused item, the panel, then what is picked,
+      // then the last card whose upstream was hidden.
       if (portListId !== null) {
-        // A port's line list (ADR-0063 Decision 2) closes first, as the "+k" list does.
         event.preventDefault();
         closePortList();
-        return;
-      }
-      if (listEdge !== undefined) {
-        event.preventDefault();
-        closeList();
         return;
       }
       if (focus !== null) {
@@ -1058,9 +1015,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       revealFrame.current = card.bubbleKey;
     } else if (card.kind === "fold") setUnfolded(toggled(unfolded, card.key));
     else {
-      // The group panel takes the "+k" list's or the port line list's place over the canvas (both closed for good, or the
-      // port's list came back when the panel closed and its label's next click only closed the hidden list).
-      setListKey(null);
+      // The group panel takes the port line list's place over the canvas (closed for good, or the port's list came back
+      // when the panel closed and its label's next click only closed the hidden list).
       setPortListId(null);
       setOpenKey(card.key);
       setOpenMachine(null);
@@ -1073,7 +1029,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       activate(card);
       return;
     }
-    setListKey(null);
     setPortListId(null);
     setOpenKey(card.key);
     setOpenMachine(machine.key);
@@ -1172,7 +1127,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     if (dragged.current) return;
     if (card.kind === "factory") onOpenFactory?.(card.key);
     else if (card.kind === "group") {
-      setListKey(null);
       setPortListId(null);
       setOpenKey(card.key);
       setOpenMachine(null);
@@ -1200,7 +1154,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setFolds(open ? { flipped: bubbles } : { flipped: bubbles, machines: new Set() });
   };
 
-  // ADR-0063 Decision 3's states that come with the ports flag. State 2: what the open card feeds and needs (its panel's
+  // ADR-0063 Decision 3's states that came with ports. State 2: what the open card feeds and needs (its panel's
   // button), a walk that does not cross a return flow. State 4: the open card and its hop-1 neighbours, in an opened factory
   // or site (owner answer 2). State 5: an opened factory's groups outside its home site dim, and the groups that make its
   // products are emphasised (owner answers 1 and 3).
@@ -1302,8 +1256,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       if (e === undefined) continue;
       const from = laidByKey.get(e.flow.from)?.title ?? "";
       const to = laidByKey.get(e.flow.to)?.title ?? "";
-      const item = s.item === null ? undefined : e.bubbles.all.find((i) => i.key === s.item);
-      names.set(s.id, item === undefined ? chipName(e.bubbles.more, from, to) : bubbleName(item, e.flow.unit, from, to));
+      const item = e.bubbles.items.find((i) => i.key === s.item);
+      if (item !== undefined) names.set(s.id, bubbleName(item, e.flow.unit, from, to));
     }
     return names;
   }, [stops, edgeByKey, laidByKey]);
@@ -1518,7 +1472,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               )}
       </p>
 
-      {/* The group panel and the "+k" list float over the canvas (CanvasOverlay): they never shrink it or push the page. */}
+      {/* The group panel and a port's line list float over the canvas (CanvasOverlay): they never shrink it or push the page. */}
       <div className="relative">
         <div
           ref={viewportRef}
@@ -1589,9 +1543,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                       const focusable = itemFocusOn
                         ? {
                             focused: focus !== null && focus.edgeKey === key ? focus.item : null,
-                            ringed: keyStop !== null && keyStop.edgeKey === key ? keyStop.item ?? "+" : null,
+                            ringed: keyStop !== null && keyStop.edgeKey === key ? keyStop.item : null,
                             onBubble: (item: BubbleItem) => focusItem(key, item),
-                            onChip: () => openList(key),
                           }
                         : undefined;
                       return (
@@ -1830,7 +1783,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             names={stopNames}
             active={activeStop}
             focus={focus}
-            listOpen={listEdge === undefined ? null : listKey}
             buttons={bubbleButtons}
             onActivate={activateStop}
             onFocusStop={focusStop}
@@ -1878,30 +1830,12 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             />
           </CanvasOverlay>
         )}
-        {overlayPlace !== null && openNode === undefined && listEdge !== undefined && listKey !== null && (
-          <CanvasOverlay key={`items|${listKey}`} place={overlayPlace} onHeight={onOverlayHeight}>
-            <ItemList
-              key={listKey}
-              id={`${panelId}-items`}
-              flow={listEdge.flow}
-              items={listEdge.bubbles.all}
-              from={titleOf(listEdge.flow.from)}
-              to={titleOf(listEdge.flow.to)}
-              focus={focus}
-              onFocusItem={(item) => {
-                dragged.current = false;
-                focusItem(listKey, item);
-              }}
-              onClose={closeList}
-            />
-          </CanvasOverlay>
-        )}
         {overlayPlace !== null && openNode === undefined && itemFocusOn && portListId !== null && portLines(portListId).length > 1 && (
           <CanvasOverlay key={`port|${portListId}`} place={overlayPlace} onHeight={onOverlayHeight}>
             <PortLineList
               key={portListId}
               id={`${panelId}-port-lines`}
-              lines={portLines(portListId).map((e) => ({ edgeKey: edgeKeyOf(e.flow), flow: e.flow, item: e.bubbles.all[0], from: titleOf(e.flow.from), to: titleOf(e.flow.to) }))}
+              lines={portLines(portListId).map((e) => ({ edgeKey: edgeKeyOf(e.flow), flow: e.flow, item: e.bubbles.items[0], from: titleOf(e.flow.from), to: titleOf(e.flow.to) }))}
               focus={focus}
               onFocusItem={(edgeKey, item) => {
                 dragged.current = false;
@@ -1958,9 +1892,9 @@ function MotionSelect({ value, onChange }: { value: MotionPref; onChange: (pref:
   );
 }
 
-/** A label's part in item focus (behind its flag): the focused item's key, the stop the keyboard is on ("+" the chip), and
- *  what a click on a bubble or the chip does. Absent with the flag off: the bubbles are then only a picture. */
-type Focusable = { focused: string | null; ringed: string | null; onBubble: (item: BubbleItem) => void; onChip: () => void };
+/** A label's part in item focus (behind its flag): the focused item's key, the stop the keyboard is on, and what a click
+ *  on a bubble does. Absent with the flag off: the bubbles are then only a picture. */
+type Focusable = { focused: string | null; ringed: string | null; onBubble: (item: BubbleItem) => void };
 
 type EdgeProps = {
   edge: LaidEdge;
@@ -2204,7 +2138,8 @@ function MovingGlyph({ glyph, dim }: { glyph: GlyphCandidate<LaidEdge>; dim: boo
 }
 
 /**
- * A flow's label with a halo: a bubble per item it carries (its icon, up to three, then a "+k" chip) over the short rate
+ * A flow's label with a halo: the bubble of the item it carries (its icon; the middle-bubble fallback when its end labels do
+ * not fit, ADR-0063 Decision 2) over the short rate
  * text (ADR-0060 Decision 1), and for a transport the mode's glyph at rest (the march layer draws it when it moves). Above
  * every line.
  * The words for each item stay in the `<title>` and the outline.
@@ -2255,7 +2190,7 @@ function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }:
         <ItemBubble
           key={item.key}
           item={item}
-          cx={left + at.bubbles[i]}
+          cx={left + at[i]}
           cy={cy}
           detail={detail}
           focused={focusable?.focused === item.key}
@@ -2270,30 +2205,13 @@ function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }:
         <g
           aria-hidden="true"
           data-bubble-mark={stalled}
-          transform={`translate(${left + at.bubbles[row.items.length - 1] + BUBBLE_MARK_AT} ${cy - BUBBLE_MARK_AT})`}
+          transform={`translate(${left + at[row.items.length - 1] + BUBBLE_MARK_AT} ${cy - BUBBLE_MARK_AT})`}
           className="pointer-events-none"
         >
           <circle r={BUBBLE_MARK_R} strokeWidth={1.5} className={cn("fill-surface stroke-current", stateMarkTone(stalled))} />
           <g transform={`scale(${BUBBLE_MARK_SCALE})`}>
             <StateMarkGlyph kind={stalled} />
           </g>
-        </g>
-      )}
-      {at.chip !== null && (
-        <g data-bubble-more={row.more} onClick={focusable?.onChip} className={cn(focusable !== undefined && "cursor-pointer")}>
-          <rect
-            x={left + at.chip - CHIP_W / 2}
-            y={cy - CHIP_H / 2}
-            width={CHIP_W}
-            height={CHIP_H}
-            rx={CHIP_H / 2}
-            className={cn("fill-icon-chip", focusable?.ringed === "+" ? "stroke-accent" : "stroke-line")}
-          />
-          {detail.full && (
-            <text x={left + at.chip} y={cy} textAnchor="middle" dominantBaseline="central" className="fill-surface text-xs">
-              {`+${row.more}`}
-            </text>
-          )}
         </g>
       )}
       {/* The short rate (ADR-0063 amendment, 2026-11-03): shown at rest on a touch screen only (`data-rate`, index.css);
@@ -2905,7 +2823,7 @@ type LegendProps = {
   transport: boolean;
   /** The scene draws a stalled line in marks mode: the stop bar's row. */
   stalled: boolean;
-  /** ADR-0063 Decision 3's rows (with the ports flag), each when the canvas draws its kind: item ports, something dimmed, an emphasised card. */
+  /** ADR-0063 Decision 3's rows, each when the canvas draws its kind: item ports, something dimmed, an emphasised card. */
   ports?: boolean | undefined;
   dimmed?: boolean | undefined;
   emphasis?: boolean | undefined;

@@ -124,12 +124,12 @@ describe("end labels in the layout", () => {
   };
 
   it("draws both end labels on a plain chain's lines, and no middle bubble for them", () => {
-    const l = layoutScene(chain, undefined, undefined, { ports: true });
+    const l = layoutScene(chain);
     expect(l.edges.every((e) => e.endLabels !== undefined)).toBe(true);
   });
 
   it("never lets a label meet a card or another label, here and on the demo's iron works", () => {
-    for (const l of [layoutScene(chain, undefined, undefined, { ports: true }), layoutScene(demoIron().scene, demoIron().hash, undefined, { ports: true })]) {
+    for (const l of [layoutScene(chain), layoutScene(demoIron().scene, demoIron().hash)]) {
       const labels = labelsOf(l);
       for (const { id, box } of labels) {
         for (const n of l.nodes) expect(overlap(box, boxOf(n)), `${id} on ${n.key}`).toBe(false);
@@ -138,26 +138,25 @@ describe("end labels in the layout", () => {
     }
   });
 
-  it("records how many of the demo's lines draw end labels, and how much wider the picture is", () => {
+  it("records how many of the demo's lines draw end labels, and how wide the picture is", () => {
     const { scene, hash } = demoIron();
-    const off = layoutScene(scene, hash);
     clearLayoutMemo();
-    const on = layoutScene(scene, hash, undefined, { ports: true });
+    const on = layoutScene(scene, hash);
     const labelled = on.edges.filter((e) => e.endLabels !== undefined).length;
-    console.info(`[ADR-0063 end labels] demo iron works: ${labelled} of ${on.edges.length} lines draw end labels; width ${Math.round(off.width)} to ${Math.round(on.width)} (ports off to on)`);
+    console.info(`[ADR-0063 end labels] demo iron works: ${labelled} of ${on.edges.length} lines draw end labels; width ${Math.round(on.width)}`);
     expect(labelled).toBeGreaterThan(0);
   });
 
   it("keeps the placement when only the rates move (bands come from names and a fixed allowance)", () => {
-    const a = layoutScene(chain, undefined, undefined, { ports: true });
+    const a = layoutScene(chain);
     const moved: Scene = { ...chain, flows: chain.flows.map((f) => ({ ...f, ratePerMinute: (f.ratePerMinute ?? 0) + 1 })) };
-    const b = layoutScene(moved, undefined, undefined, { ports: true });
+    const b = layoutScene(moved);
     expect(b.nodes.map((n) => [n.key, n.x, n.y])).toEqual(a.nodes.map((n) => [n.key, n.x, n.y]));
     expect(b.width).toBe(a.width);
   });
 
   it("puts line ends on the drawn card's edges and a card with ports on one side only keeps no band on the other", () => {
-    const l = layoutScene(chain, undefined, undefined, { ports: true });
+    const l = layoutScene(chain);
     const byKey = new Map(l.nodes.map((n) => [n.key, n]));
     for (const e of l.edges) {
       const from = byKey.get(e.flow.from)!;
@@ -170,10 +169,5 @@ describe("end labels in the layout", () => {
     expect(a.ports!.every((p) => p.side === "r")).toBe(true);
     expect(a.x).toBeGreaterThanOrEqual(0);
     for (const n of l.nodes) expect(n.x + n.width).toBeLessThanOrEqual(l.width);
-  });
-
-  it("draws no end labels with ports off", () => {
-    const l = layoutScene(chain);
-    expect(l.edges.every((e) => e.endLabels === undefined)).toBe(true);
   });
 });
