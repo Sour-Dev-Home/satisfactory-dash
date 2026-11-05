@@ -151,9 +151,11 @@
   --spacing-map: 60svh;
   --spacing-map-min: 320px;
   /* The planner canvas's floor: a short drawing keeps a small canvas instead of 320 px of empty space (ADR-0055). */
-  --spacing-graph-min: 400px;
-  /* The planner canvas's ceiling from sm up: most of the screen, so a big factory shows more of itself. Phones keep
-     --spacing-map, since the canvas takes touch drags and the page needs room to scroll past it. */
+  --spacing-graph-min: 200px;
+  /* The planner canvas's floor and ceiling from sm up: most of the screen, so a big factory shows more of itself. Phones
+     keep the ones above (--spacing-map as the ceiling), since the canvas takes touch drags and the page needs room to
+     scroll past it. */
+  --spacing-graph-min-wide: 400px;
   --spacing-graph-max: 90svh;
   --spacing-overview-rail: 17rem;
   /* The planner graph (ADR-0050): the side panel's width. */
