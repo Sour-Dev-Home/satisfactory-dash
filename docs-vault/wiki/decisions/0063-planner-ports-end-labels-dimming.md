@@ -363,7 +363,7 @@ is not flagged: it changes how the two existing dim states look (an accessibilit
 | 2 | Ports: model, layout and drawing (**built** behind the flag, 2026-11-05: see "Build note, PR 2") | `ports.ts` (pure: sides from `returnFlows`, the fold to "+N", order by the router), `canvasScene.ts` (`bundleFlows` and `edgeKeyOf` by item when the flag is on), `layoutSite.ts` (`cardSize`, peer rule), `orthogonalRoute.ts` (sides as input, ends at port heights, same-port levels in `free`, track ties), `SiteGraph.tsx` (port discs, both arrowhead forms behind the flag, trims from the disc's edge, the stop bar at the port), `marching.ts` (`marchHoles`), `plannerPrefs.ts` (the flag), `frontend-planner-map.md` | Unit tests: one port per item per side, return ports, "+N" past 6, one line per item; ADR-0059's metrics test with ports on (no edge through a card, crossings within 10%); the layout benchmarks recorded here; flag off draws exactly today's canvas (baselines unchanged); `test-hunter`, `ui-reviewer` | Demo world: a group with 7 inputs (the fold), a fan-out, a loop, a train on a port |
 | 3 | End labels and the fallback (the rate row in `shortRateText`'s form and shown only while highlighted with a mouse, per the amendment) (**built** behind the flag, 2026-11-05: see "Build note, PR 3") | `endLabels.ts` (pure: label words, bands, `endLabelFit`), `layoutSite.ts` (bands to dagre, the off-centre card in its box), `orthogonalRoute.ts` (left and right column reach, tracks and straightening outside the bands), `SiteGraph.tsx` (labels, the empty middle box, fallback bubbles, level of detail), the port-line list in the overlay | Unit tests of the fit rule (a long line gets two labels, a squeezed one its bubble, the grid none) and of the `PORT_PITCH` inequality; no label meets a card, cap, pill or other label on the dense scenes; picture width recorded; layout benchmarks again; `test-hunter`, `ui-reviewer` | A pair of cards in a narrow frame (the fallback), an unknown-item line |
 | 4 | Motion, focus targets and frame times (**built**, 2026-11-05: see "Build note, PR 4") | `marching.ts`, `capLayout.ts` and `glyphMotion.ts` (lit candidates only), `ItemFocusLayer.tsx` (stops unchanged; the port-line list's Escape), e2e frame-time and pan-zoom records | The regression bound with ports on; keyboard reaches every line with labels drawn; axe | `planner-large` with the flag on |
-| 5 | Focus states and the legend | `focusSet.ts` (states 2, 4, 5 and emphasis, per the owner's answers, ordered after the highlight 3a), `graphModel.ts` (`reachFromCard`), `GroupPanel.tsx` ("Show what ... feeds and needs"), the status line, `Legend` rows | Unit tests per state and their order; e2e states `planner-dim-context`, `planner-dim-select`, `planner-dim-path`; axe with dimmed text; `ui-reviewer` | Demo factory with a group outside its home site |
+| 5 | Focus states and the legend (**built** behind the flag, 2026-11-05: see "Build note, PR 5") | `focusSet.ts` (states 2, 4, 5 and emphasis, per the owner's answers, ordered after the highlight 3a), `graphModel.ts` (`reachFromCard`), `GroupPanel.tsx` ("Show what ... feeds and needs"), the status line, `Legend` rows | Unit tests per state and their order; e2e states `planner-dim-context`, `planner-dim-select`, `planner-dim-path`; axe with dimmed text; `ui-reviewer` | Demo factory with a group outside its home site |
 | 6 | Demo and review | demo world, e2e states (`planner-ports`, `planner-ports-overview`, `planner-ports-fallback`), baselines in CI's image (`npm run baselines`) | `ui-reviewer`; the owner reviews on the demo | The demo's own world, never the fixtures |
 | 7 | Flag removed | `plannerPrefs.ts`, every flag-off branch, the "+k" chip and its list (ADR-0060 build PR 2's chip), this ADR's note | After the owner's demo review only; baselines | — |
 
@@ -684,3 +684,28 @@ entry fall away); whether the highlight should dim in PR 1's colours is a new qu
 
   Both bounds hold with ports on: marching within twice Motion Off's p95 plus a frame (33.3 against 50), and a pan and zoom
   within twice the ports-off run's plus a frame (desktop 50 against 117, mobile 33.3 against 50). The e2e test keeps both.
+
+## Build note, PR 5 (2026-11-05): the focus states and the legend, behind `planner.ports`
+
+- **`focusSet(focused, reach, more)`** takes the new states in `more` and returns which state applies, with `emphasised`;
+  the order is the table's: item focus, what a card feeds and needs, the item filter, a selected card, an opened factory's
+  context. A line is lit when both its cards are (states 4 and 5); under a walk (2, 3) when the walk lit it; in item focus
+  only the focused line. States 1 and 3 are unchanged and unflagged; 2, 4 and 5 need the flag.
+- **State 2:** `reachFromCard` (`graphModel.ts`) walks both ways from the card over `layout.flows`, never across a return
+  flow (`returnFlows`). The group panel's "Show what <group> feeds and needs" (`aria-pressed`) turns it on; it holds only while
+  that panel is open, so the panel's Close, a background press or opening another group ends it, and Escape ends it before
+  it closes the panel.
+- **State 4:** the open group (at a factory or site level, never the overview) and its hop-1 neighbours; the lit lines are
+  the ones between it and them (a line between two neighbours is not its own).
+- **State 5** (`factoryContextOf`): in an opened factory, a card dims when every group it stands for is outside the home
+  site (`remoteInfo`), and a card is emphasised when one of its groups makes a factory product (by class). Emphasis is the
+  card's border in `stroke-fg-strong`, 2 wide, and its output ports' rings likewise; the keyboard's ring and a pick's tint
+  win over it. With nothing outside the home site, nothing dims but the product cards are still emphasised.
+- **Words:** the status line stays mounted with the flag on and says "Showing what <group> feeds and needs: 12 of 40 cards"
+  or "Showing <group> and its neighbours"; state 5 is said once in the canvas's accessible name ("2 groups outside the home
+  site are dimmed."), not announced.
+- **Legend** (each row only when the canvas draws its kind, with the flag): "port: an item in (left) or out (right)",
+  "dimmed: outside the focus" (a `--color-graph-dim-line` line), "heavier border: makes the factory's product". Lower case
+  like the legend's other rows.
+- **e2e states:** `planner-dim-select`, `planner-dim-path` and `planner-dim-context` (with the flag in the state's storage),
+  each screenshotted and axe-checked by `states.spec.ts`.
