@@ -60,6 +60,31 @@ describe("motionPathAround", () => {
   it("is null when the whole route lies in the box (the glyph then stays at rest)", () => {
     expect(motionPathAround([{ x: 0, y: 0 }, { x: 10, y: 0 }], { x: -5, y: -5, width: 20, height: 10 }, 2)).toBeNull();
   });
+
+  // ADR-0063 PR 7a: several boxes (a line's end labels beside its ports).
+  const ROUTE = [{ x: 0, y: 0 }, { x: 300, y: 0 }];
+  const at = (x: number, w: number) => ({ x, y: -10, width: w, height: 20 });
+
+  it("leaps each of several boxes, in order, and agrees with one box given alone or as a one-item list", () => {
+    expect(motionPathAround(ROUTE, [at(50, 20), at(200, 20)], 0)).toBe("M0 0 L50 0 M70 0 L200 0 M220 0 L300 0");
+    expect(motionPathAround(ROUTE, [at(50, 20)], 0)).toBe(motionPathAround(ROUTE, at(50, 20), 0));
+  });
+
+  it("copes with overlapping and nested boxes, and with boxes given in any order", () => {
+    const d = motionPathAround(ROUTE, [at(50, 40), at(70, 40)], 0);
+    expect(d).toBe("M0 0 L50 0 M110 0 L300 0");
+    expect(motionPathAround(ROUTE, [at(70, 40), at(50, 40)], 0)).toBe(d);
+    expect(motionPathAround(ROUTE, [at(50, 100), at(80, 10)], 0)).toBe("M0 0 L50 0 M150 0 L300 0");
+  });
+
+  it("is null when the boxes together cover the whole route, though none does alone", () => {
+    expect(motionPathAround(ROUTE, [at(-5, 160), at(150, 160)], 0)).toBeNull();
+  });
+
+  it("is null for an empty path whatever the boxes, and keeps the whole route for no box at all", () => {
+    expect(motionPathAround([], [at(0, 10), at(20, 10)], 1)).toBeNull();
+    expect(motionPathAround(ROUTE, [], 1)).toBe("M0 0 L300 0");
+  });
 });
 
 const FIXTURE: ProductionGraph = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
