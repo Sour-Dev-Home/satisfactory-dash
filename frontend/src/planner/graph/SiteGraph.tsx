@@ -9,8 +9,8 @@ import type { FactoryTree } from "../factoryTree";
 import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { TOO_LARGE_TO_EXPAND, expandAllKeys, factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
-import { focusSet } from "./focusSet";
-import { minedRates, reachFor, siteItems } from "./graphModel";
+import { factoryContextOf, focusSet } from "./focusSet";
+import { minedRates, reachFor, reachFromCard, siteItems } from "./graphModel";
 import type { FactoryModel } from "./hierarchy";
 import { BuildingGlyph, GLYPH_BOX } from "./buildingGlyphs";
 import type { GlyphKind } from "./buildingIcons";
@@ -39,6 +39,7 @@ import {
   isTransport,
   labelBox,
   layoutScene,
+  returnFlows,
   FOCUS_CARD_H,
   FOCUS_CARD_W,
   FOCUS_LAYOUT_BUDGET_MS,
@@ -456,6 +457,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const setView = (change: View | ((v: View) => View)) => setMoved(typeof change === "function" ? change(viewRef.current) : change);
   const [item, setItem] = useState(ALL_ITEMS);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  // ADR-0063 Decision 3, state 2: the card whose "Show what … feeds and needs" is on (only while its panel is open).
+  const [feedsKey, setFeedsKey] = useState<string | null>(null);
   // The machine card (`machineCardKey`) whose click opened the group panel: the panel marks it, and closing returns there.
   const [openMachine, setOpenMachine] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
@@ -804,6 +807,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     const machine = openMachine;
     setOpenKey(null);
     setOpenMachine(null);
+    setFeedsKey(null);
     if (key !== null) ((machine === null ? undefined : machineButtons.current.get(machine)) ?? buttons.current.get(key))?.focus();
   };
 
@@ -945,6 +949,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     }
     if ((openKey === null && listKey === null && portListId === null) || on("[data-frame-collapse]")) return;
     setOpenKey(null);
+    setFeedsKey(null);
     setListKey(null);
     setPortListId(null);
     viewportRef.current?.focus({ preventScroll: true });
@@ -969,6 +974,12 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       if (focus !== null) {
         event.preventDefault();
         leaveFocus();
+        return;
+      }
+      // ADR-0063 Decision 3, state 2: "what … feeds and needs" ends before its panel closes.
+      if (feedsKey !== null && feedsKey === openKey) {
+        event.preventDefault();
+        setFeedsKey(null);
         return;
       }
       if (openKey !== null) {
@@ -1175,11 +1186,59 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setFolds(open ? { flipped: bubbles } : { flipped: bubbles, machines: new Set() });
   };
 
-  // What is lit and what dims (ADR-0063 Decision 3): item focus is hop-1 (owner answer 1), else the item filter decides.
-  const lights = useMemo(
-    () => focusSet(focus !== null && focusEdge !== undefined ? { edgeKey: focus.edgeKey, from: focusEdge.flow.from, to: focusEdge.flow.to } : null, reach),
-    [focus, focusEdge, reach],
+  // ADR-0063 Decision 3's states that come with the ports flag. State 2: what the open card feeds and needs (its panel's
+  // button), a walk that does not cross a return flow. State 4: the open card and its hop-1 neighbours, in an opened factory
+  // or site (owner answer 2). State 5: an opened factory's groups outside its home site dim, and the groups that make its
+  // products are emphasised (owner answers 1 and 3).
+  const flowReturns = useMemo(
+    () =>
+      returnFlows(
+        layout.nodes.map((n) => n.key),
+        layout.flows,
+      ),
+    [layout],
   );
+  // State 2 holds only while its card's panel is open: opening another card (or none) ends it for good, so reopening the
+  // first card does not bring it back.
+  if (feedsKey !== null && feedsKey !== openKey) setFeedsKey(null);
+  const cardReach = useMemo(
+    () => (portsOn && feedsKey !== null && feedsKey === openKey && laidByKey.has(feedsKey) ? reachFromCard(feedsKey, layout.flows, flowReturns) : null),
+    [portsOn, feedsKey, openKey, laidByKey, layout, flowReturns],
+  );
+  const selectedCard = useMemo(() => {
+    if (!portsOn || scene.level === "overview" || openKey === null || !laidByKey.has(openKey)) return null;
+    const neighbours = new Set<string>();
+    for (const f of layout.flows) {
+      if (f.from === openKey) neighbours.add(f.to);
+      if (f.to === openKey) neighbours.add(f.from);
+    }
+    neighbours.delete(openKey);
+    return { key: openKey, neighbours };
+  }, [portsOn, scene.level, openKey, laidByKey, layout]);
+  const factoryContext = useMemo(() => (portsOn && target.kind === "factory" ? factoryContextOf(graph, target.model, layout.nodes) : null), [portsOn, target, graph, layout]);
+
+  // What is lit, what dims and what is emphasised (ADR-0063 Decision 3), in its states' order: item focus (hop-1, owner
+  // answer 1), what a card feeds and needs, the item filter, a selected card, an opened factory's context.
+  const lights = useMemo(
+    () =>
+      focusSet(focus !== null && focusEdge !== undefined ? { edgeKey: focus.edgeKey, from: focusEdge.flow.from, to: focusEdge.flow.to } : null, reach, {
+        cardReach,
+        selected: selectedCard,
+        context: factoryContext,
+      }),
+    [focus, focusEdge, reach, cardReach, selectedCard, factoryContext],
+  );
+  // State 5 is the default context, said once in the canvas's accessible name rather than announced (Decision 4).
+  const outsideCount = factoryContext?.outside.size ?? 0;
+  const contextNote =
+    lights.state === 5 && outsideCount > 0 ? `${outsideCount} ${outsideCount === 1 ? "group" : "groups"} outside the home site ${outsideCount === 1 ? "is" : "are"} dimmed.` : null;
+  // The status line's words for states 2 and 4 (Decision 4: "Showing what <card> feeds and needs: 12 of 40 cards").
+  const dimWords =
+    lights.state === 2 && cardReach !== null && feedsKey !== null
+      ? `Showing what ${titleOf(feedsKey)} feeds and needs: ${cardReach.nodes.size} of ${layout.nodes.length} cards`
+      : lights.state === 4 && openKey !== null
+        ? `Showing ${titleOf(openKey)} and its neighbours`
+        : null;
   const lit = (key: string) => lights.card(key);
   const edgeLit = (e: LaidEdge) => lights.edge(e);
 
@@ -1402,13 +1461,15 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         {(transports.length > 0 || marchable.length > 0 || capMarchable.length > 0) && <MotionSelect value={motionPref} onChange={setMotionPref} />}
         {/* With item focus on, the status line stays mounted (a live region added with its words is often not read) and
             also says what focus did; the item filter's words show, focus's are for screen readers. */}
-        {(reach !== null || itemFocusOn) && (
-          <span role="status" className={reach === null ? "sr-only" : "w-full text-sm text-muted sm:w-auto"}>
+        {(reach !== null || itemFocusOn || portsOn) && (
+          <span role="status" className={reach === null && dimWords === null ? "sr-only" : "w-full text-sm text-muted sm:w-auto"}>
             {reach !== null && (
               <>
                 {reach.nodes.size} of {layout.nodes.length} {scene.level === "overview" ? "factories" : scene.level === "site" ? "groups" : "cards"} carry or feed this item.
               </>
             )}
+            {/* ADR-0063 Decision 4: what a card feeds and needs, or a selected card and its neighbours (with the ports flag). */}
+            {reach === null && dimWords !== null && <>{dimWords}</>}
             {itemFocusOn && announced !== "" && <span className="sr-only">{` ${announced}`}</span>}
           </span>
         )}
@@ -1459,7 +1520,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           <svg
             ref={svgRef}
             role="img"
-            aria-label={sceneSummary(scene, loops)}
+            aria-label={contextNote === null ? sceneSummary(scene, loops) : `${sceneSummary(scene, loops)} ${contextNote}`}
             viewBox={`0 0 ${stage.width} ${stage.height}`}
             height={canvasH}
             preserveAspectRatio="xMidYMid meet"
@@ -1560,6 +1621,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   ringedCap={keyCap !== null && keyCap.nodeKey === n.key ? keyCap.slot : null}
                   onCap={() => showCapDetail(n.card)}
                   detail={detail}
+                  emphasised={lights.emphasised(n.key)}
                 />
               ))}
               <EndLabels nodes={layout.nodes} lit={lit} detail={detail} onLabel={itemFocusOn ? onPortLabel : undefined} />
@@ -1801,6 +1863,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               machineId={openMachine === null ? undefined : (machineWords.get(openNode.key)?.find((m) => m.key === openMachine)?.id ?? undefined)}
               onClose={close}
               onPopOut={onPopOut === undefined ? undefined : () => onPopOut(openNode.key)}
+              feedsAndNeeds={
+                portsOn ? { on: feedsKey === openNode.key, onToggle: () => setFeedsKey((k) => (k === openNode.key ? null : openNode.key)) } : undefined
+              }
             />
           </CanvasOverlay>
         )}
@@ -1839,7 +1904,14 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         )}
       </div>
 
-      <Legend modes={modes} transport={transports.length > 0} stalled={marks && layout.edges.some((e) => e.flow.stalled !== undefined)} />
+      <Legend
+        modes={modes}
+        transport={transports.length > 0}
+        stalled={marks && layout.edges.some((e) => e.flow.stalled !== undefined)}
+        ports={portsOn && layout.nodes.some((n) => (n.ports?.length ?? 0) > 0)}
+        dimmed={portsOn && lights.dims}
+        emphasis={portsOn && layout.nodes.some((n) => lights.emphasised(n.key))}
+      />
     </div>
   );
 }
@@ -2346,18 +2418,21 @@ const LABEL_HIT_MIN = 24;
  * click on one is a click on the card, and no new focusable element. Its words are in its `<title>` for pointer hover, and
  * already in the card's description and each line's button. Below `BUBBLE_DETAIL_ZOOM` only the disc.
  */
-function PortDiscs({ ports, detail }: { ports: readonly LaidPort[] | undefined; detail: BubbleDetail }) {
+function PortDiscs({ ports, detail, emphasised = false }: { ports: readonly LaidPort[] | undefined; detail: BubbleDetail; emphasised?: boolean | undefined }) {
   if (ports === undefined || ports.length === 0) return null;
   return (
     <g data-ports="">
       {ports.map((p) => (
-        <PortDisc key={p.id} port={p} detail={detail} />
+        <PortDisc key={p.id} port={p} detail={detail} heavy={emphasised && p.dir === "out"} />
       ))}
     </g>
   );
 }
 
-function PortDisc({ port: p, detail }: { port: LaidPort; detail: BubbleDetail }) {
+/** The heavier border of a card that makes its factory's product, and of its output ports' rings (ADR-0063 Decision 3). */
+const EMPHASIS_W = 2;
+
+function PortDisc({ port: p, detail, heavy }: { port: LaidPort; detail: BubbleDetail; heavy: boolean }) {
   const only = p.item === "+" ? undefined : p.items[0];
   const url = only?.className === null || only?.className === undefined ? undefined : itemIconUrl(only.className, 32);
   const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
@@ -2366,7 +2441,7 @@ function PortDisc({ port: p, detail }: { port: LaidPort; detail: BubbleDetail })
   return (
     <g data-port={p.item} data-port-side={p.side} data-port-dir={p.dir} data-port-returning={p.returning ? "" : undefined} data-icon={!detail.full ? "disc" : picture ? "image" : "text"}>
       <title>{portTitle(p)}</title>
-      <circle cx={p.x} cy={p.y} r={PORT_D / 2} strokeWidth={1} className="fill-icon-chip stroke-graph-card-edge" />
+      <circle cx={p.x} cy={p.y} r={PORT_D / 2} strokeWidth={heavy ? EMPHASIS_W : 1} className={cn("fill-icon-chip", heavy ? "stroke-fg-strong" : "stroke-graph-card-edge")} />
       {picture ? (
         <image href={url} x={p.x - PORT_ICON / 2} y={p.y - PORT_ICON / 2} width={PORT_ICON} height={PORT_ICON} onError={() => setFailedUrl(url)} />
       ) : (
@@ -2448,6 +2523,7 @@ function CardView({
   ringedCap,
   onCap,
   detail,
+  emphasised = false,
 }: {
   node: LaidNode;
   finding: number;
@@ -2476,6 +2552,8 @@ function CardView({
   onCap: () => void;
   /** The zoom's level of detail, for its ports' discs (ADR-0063). */
   detail: BubbleDetail;
+  /** ADR-0063 Decision 3, state 5: it makes the opened factory's product, so a heavier border (and its output ports' rings). */
+  emphasised?: boolean | undefined;
 }) {
   const card = n.card;
   if (card.machines?.open === true && machines !== undefined) {
@@ -2519,8 +2597,9 @@ function CardView({
         width={n.width}
         height={n.height}
         rx={8}
-        strokeWidth={ringed || picked ? 3 : 1}
-        className={cn("fill-surface-2", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-line")}
+        strokeWidth={ringed || picked ? 3 : emphasised ? EMPHASIS_W : 1}
+        data-emphasised={emphasised && !ringed && !picked ? "" : undefined}
+        className={cn("fill-surface-2", ringed ? "stroke-accent" : picked ? "stroke-info" : emphasised ? "stroke-fg-strong" : "stroke-line")}
       />
       {picked && <rect width={n.width} height={n.height} rx={8} className="pointer-events-none fill-info-soft" />}
       <CardIcon iconUrl={n.iconUrl} glyph={card.glyph} />
@@ -2608,7 +2687,7 @@ function CardView({
           </text>
         </g>
       )}
-      <PortDiscs ports={n.ports} detail={detail} />
+      <PortDiscs ports={n.ports} detail={detail} emphasised={emphasised} />
     </g>
   );
 }
@@ -2807,6 +2886,10 @@ type LegendProps = {
   transport: boolean;
   /** The scene draws a stalled line in marks mode: the stop bar's row. */
   stalled: boolean;
+  /** ADR-0063 Decision 3's rows (with the ports flag), each when the canvas draws its kind: item ports, something dimmed, an emphasised card. */
+  ports?: boolean | undefined;
+  dimmed?: boolean | undefined;
+  emphasis?: boolean | undefined;
 };
 
 /**
@@ -2892,7 +2975,7 @@ function LegendLine({ edge }: { edge: EdgeStyle }) {
   );
 }
 
-function LegendSamples({ modes, transport, stalled }: LegendProps) {
+function LegendSamples({ modes, transport, stalled, ports, dimmed, emphasis }: LegendProps) {
   return (
     <ul aria-label="Line styles" className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-sm text-muted">
       {LEGEND.map(({ label, edge }) => (
@@ -2913,6 +2996,30 @@ function LegendSamples({ modes, transport, stalled }: LegendProps) {
         <li className="flex items-center gap-2">
           <LegendStopBar />
           <span>stalled</span>
+        </li>
+      )}
+      {ports === true && (
+        <li data-legend="port" className="flex items-center gap-2">
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="size-5 shrink-0">
+            <circle cx={12} cy={12} r={PORT_D / 2} strokeWidth={1} className="fill-icon-chip stroke-graph-card-edge" />
+          </svg>
+          <span>port: an item in (left) or out (right)</span>
+        </li>
+      )}
+      {dimmed === true && (
+        <li data-legend="dimmed" className="flex items-center gap-2">
+          <svg aria-hidden="true" viewBox="0 0 32 6" className="h-1.5 w-8 shrink-0">
+            <line x1={1} y1={3} x2={31} y2={3} strokeWidth={LINE_W_BASE} className="stroke-graph-dim-line" />
+          </svg>
+          <span>dimmed: outside the focus</span>
+        </li>
+      )}
+      {emphasis === true && (
+        <li data-legend="emphasis" className="flex items-center gap-2">
+          <svg aria-hidden="true" viewBox="0 0 32 20" className="h-5 w-8 shrink-0">
+            <rect x={2} y={2} width={28} height={16} rx={4} strokeWidth={EMPHASIS_W} className="fill-surface-2 stroke-fg-strong" />
+          </svg>
+          <span>heavier border: makes the factory's product</span>
         </li>
       )}
       {modes.map((mode) => (

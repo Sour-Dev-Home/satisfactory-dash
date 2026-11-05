@@ -319,6 +319,31 @@ export function reachFor(itemClassName: string, edges: readonly Pick<PlannerEdge
   return { nodes: new Set([...down, ...up]), edges: lit };
 }
 
+/**
+ * What a card feeds and needs (ADR-0063 Decision 3, state 2; ADR-0050's "everything this group feeds or depends on"): the
+ * card, everything downstream of it and everything upstream, over all items. The walk does not cross a return flow
+ * (`returns`, indexes into `edges`), so a loop does not light the whole factory. A connection is lit when both its ends are
+ * on one walk (the card's own lines included).
+ */
+export function reachFromCard(cardKey: string, edges: readonly Pick<PlannerEdge, "from" | "to">[], returns: ReadonlySet<number> = new Set()): Reach {
+  const forward = new Map<string, string[]>();
+  const backward = new Map<string, string[]>();
+  const push = (m: Map<string, string[]>, k: string, v: string) => m.set(k, [...(m.get(k) ?? []), v]);
+  edges.forEach((e, i) => {
+    if (returns.has(i)) return;
+    push(forward, e.from, e.to);
+    push(backward, e.to, e.from);
+  });
+  const down = closure([cardKey], forward);
+  const up = closure([cardKey], backward);
+  const lit = new Set<number>();
+  edges.forEach((e, i) => {
+    if (returns.has(i)) return;
+    if ((down.has(e.from) && down.has(e.to)) || (up.has(e.from) && up.has(e.to))) lit.add(i);
+  });
+  return { nodes: new Set([...down, ...up]), edges: lit };
+}
+
 /** The canvas's accessible name: counts only, since the outline carries the detail. */
 export function graphSummary(nodes: readonly PlannerNode[], edges: readonly PlannerEdge[], siteName: string): string {
   const loops = nodes.filter((n) => n.loop).length;
