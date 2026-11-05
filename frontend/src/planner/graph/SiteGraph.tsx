@@ -955,6 +955,12 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     if (event.key === "Escape") {
       // One thing at a time: a "+k" list, the focused item, the panel, then what is picked, then the last card whose
       // upstream was hidden.
+      if (portListId !== null) {
+        // A port's line list (ADR-0063 Decision 2) closes first, as the "+k" list does.
+        event.preventDefault();
+        closePortList();
+        return;
+      }
       if (listEdge !== undefined) {
         event.preventDefault();
         closeList();
@@ -1170,7 +1176,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   };
 
   // What is lit and what dims (ADR-0063 Decision 3): item focus is hop-1 (owner answer 1), else the item filter decides.
-  const lights = focusSet(focus !== null && focusEdge !== undefined ? { edgeKey: focus.edgeKey, from: focusEdge.flow.from, to: focusEdge.flow.to } : null, reach);
+  const lights = useMemo(
+    () => focusSet(focus !== null && focusEdge !== undefined ? { edgeKey: focus.edgeKey, from: focusEdge.flow.from, to: focusEdge.flow.to } : null, reach),
+    [focus, focusEdge, reach],
+  );
   const lit = (key: string) => lights.card(key);
   const edgeLit = (e: LaidEdge) => lights.edge(e);
 
@@ -1239,14 +1248,17 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // with Motion off, under reduced motion (even with Motion on, as its CSS would stop them anyway), in a hidden tab, or during
   // a make-room glide (the march layer does not follow the gliding cards). Chosen per layout, then per settled view. They are
   // drawn by `MarchLayer`, not the canvas, so their repaint each frame is the layer's alone.
-  const marchable = useMemo(() => marchCandidates(layout.edges), [layout]);
+  // Only what is lit moves (ADR-0063 Decision 3): a dimmed line does not march, a dimmed cap does not move, a dimmed line's
+  // glyph stays at rest, so each budget goes to what is lit.
+  const litEdges = useMemo(() => (lights.dims ? layout.edges.filter((e) => lights.edge(e)) : layout.edges), [layout, lights]);
+  const marchable = useMemo(() => marchCandidates(litEdges), [litEdges]);
   const viewNow = useMemo(() => ({ view: viewport, stage }), [viewport, stage]);
   const settledView = useSettled(viewNow, MARCH_SETTLE_MS);
   // The transport glyphs that move (ADR-0055 PR 8b; amendment build PR 4): in the settled view, at most GLYPH_MOVE_MAX, never
   // in a hidden tab, during a glide or a lasso, nor (marks mode) on a stalled line. Motion's On still moves them under reduced
   // motion, as before; System follows it. They ride their line in `MarchLayer`: an `animateMotion` inside the canvas repainted
   // the whole canvas every frame, as a marching dash did (#808).
-  const glyphMovable = useMemo(() => glyphCandidates(layout.edges, marks), [layout, marks]);
+  const glyphMovable = useMemo(() => glyphCandidates(litEdges, marks), [litEdges, marks]);
   const glyphsMoving = useMemo(
     () => (animate && visible && ghost === null && lasso === null ? movingGlyphs(glyphMovable, settledView.view, settledView.stage) : []),
     [animate, visible, ghost, lasso, glyphMovable, settledView],
@@ -1261,7 +1273,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   );
   // The destination caps that move (ADR-0062 Decision 1): by the same rules and the same settled view as the lines, in the
   // same march layer, under their own budget (`CAP_MARCH_MAX`), so a cap never takes a line's place under `MARCH_MAX`.
-  const capMarchable = useMemo(() => capCandidates(layout.nodes), [layout]);
+  const capMarchable = useMemo(() => capCandidates(lights.dims ? layout.nodes.filter((n) => lights.card(n.key)) : layout.nodes), [layout, lights]);
   const capsMarching = useMemo(
     () => (animate && !reduced && visible && ghost === null && lasso === null ? marchingCaps(capMarchable, settledView.view, settledView.stage) : []),
     [animate, reduced, visible, ghost, lasso, capMarchable, settledView],

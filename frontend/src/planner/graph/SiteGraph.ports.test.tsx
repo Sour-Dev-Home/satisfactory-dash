@@ -114,6 +114,11 @@ describe("end labels, flag on", () => {
       const list = await screen.findByRole("region", { name: /^\d+ lines of / });
       fireEvent.keyDown(list, { key: "Escape" });
       expect(screen.queryByRole("region", { name: /^\d+ lines of / })).toBeNull();
+      // ADR-0063 build PR 4: the canvas's Escape chain closes it too, first, with the keyboard outside the panel.
+      fireEvent.click(svg.querySelector('[data-end-label]:not([data-lines="1"])')!);
+      await screen.findByRole("region", { name: /^\d+ lines of / });
+      fireEvent.keyDown(svg, { key: "Escape" });
+      expect(screen.queryByRole("region", { name: /^\d+ lines of / })).toBeNull();
     }
   });
 });

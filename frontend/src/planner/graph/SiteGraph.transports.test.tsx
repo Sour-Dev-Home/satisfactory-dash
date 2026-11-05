@@ -11,7 +11,7 @@ import { plannerTransportsLarge } from "../../test/scenarios";
 import { PlannerView } from "../PlannerView";
 import { LINE_W_FAST, TRANSPORT_GAP, TRANSPORT_W } from "./lineWidth";
 import { GLYPH_MOVE_MAX } from "./marching";
-import { MOTION_KEY, STATE_STYLE_KEY } from "./plannerPrefs";
+import { ITEM_FOCUS_KEY, MOTION_KEY, STATE_STYLE_KEY } from "./plannerPrefs";
 
 // ADR-0062 amendment build PR 4: a transport draws a double line and does not march; its glyph moves along the line in the
 // march layer, never in the canvas, and leaps its own label box.
@@ -216,6 +216,26 @@ describe("a transport's moving glyph", () => {
     // Every glyph shows once: moving in the layer, or at rest in the canvas.
     expect(svg.querySelectorAll("[data-glyph]").length + glyphs.length).toBe(48);
     expect(svg.querySelector("animateMotion, [data-march], [class*='animate-flow']")).toBeNull();
+  });
+
+  // ADR-0063 build PR 4: a dimmed transport line's glyph is drawn at rest in the canvas (never neither), a lit one moves.
+  it("leaves a dimmed transport's glyph at rest in the canvas while the focused line's glyph moves", async () => {
+    wideScreen(false);
+    window.localStorage.setItem(ITEM_FOCUS_KEY, "on");
+    const svg = await openGraph();
+    const drone = lineFor(svg, /^Drone/);
+    const truck = lineFor(svg, /^Truck/);
+    const index = (g: Element) => g.getAttribute("data-edge");
+    expect(movingGlyphs(svg).map((g) => g.getAttribute("data-glyph-edge"))).toEqual(expect.arrayContaining([index(drone), index(truck)]));
+    fireEvent.click(svg.querySelector(`[data-edge-layer="labels"] [data-edge-label="${index(drone)}"] [data-bubble]`)!);
+    expect(truck.hasAttribute("data-dim")).toBe(true);
+    expect(drone.hasAttribute("data-dim")).toBe(false);
+    const moved = movingGlyphs(svg).map((g) => g.getAttribute("data-glyph-edge"));
+    expect(moved).not.toContain(index(truck));
+    expect(moved).toContain(index(drone));
+    // The truck's glyph shows once, at rest in the canvas; the drone's has left the canvas for the layer.
+    expect(svg.querySelectorAll('[data-glyph="truck"]')).toHaveLength(1);
+    expect(svg.querySelectorAll('[data-glyph="drone"]')).toHaveLength(0);
   });
 
   it("keeps a stalled transport's glyph still in marks mode and moves it in words mode", async () => {
