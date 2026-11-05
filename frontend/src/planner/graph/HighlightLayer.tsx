@@ -64,7 +64,7 @@ export function HighlightLayer({
       height={height}
       preserveAspectRatio="xMidYMid meet"
       className={cn(
-        "pointer-events-none absolute top-0 left-0 max-h-map min-h-graph-min w-full rounded-card border border-transparent transition-opacity will-change-transform",
+        "pointer-events-none absolute top-0 left-0 max-h-graph-max min-h-graph-min w-full rounded-card border border-transparent transition-opacity will-change-transform",
         active ? "opacity-100" : "opacity-0",
       )}
     >

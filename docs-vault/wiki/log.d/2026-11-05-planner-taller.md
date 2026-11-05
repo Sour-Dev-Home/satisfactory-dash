@@ -1,0 +1,1 @@
+- 2026-11-05 — The planner canvas is taller (owner request): its ceiling is now 90% of the screen height (`--spacing-graph-max`, was the world map's `--spacing-map`, 60%) and its floor 400 px (`--spacing-graph-min`, was 200 px), so a big factory shows about half as much again and a small one has room to zoom. The world map's height is unchanged. Planner screenshots regenerated.
