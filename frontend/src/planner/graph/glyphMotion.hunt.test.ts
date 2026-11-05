@@ -38,6 +38,23 @@ describe("glyphCandidates hunt", () => {
     expect(long.seconds).toBe(GLYPH_MAX_S);
   });
 
+  // ADR-0063 Decision 2: an end-labelled line's labels sit over its first legs; the glyph used to ride straight through them.
+  it("leaps a line's end labels as it does its middle box: no point of its path lies inside either label", () => {
+    const label = (x: number) => ({ box: { x, y: 478, width: 60, height: 44 } }) as never;
+    const e = { ...edge(0), endLabels: { src: label(10), tgt: label(330) } };
+    const [c] = glyphCandidates([e], true);
+    const numbers = c.path.match(/-?\d+(\.\d+)?/g)!.map(Number);
+    const xs = numbers.filter((_, i) => i % 2 === 0);
+    for (const x of xs) {
+      expect(x > 10 && x < 70, `${x} in the source label`).toBe(false);
+      expect(x > 330 && x < 390, `${x} in the target label`).toBe(false);
+    }
+    // Two pieces, before the middle box and after it, both between the labels.
+    expect(c.path.match(/M/g)).toHaveLength(2);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(70);
+    expect(Math.max(...xs)).toBeLessThanOrEqual(330);
+  });
+
   it("ignores an edge with fewer than two points", () => {
     expect(glyphCandidates([{ ...edge(0), points: [{ x: 1, y: 1 }] }], true)).toEqual([]);
   });

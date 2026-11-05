@@ -69,6 +69,16 @@ const pointer = (type: string, pointerId: number, clientX: number, clientY: numb
   fireEvent(window, Object.assign(new MouseEvent(type, { clientX, clientY }), { pointerId }));
 const groupButton =(name: RegExp) => screen.findByRole("button", { name });
 const dimmed = (svg: HTMLElement) => svg.querySelectorAll(":scope > g > g[data-dim]").length;
+/**
+ * Every line on this site draws end labels beside its ports and no middle bubble (ADR-0063 Decision 2). This gives the Iron
+ * Ore line a rate too wide for a label's rate row, so its labels do not fit and it draws its middle bubble (the fallback).
+ */
+const ORE_FALLBACK_RATE = "123,456,789,012.5/min";
+function oreBubble() {
+  const data = productionGraphTwoSites.data;
+  const edges = data.edges.map((e) => (e.itemClassName === "Desc_OreIron_C" ? { ...e, ratePerMinute: 123456789012.5 } : e));
+  server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges } })));
+}
 
 describe("the site view toggle", () => {
   it("opens on the outline where there is no wide screen, and the graph is one press away", async () => {
@@ -206,7 +216,8 @@ describe("the site graph", () => {
     expect(screen.getByRole("status")).toHaveTextContent("4 of 5 groups");
     fireEvent.change(select, { target: { value: "" } });
     expect(dimmed(svg)).toBe(0);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // The status line stays mounted (since the ports flag went, ADR-0063 build PR 7), and says nothing now.
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("opens a group's machines in a side panel from the factory read, and Escape returns focus to the group", async () => {
@@ -303,6 +314,8 @@ describe("the graph's readable chrome", () => {
       "unknown",
       "mixed belt",
       "pipe",
+      // ADR-0063 build PR 5: the cards carry item ports.
+      "port: an item in (left) or out (right)",
     ]);
     for (const svg of legend.querySelectorAll("svg")) expect(svg).toHaveAttribute("aria-hidden", "true");
     expect(legend.querySelectorAll("line[stroke-dasharray]")).toHaveLength(2);
@@ -327,30 +340,38 @@ describe("the graph's readable chrome", () => {
   });
 
   it("draws every line before every label, so no line runs over another edge's label (2026-10-27)", async () => {
+    oreBubble();
     const svg = await openGraph();
     const paths = [...svg.querySelectorAll('[data-edge-layer="lines"] path[marker-end]')];
+    // A fallback line's pill and every other line's two end labels (ADR-0063 Decision 2).
     const pills = [...svg.querySelectorAll("[data-label-pill]")];
+    const ends = [...svg.querySelectorAll("[data-end-label]")];
     expect(paths.length).toBeGreaterThan(1);
-    expect(pills).toHaveLength(paths.length);
-    for (const pill of pills) for (const path of paths) expect(path.compareDocumentPosition(pill) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(pills).toHaveLength(1);
+    expect(ends.length).toBeGreaterThan(0);
+    for (const label of [...pills, ...ends]) for (const path of paths) expect(path.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("draws two links between the same groups as one line, its tooltip listing each with its rate, lit by either item", async () => {
+  // ADR-0063: a line carries one item, so two items between the same groups are two lines (ADR-0060's shared line and
+  // its summed bubble row went with the ports flag).
+  it("draws two items between the same groups as two lines, each tooltip with its rate, each lit by its own item", async () => {
     const data = productionGraphTwoSites.data;
     const lime = { ...data.edges[0], itemClassName: "Desc_Stone_C", itemName: "Limestone", ratePerMinute: 30, rate: "measured" as const };
     server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json({ ...productionGraphTwoSites, data: { ...data, edges: [...data.edges, lime] } })));
     const svg = await openGraph();
-    // One bubble per item, the faster first, over the summed rate (ADR-0060 Decision 1).
-    const label = [...svg.querySelectorAll("[data-edge-label]")].find((g) => g.querySelectorAll("[data-bubble]").length === 2)!;
-    expect([...label.querySelectorAll("[data-bubble]")].map((b) => b.getAttribute("data-bubble"))).toEqual(["Desc_OreIron_C", "Desc_Stone_C"]);
-    expect(label.querySelector(":scope > text")?.textContent).toBe("150/min");
-    const title = label.querySelector("title")!.textContent!;
-    expect(title).toContain("2 links, medium: Iron Ore · 120 items/min (measured); Limestone · 30 items/min (measured)");
-    // The summary still counts every link; the lines layer draws one line fewer.
+    const lineGroups = [...svg.querySelectorAll('[data-edge-layer="lines"] [data-edge]')];
+    const lineOf = (words: string) => lineGroups.filter((g) => (g.querySelector(":scope > title")?.textContent ?? "").includes(words));
+    const [ore] = lineOf("Miner Mk.2 to 4× Smelter: Iron Ore · 120 items/min (measured)");
+    const [stone] = lineOf("Miner Mk.2 to 4× Smelter: Limestone · 30 items/min (measured)");
+    expect(ore).toBeDefined();
+    expect(stone).toBeDefined();
+    expect(lineOf(" links, ")).toHaveLength(0);
+    // The summary counts every link, and the lines layer draws them all.
     expect(svg.getAttribute("aria-label")).toMatch(/6 connections/);
-    expect(svg.querySelectorAll('[data-edge-layer="lines"] path[marker-end]')).toHaveLength(5);
+    expect(svg.querySelectorAll('[data-edge-layer="lines"] path[marker-end]')).toHaveLength(6);
     fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_Stone_C" } });
-    expect(label).not.toHaveAttribute("data-dim");
+    expect(stone).not.toHaveAttribute("data-dim");
+    expect(ore).toHaveAttribute("data-dim");
     // The text path keeps a row per link.
     fireEvent.click(screen.getByRole("button", { name: "Outline" }));
     fireEvent.click(screen.getByRole("button", { name: "All connections" }));
@@ -359,18 +380,33 @@ describe("the graph's readable chrome", () => {
     expect(rows.some((r) => r.includes("Iron Ore") && r.includes("120"))).toBe(true);
   });
 
-  it("draws card text at the readable sizes, and edge labels as an item bubble over halo rate text with a named class", async () => {
+  it("draws card text at the readable sizes, and end labels as the item's name over its rate at a named size", async () => {
     const svg = await openGraph();
     expect(svg.querySelector("text.text-base.font-semibold")).not.toBeNull();
-    const label = [...svg.querySelectorAll("[data-edge-label] > text")].find((t) => t.textContent === "120/min")!;
+    // ADR-0063 Decision 2: beside each port, the name above the line (fill-fg) and the rate below (fill-muted).
+    const label = svg.querySelector('[data-end-label="c:Desc_OreIron_C"]')!;
+    const [name, rate] = [...label.querySelectorAll(":scope > text")];
+    expect(name.textContent).toBe("Iron Ore");
+    expect(name).toHaveClass("fill-fg", "text-sm");
+    expect(rate.textContent).toBe("120/min");
+    expect(rate).toHaveClass("fill-muted", "text-sm");
+    expect(rate).toHaveAttribute("data-rate");
+    expect(label.querySelector("title")?.textContent).toContain("Iron Ore");
+    // Muted text on the canvas is the end labels' rates only.
+    for (const t of svg.querySelectorAll("text.fill-muted")) expect(t.closest("[data-end-label]"), t.textContent ?? "").not.toBeNull();
+  });
+
+  it("draws a fallback line's label as an item bubble over halo rate text with a named class", async () => {
+    oreBubble();
+    const svg = await openGraph();
+    const label = [...svg.querySelectorAll("[data-edge-label] > text")].find((t) => t.textContent === ORE_FALLBACK_RATE)!;
     expect(label).toHaveClass("text-sm", "paint-stroke-first");
     // The item is its icon, and its name is in the tooltip, not printed.
     const row = label.closest("[data-edge-label]")!;
     expect(row.querySelector('[data-bubble="Desc_OreIron_C"] image')?.getAttribute("href")).toMatch(/\/items\/iron-new-(32|64)\.webp$/);
     expect(row.querySelector("title")?.textContent).toContain("Iron Ore");
     expect(label.getAttribute("class")).not.toContain("[paint-order");
-    // One line of plain text under each icon row: nothing is muted any more.
-    expect(svg.querySelectorAll("text.fill-muted").length).toBe(0);
+    expect(label).not.toHaveClass("fill-muted");
   });
 
   it("is icon-first: every card has a large icon or a glyph, a count and one line, and the full words in its tooltip", async () => {
@@ -378,7 +414,9 @@ describe("the graph's readable chrome", () => {
     const cards = [...svg.querySelectorAll("[data-card]")];
     expect(cards).toHaveLength(5);
     for (const card of cards) {
-      expect(card.querySelectorAll("[data-icon]")).toHaveLength(1);
+      // Its own icon; its item ports' discs (ADR-0063 Decision 1) carry theirs.
+      expect([...card.querySelectorAll("[data-icon]")].filter((el) => el.closest("[data-ports]") === null)).toHaveLength(1);
+      expect(card.querySelector("[data-ports] [data-icon]")).not.toBeNull();
       expect(card.querySelectorAll("[data-count]")).toHaveLength(1);
       // One line, except storage, which makes nothing: its icon says what it is (the owner, 2026-10-27).
       const storage = /^(storage|Build_Storage)/i.test(card.getAttribute("data-node") ?? "");
@@ -406,7 +444,18 @@ describe("the graph's readable chrome", () => {
     for (const g of svg.querySelectorAll('[data-icon="glyph"]')) expect(g.querySelector("[data-building-glyph]")).not.toBeNull();
   });
 
-  it("draws an item bubble's initials when its icon fails to load, never a blank disc (ADR-0060)", async () => {
+  it("draws a port's initials when its icon fails to load, never a blank disc (ADR-0063 Decision 1)", async () => {
+    const svg = await openGraph();
+    const port = svg.querySelector('[data-port="c:Desc_OreIron_C"]')!;
+    expect(port).toHaveAttribute("data-icon", "image");
+    fireEvent.error(port.querySelector("image")!);
+    expect(port).toHaveAttribute("data-icon", "text");
+    expect(port.querySelector("image")).toBeNull();
+    expect(port.querySelector("text")?.textContent).toBe("IO");
+  });
+
+  it("draws a fallback line's item bubble's initials when its icon fails to load, never a blank disc (ADR-0060)", async () => {
+    oreBubble();
     const svg = await openGraph();
     const bubble = svg.querySelector('[data-bubble="Desc_OreIron_C"]')!;
     expect(bubble).toHaveAttribute("data-icon", "image");

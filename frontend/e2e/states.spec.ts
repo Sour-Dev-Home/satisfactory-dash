@@ -414,7 +414,7 @@ const CASES: StateCase[] = [
       await page.keyboard.press("Enter");
     },
   },
-  // ADR-0063 build PR 5, behind `planner.ports` (with its ports and end labels): a selected card dims to its neighbours
+  // ADR-0063 build PR 5 (with ports and end labels): a selected card dims to its neighbours
   // (state 4), its panel's "Show what … feeds and needs" (state 2), and an opened factory's context (state 5).
   {
     scenario: "planner-group-panel",
@@ -422,7 +422,6 @@ const CASES: StateCase[] = [
     path: "/app/planner",
     shows: /and its neighbours$/,
     clock: PLANNER_NOW,
-    storage: { "planner.ports": "on" },
     act: async (page) => {
       await openIronGraph(page);
       await page.getByRole("button", { name: /^8× Constructor, Iron Plate/ }).focus();
@@ -435,7 +434,6 @@ const CASES: StateCase[] = [
     path: "/app/planner",
     shows: /feeds and needs: \d+ of \d+ cards$/,
     clock: PLANNER_NOW,
-    storage: { "planner.ports": "on" },
     act: async (page) => {
       await openIronGraph(page);
       await page.getByRole("button", { name: /^8× Constructor, Iron Plate/ }).focus();
@@ -449,7 +447,6 @@ const CASES: StateCase[] = [
     path: "/app/planner",
     shows: "Fit to view",
     clock: FACTORIES_NOW,
-    storage: { "planner.ports": "on" },
     act: openPlateFactoryGraph,
   },
   // #728 cause 11: a card built from conveyor data older than the factory read says so (muted, a clock glyph).

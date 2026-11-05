@@ -28,8 +28,17 @@ const backedUp = {
   },
 };
 
-async function openGraph() {
-  server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(backedUp)));
+/**
+ * The same, with the smelters' line's rate too wide for an end label's rate row: its labels do not fit, so it draws its
+ * middle bubble (ADR-0063 Decision 2's fallback), which wears the stalled ring. An end-labelled line has no bubble to ring.
+ */
+const backedUpBubble = {
+  ...backedUp,
+  data: { ...backedUp.data, edges: DATA.edges.map((e) => (e.from === SMELTER ? { ...e, ratePerMinute: 123456789012.5 } : e)) },
+};
+
+async function openGraph(body: object = backedUp) {
+  server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(body)));
   renderWithClient(
     <MemoryRouter>
       <ServerContext value={serversSingle.servers[0]}>
@@ -57,7 +66,7 @@ function expectWordsKept(svg: Element) {
 }
 
 describe("stalled marks (the default)", () => {
-  it("ends the stalled line in a stop bar, rings its bubble with a corner mark, and draws the glyph for the card's word", async () => {
+  it("ends the stalled line in a stop bar and draws the glyph for the card's word", async () => {
     const svg = await openGraph();
     const line = stalledLine(svg)!;
     expect(line).not.toBeNull();
@@ -66,12 +75,22 @@ describe("stalled marks (the default)", () => {
     expect(svg.querySelector(`marker[id="${end.slice(5, -1)}"] [data-stop-bar="backedUp"]`)).not.toBeNull();
     // Only that line: the rest keep the arrowhead.
     expect(svg.querySelectorAll("[data-edge][data-stalled]")).toHaveLength(1);
-    const label = svg.querySelector(`[data-edge-label="${line.getAttribute("data-edge")}"]`)!;
-    expect(label.querySelector('[data-stalled-ring="backedUp"]')).not.toBeNull();
-    expect(label.querySelector('[data-bubble-mark="backedUp"] [data-state-mark="backedUp"]')).not.toBeNull();
+    // It draws end labels, so no middle bubble and no ring (the fallback's, below).
+    expect(svg.querySelector(`[data-edge-label="${line.getAttribute("data-edge")}"]`)).toBeNull();
+    expect(svg.querySelector("[data-stalled-ring], [data-bubble-mark]")).toBeNull();
     const card = smelterCard(svg);
     expect(card.querySelector('[data-card-mark="backedUp"] [data-state-mark="backedUp"]')).not.toBeNull();
     expect(printed(card)).not.toContain("Backed up");
+    expectWordsKept(svg);
+  });
+
+  it("rings a fallback line's bubble with a corner mark, its line still ending in the stop bar", async () => {
+    const svg = await openGraph(backedUpBubble);
+    const line = stalledLine(svg)!;
+    expect(line.querySelector("path")!.getAttribute("marker-end")).toMatch(/-backedUp\)$/);
+    const label = svg.querySelector(`[data-edge-label="${line.getAttribute("data-edge")}"]`)!;
+    expect(label.querySelector('[data-stalled-ring="backedUp"]')).not.toBeNull();
+    expect(label.querySelector('[data-bubble-mark="backedUp"] [data-state-mark="backedUp"]')).not.toBeNull();
     expectWordsKept(svg);
   });
 

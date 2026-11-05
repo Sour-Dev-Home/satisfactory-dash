@@ -707,26 +707,22 @@ test("marching dashes stay in view under the cap, stop with Motion Off, and reco
   if (testInfo.project.name === "desktop") expect(fitted.p95, JSON.stringify(result.frameMs)).toBeLessThanOrEqual(2 * off.p95 + 17);
 });
 
-// ADR-0063 build PR 4 (Decision 5): with ports and end labels on (`planner.ports`), the same 210-line site still holds the
-// march layer's regression bound, and a pan and zoom (the canvas repaints on a zoom, and now has more text) costs no more
-// than twice what it costs with ports off, plus a frame. Both runs are attached and logged; the numbers go in the ADR.
-test("with ports on, marching holds its bound and a pan and zoom cost no more than with ports off (210 lines)", async ({ page, mockApi }, testInfo) => {
+// ADR-0063 build PR 4 (Decision 5): with ports and end labels, the same 210-line site still holds the march layer's
+// regression bound. Build PR 4 also bounded a pan and zoom against the ports-off canvas; with the flag gone (build PR 7)
+// the pan and zoom's frame times are still recorded, attached and logged. The numbers go in the ADR.
+test("with ports, marching holds its bound, and a pan and zoom's frame times are recorded (210 lines)", async ({ page, mockApi }, testInfo) => {
   test.setTimeout(150_000);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await mockApi("planner-large");
-  const run = async (ports: boolean) => {
+  const run = async () => {
     await page.goto("/app/planner");
-    await page.evaluate((on) => {
-      window.localStorage.setItem("planner.ports", on ? "on" : "off");
-      window.localStorage.setItem("planner.motion", "system");
-    }, ports);
+    await page.evaluate(() => window.localStorage.setItem("planner.motion", "system"));
     await page.reload();
     await page.getByRole("button", { name: "Open site: Large site" }).click();
     await page.getByRole("button", { name: "Graph", exact: true }).click();
     const svg = page.getByRole("img", { name: /^Graph of Large site/ });
     await expect(svg).toBeVisible({ timeout: 15_000 });
-    if (ports) await expect.poll(() => svg.locator("[data-port]").count()).toBeGreaterThan(0);
-    else await expect(svg.locator("[data-port]")).toHaveCount(0);
+    await expect.poll(() => svg.locator("[data-port]").count()).toBeGreaterThan(0);
     const marching = page.locator("[data-march-layer] [data-march-edge]");
     await expect.poll(() => marching.count()).toBeGreaterThan(0);
     expect(await marching.count()).toBeLessThanOrEqual(MARCH_MAX);
@@ -745,16 +741,12 @@ test("with ports on, marching holds its bound and a pan and zoom cost no more th
     const off = frameSummary(await frameTimes(page, 2_000));
     return { lines: await svg.locator('[data-edge-layer="lines"] [data-edge]').count(), fitted, panZoom, off };
   };
-  const without = await run(false);
-  const withPorts = await run(true);
-  const result = { project: testInfo.project.name, portsOff: without, portsOn: withPorts };
+  const withPorts = await run();
+  const result = { project: testInfo.project.name, portsOn: withPorts };
   await testInfo.attach("ports-frame-times.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
   console.info(`[ADR-0063 PR 4 frame times] ${JSON.stringify(result)}`);
-  for (const r of [without, withPorts]) for (const s of [r.fitted, r.panZoom, r.off]) expect(s.frames).toBeGreaterThan(10);
-  if (testInfo.project.name === "desktop") {
-    expect(withPorts.fitted.p95, JSON.stringify(result)).toBeLessThanOrEqual(2 * withPorts.off.p95 + 17);
-    expect(withPorts.panZoom.p95, JSON.stringify(result)).toBeLessThanOrEqual(2 * without.panZoom.p95 + 17);
-  }
+  for (const s of [withPorts.fitted, withPorts.panZoom, withPorts.off]) expect(s.frames).toBeGreaterThan(10);
+  if (testInfo.project.name === "desktop") expect(withPorts.fitted.p95, JSON.stringify(result)).toBeLessThanOrEqual(2 * withPorts.off.p95 + 17);
 });
 
 // ADR-0062 Decision 1, the destination caps: their moving dashes run in the march layer by CSS class (never in the canvas,

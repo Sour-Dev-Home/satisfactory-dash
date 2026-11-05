@@ -36,6 +36,8 @@ async function openGraph() {
 }
 
 const layerOf = (svg: Element) => svg.parentElement!.querySelector<SVGSVGElement>(":scope > [data-march-layer]");
+/** Every line here draws end labels and no middle bubble (ADR-0063 Decision 2): the miner's port label focuses its ore. */
+const focusOre = (svg: Element) => fireEvent.click(svg.querySelector('[data-end-label="c:Desc_OreIron_C"]')!);
 const box = (el: Element) => ["x", "y", "width", "height"].map((a) => Number(el.getAttribute(a)).toFixed(2)).join(",");
 
 describe("the march layer, hunted", () => {
@@ -58,7 +60,7 @@ describe("the march layer, hunted", () => {
     const svg = await openGraph();
     const holes = () => new Set([...layerOf(svg)!.querySelectorAll("mask rect.fill-black")].map(box));
     const before = holes().size;
-    fireEvent.click(svg.querySelector('[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]')!);
+    focusOre(svg);
     const after = holes();
     expect(after.size).toBeGreaterThan(before);
     expect([...after].some((b) => b.split(",").slice(2).join(",") === `${FOCUS_CARD_W.toFixed(2)},${FOCUS_CARD_H.toFixed(2)}`)).toBe(true);
@@ -68,7 +70,7 @@ describe("the march layer, hunted", () => {
   it("marches only lit lines when another line is in focus", async () => {
     const svg = await openGraph();
     const before = layerOf(svg)!.querySelectorAll("[data-march-edge]").length;
-    fireEvent.click(svg.querySelector('[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]')!);
+    focusOre(svg);
     const canvasDim = new Set([...svg.querySelectorAll('[data-edge-layer="lines"] [data-edge]')].filter((g) => g.hasAttribute("data-dim")).map((g) => g.getAttribute("data-edge")));
     expect(canvasDim.size).toBeGreaterThan(0);
     const marched = [...(layerOf(svg)?.querySelectorAll("[data-march-edge]") ?? [])];

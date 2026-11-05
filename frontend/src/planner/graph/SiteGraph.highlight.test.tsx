@@ -39,10 +39,15 @@ const rates = (svg: Element) => [...layerOf(svg).querySelectorAll("[data-highlig
 const over = (el: Element, pointerType = "mouse") => act(() => void fireEvent.pointerOver(el, { pointerType, pointerId: 1 }));
 const IRON_ORE = /: Iron Ore · 120 items\/min/;
 
+/** The Iron Ore line's two end labels (ADR-0063 Decision 2: every line here draws them, and no middle bubble). */
+const oreLabels = (svg: Element) => [...svg.querySelectorAll('[data-end-label="c:Desc_OreIron_C"]')];
+const at = (t: Element) => [t.getAttribute("x"), t.getAttribute("y")];
+
 describe("the canvas highlight", () => {
-  it("draws every line's short rate under its bubbles, and a wider pointer target that draws nothing", async () => {
+  it("draws every line's short rate in its end labels' rate rows, and a wider pointer target that draws nothing", async () => {
     const svg = await openGraph();
-    const texts = [...svg.querySelectorAll("[data-edge-label] > text[data-rate]")].map((t) => t.textContent);
+    expect(svg.querySelector("[data-edge-label] > text[data-rate]")).toBeNull();
+    const texts = [...svg.querySelectorAll("[data-end-label] > text[data-rate]")].map((t) => t.textContent);
     expect(texts).toContain("120/min");
     expect(texts).toContain("~102.2/min");
     // No "about", no "items", no "per" on the canvas.
@@ -64,16 +69,26 @@ describe("the canvas highlight", () => {
     over(line.querySelector("[data-line-hit]")!);
     expect(layer).toHaveAttribute("data-highlight");
     expect(layer).toHaveClass("opacity-100");
-    expect(rates(svg)).toEqual([[index, "120/min"]]);
+    // Once in each of its two end labels.
+    expect(rates(svg)).toEqual([
+      [index, "120/min"],
+      [index, "120/min"],
+    ]);
     // No dimming (the owner dropped it, 2026-11-03): the layer draws only the words, no cover, mask or shape.
     expect(layer.querySelectorAll("mask, rect, path")).toHaveLength(0);
-    // Its rate sits exactly where the canvas keeps the line's own (hidden) one.
-    const own = svg.querySelector(`[data-edge-label="${index}"] > text[data-rate]`)!;
-    const drawn = layer.querySelector("[data-highlight-rate]")!;
-    expect([drawn.getAttribute("x"), drawn.getAttribute("y")]).toEqual([own.getAttribute("x"), own.getAttribute("y")]);
-    // Pointing at its label is the same target: nothing changes.
-    over(svg.querySelector(`[data-edge-label="${index}"] [data-rate]`)!);
-    expect(rates(svg)).toEqual([[index, "120/min"]]);
+    // Its rates sit exactly where the canvas keeps the labels' own (hidden) ones.
+    const own = oreLabels(svg).map((l) => at(l.querySelector(":scope > text[data-rate]")!));
+    expect(own).toHaveLength(2);
+    expect([...layer.querySelectorAll("[data-highlight-rate]")].map(at)).toEqual(expect.arrayContaining(own));
+    // Pointing at either of its labels is the same target: nothing changes.
+    for (const l of oreLabels(svg)) {
+      expect(l).toHaveAttribute("data-hl-edge", index);
+      over(l.querySelector("text")!);
+      expect(rates(svg)).toEqual([
+        [index, "120/min"],
+        [index, "120/min"],
+      ]);
+    }
     // The canvas did not render again or get a single attribute.
     expect(svg.innerHTML).toBe(canvas);
     act(() => void fireEvent.pointerLeave(svg, { pointerType: "mouse" }));
@@ -82,15 +97,16 @@ describe("the canvas highlight", () => {
     expect(svg.innerHTML).toBe(canvas);
   });
 
-  it("pointing at a card draws the rate of every line it has, each one once", async () => {
+  it("pointing at a card draws the rate of every line it has, once in each of the line's end labels", async () => {
     const svg = await openGraph();
     const card = [...svg.querySelectorAll("g[data-card]")].find((g) => g.querySelector(":scope > title")?.textContent?.startsWith("8× Constructor"))!;
     over(card.querySelector("rect")!);
     const shown = rates(svg);
-    expect(shown.length).toBeGreaterThan(1);
-    expect(new Set(shown.map(([i]) => i)).size).toBe(shown.length);
+    const lines = new Set(shown.map(([i]) => i));
+    expect(lines.size).toBeGreaterThan(1);
+    for (const i of lines) expect(shown.filter(([j]) => j === i), `line ${i}`).toHaveLength(2);
     // Each is a line from or to the card: its tooltip names the card at one end.
-    for (const [i] of shown) expect(svg.querySelector(`[data-edge="${i}"] > title`)?.textContent).toMatch(/Constructor/);
+    for (const i of lines) expect(svg.querySelector(`[data-edge="${i}"] > title`)?.textContent).toMatch(/Constructor/);
     // The background clears it.
     over(svg);
     expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
@@ -154,6 +170,17 @@ describe("the canvas highlight", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_OreIron_C" } });
     over(lineOf(svg, IRON_ORE).querySelector("[data-line-hit]")!);
     expect(layerOf(svg)).toHaveAttribute("data-highlight");
-    expect(rates(svg)).toHaveLength(1);
+    // The one line, in its two end labels.
+    expect(new Set(rates(svg).map(([i]) => i)).size).toBe(1);
+    expect(rates(svg)).toHaveLength(2);
+  });
+
+  // A port of several lines names none of them: pointing at its label is no line's highlight.
+  it("pointing at the end label of a port of several lines highlights none of them", async () => {
+    const svg = await openGraph();
+    const several = svg.querySelector('[data-end-label]:not([data-lines="1"])')!;
+    expect(several).not.toHaveAttribute("data-hl-edge");
+    over(several.querySelector("text")!);
+    expect(layerOf(svg).hasAttribute("data-highlight")).toBe(false);
   });
 });

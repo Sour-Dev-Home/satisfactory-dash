@@ -424,6 +424,13 @@ answer. No disagreement is left open.
 Questions 1-4, verbatim picks: "Yes, dim them" (1), "Yes" (2), "Yes, inside a factory" (3), "Keep their colour" (4).
 Question 5 is still open; build PR 2 builds both forms behind the flag, and the owner picks on the demo (PR 6).
 
+### Owner's answers, 2026-11-05 (the demo review, build PR 6)
+Asked "Should lines into an input keep their arrowhead? Is the picture about 70% wider OK? Is the legend's wording
+right?", the owner answered "yes" to all three. So question 5 is answered **keep the arrowhead** (against this ADR's
+recommendation: every line keeps it, into a port too), the wider picture stands, and the legend's words stay as built.
+The review was the owner's own look at the demo; build PR 6's named e2e states (`planner-ports`, `planner-ports-overview`,
+`planner-ports-fallback`) were not built, since with the flag gone every planner state is drawn with ports.
+
 ## Revisit when
 
 - Ports add more than 10% crossings on the dense scenes, or the owner finds the order hard to follow on a real save: try

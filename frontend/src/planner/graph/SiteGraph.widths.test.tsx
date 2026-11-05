@@ -76,15 +76,26 @@ describe("line widths on the canvas", () => {
     expect(svg.querySelectorAll("[data-mixed-inner]")).toHaveLength(1);
   });
 
-  it("widens a bundle by its summed rate: 120 + 400 items/min is fast though each link alone is not", async () => {
-    const lime = { ...DATA.edges[0], itemClassName: "Desc_Stone_C", itemName: "Limestone", ratePerMinute: 400, rate: "measured" as const };
-    const svg = await openGraph({ ...DATA, edges: [...DATA.edges, lime] });
+  // With ports a line carries one item (ADR-0063), so only one item's several links between the same two cards bundle.
+  it("widens a bundle by its summed rate: 120 + 400 items/min of one item is fast though each link alone is not", async () => {
+    const more = { ...DATA.edges[0], ratePerMinute: 400, rate: "measured" as const };
+    const svg = await openGraph({ ...DATA, edges: [...DATA.edges, more] });
     // The title names the step its width shows (ADR-0062 amendment Decision 7): the sum's, fast.
     const bundle = lineFor(svg, /, 2 links, fast: /);
     expect(bundle.title).toMatch(/120 items\/min.*400 items\/min/);
-    const label = svg.querySelector(`[data-edge-label="${bundle.path.parentElement!.getAttribute("data-edge")}"]`)!;
-    expect(label.querySelector(":scope > text")?.textContent).toBe("520/min");
     expect(widthOf(bundle.path)).toBe(LINE_W_FAST);
+    // Its end labels say the sum.
+    const ends = [...svg.querySelectorAll('[data-end-label="c:Desc_OreIron_C"] > text[data-rate]')].map((t) => t.textContent);
+    expect(ends).toEqual(["520/min", "520/min"]);
+  });
+
+  it("draws another item between the same two cards as its own line at its own width, not summed into a bundle", async () => {
+    const lime = { ...DATA.edges[0], itemClassName: "Desc_Stone_C", itemName: "Limestone", ratePerMinute: 400, rate: "measured" as const };
+    const svg = await openGraph({ ...DATA, edges: [...DATA.edges, lime] });
+    expect(lines(svg).filter((l) => / links, /.test(l.title))).toHaveLength(0);
+    expect(widthOf(lineFor(svg, /: Iron Ore · 120 items\/min/).path)).toBe(LINE_W_MID);
+    // 400 alone is mid; summed with the ore (520) it would be fast.
+    expect(widthOf(lineFor(svg, /: Limestone · 400 items\/min/).path)).toBe(LINE_W_MID);
   });
 
   it("keeps every line's arrowhead (or stop bar), sized in canvas units so a 4-wide line does not swallow it", async () => {

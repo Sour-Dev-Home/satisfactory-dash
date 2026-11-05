@@ -19,6 +19,12 @@ afterEach(() => {
 
 const DATA = ProductionGraphResponseSchema.parse(productionGraphFactories).data;
 const TRAINS = DATA.transports!.length;
+/**
+ * The fixture's miner moved into the factory's home site: an opened factory dims what stands outside it (ADR-0063 state 5)
+ * and a dimmed line's glyph rests, so the remote miner's train would never move here.
+ */
+const HOME_SITE = DATA.nodes.find((n) => n.className === "Build_TrainStation_C")!.siteKey;
+const homeMiner = { ...productionGraphFactories, data: { ...DATA, nodes: DATA.nodes.map((n) => (n.className === "Build_MinerMk2_C" ? { ...n, siteKey: HOME_SITE } : n)) } };
 
 function reducedMotionScreen() {
   vi.stubGlobal("matchMedia", (query: string) => ({
@@ -29,7 +35,7 @@ function reducedMotionScreen() {
 }
 
 async function openGraph() {
-  server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(productionGraphFactories)));
+  server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(homeMiner)));
   renderWithClient(
     <MemoryRouter>
       <ServerContext value={serversSingle.servers[0]}>
