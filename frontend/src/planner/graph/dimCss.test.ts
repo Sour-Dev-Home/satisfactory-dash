@@ -21,7 +21,9 @@ describe("dimming CSS (ADR-0063 Decision 3)", () => {
 
   it("turns a dimmed card's words muted and its own outlines grey, and leaves state tones, the accent ring and the line colour alone", () => {
     const card = overrides("card");
-    expect([...card.keys()].sort()).toEqual(["--color-fg", "--color-fg-strong", "--color-graph-card-edge"]);
+    expect([...card.keys()].sort()).toEqual(["--color-fg", "--color-fg-strong", "--color-graph-card-edge", "--color-surface-2"]);
+    // The raised fill sinks to the canvas's surface (Decision 3's fallback); muted words on it are pinned at 4.5:1 in lineWidth.test.ts.
+    expect(card.get("--color-surface-2")).toBe("--color-surface");
     expect(card.get("--color-fg")).toBe("--color-muted");
     expect(card.get("--color-fg-strong")).toBe("--color-muted");
     // Outlines (a frame, its rows, the pills) go the dim grey; muted words keep muted, so they stay at 4.5:1.

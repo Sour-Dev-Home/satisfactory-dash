@@ -590,3 +590,6 @@ entry fall away); whether the highlight should dim in PR 1's colours is a new qu
 - A card's own outlines (a machines frame, its machine rows, the Expand, blow-up and upstream pills) read
   `--color-graph-card-edge` (muted when lit, the dim grey when dimmed), so they grey with the card while its muted words
   keep 4.5:1. The moving transport glyph's `stroke-fg` greys with its line.
+- **Decision 3's fallback taken.** On the first screenshots (the item-filtered site) a dimmed card with muted words and
+  grey icons read only faintly dimmed, as `ui-reviewer` expected. So a dimmed card's raised fill (`surface-2`) sinks to the
+  graph's own `surface`, and the card reads as an outline. No new token: muted on `surface` is already pinned at 4.5:1.
