@@ -123,9 +123,9 @@ const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
 const PILL_MIN_W = 24;
-/** Why the toolbar's blow-up "Expand all" is disabled: every card here would pass `EXPAND_MAX_CARDS`. */
 // ADR-0063 ports: item ports on the card edges, one line per item (the flag removed in build PR 7, 2026-11-05).
 const LAYOUT_OPTIONS = { ports: true } as const;
+/** Why the toolbar's blow-up "Expand all" is disabled: every card here would pass `EXPAND_MAX_CARDS`. */
 const NOTHING_FITS = "Nothing here fits under the cap; open a factory to see its parts.";
 /** A lasso adds a point once the pointer is this far (stage units) from the last one. */
 const LASSO_STEP = 3;
