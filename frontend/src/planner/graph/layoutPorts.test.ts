@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PlannerNode, ProductionGraph } from "@satisfactory-dash/shared";
-import { EMPTY_VIEW, factoryScene, type CanvasFlow, type Card, type Scene } from "./canvasScene";
+import * as demoWorld from "../../demo/world";
+import { EMPTY_VIEW, factoryScene, siteScene, type CanvasFlow, type Card, type Scene } from "./canvasScene";
 import { segmentHitsRect } from "./edgeShapes";
 import { factoryModels } from "./hierarchy";
 import { clearLayoutMemo, layoutScene, type SiteLayout } from "./layoutSite";
-import { PORT_D, PORT_INSET, PORT_PITCH } from "./ports";
+import { PORT_D, PORT_INSET, PORT_PITCH, PORTS_MAX } from "./ports";
 
 beforeEach(clearLayoutMemo);
 
@@ -156,6 +157,16 @@ describe("the layout with ports on (ADR-0063 Decision 1)", () => {
     const on = crossings(onL);
     console.info(`[ADR-0063 ports] dense 40-group scene crossings: ports off ${off} (${offL.edges.length} lines), on ${on} (${onL.edges.length} lines)`);
     expect(on / onL.edges.length).toBeLessThanOrEqual((off / offL.edges.length) * 1.1);
+  });
+
+  it("folds the demo depot's seven inputs into five ports and a '+2' (the demo data build PR 2 asks for)", () => {
+    const g = demoWorld.productionGraph(demoWorld.DEMO_EPOCH).data;
+    const iron = g.sites.find((s) => s.name === "Iron works")!;
+    const l = layoutScene(siteScene(iron, g), g.topologyHash, undefined, { ports: true });
+    const depot = l.nodes.find((n) => n.card.title.startsWith("Storage Container"))!;
+    const inputs = (depot.ports ?? []).filter((p) => p.side === "l");
+    expect(inputs).toHaveLength(PORTS_MAX);
+    expect(inputs.find((p) => p.item === "+")?.items).toHaveLength(2);
   });
 
   it("with ports off, draws exactly what it drew before: no ports, no port ends, one line per pair", () => {

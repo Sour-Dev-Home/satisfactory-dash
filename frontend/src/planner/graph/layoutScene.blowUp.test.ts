@@ -147,21 +147,24 @@ describe("the blow-up benchmark (ADR-0061 Decision 5, recorded in the ADR)", () 
       ["Expand all (to the cap)", w.graph, t, expandAllKeys(w.graph, [], [], t, new Set())],
       ["one factory of 59 groups", one.graph, flat, new Set(flat.rootKeys)],
     ];
+    // ADR-0063 Decision 5: every row with ports off and on (one line per item, port-aware routing), recorded side by side.
     for (const [name, g, tr, expanded] of cases) {
-      const scene = overviewScene(g, [], [], tr, expanded);
-      expect(scene.cards.length).toBeLessThanOrEqual(EXPAND_MAX_CARDS);
-      // The median of five cold layouts (the memo cleared each time), after one to warm the JIT.
-      const runs: number[] = [];
-      let layout = layoutScene(scene, g.topologyHash);
-      for (let i = 0; i < 5; i++) {
-        clearLayoutMemo();
-        const start = performance.now();
-        layout = layoutScene(scene, g.topologyHash);
-        runs.push(performance.now() - start);
+      for (const ports of [false, true]) {
+        const scene = overviewScene(g, [], [], tr, expanded);
+        expect(scene.cards.length).toBeLessThanOrEqual(EXPAND_MAX_CARDS);
+        // The median of five cold layouts (the memo cleared each time), after one to warm the JIT.
+        const runs: number[] = [];
+        let layout = layoutScene(scene, g.topologyHash, undefined, { ports });
+        for (let i = 0; i < 5; i++) {
+          clearLayoutMemo();
+          const start = performance.now();
+          layout = layoutScene(scene, g.topologyHash, undefined, { ports });
+          runs.push(performance.now() - start);
+        }
+        timings[`${name}${ports ? " (ports)" : ""}: ${scene.cards.length} cards, ${scene.frames.length} frames, ${layout.edges.length} lines`] = runs.sort((a, b) => a - b)[2];
+        expect(layout.nodes).toHaveLength(scene.cards.length);
+        expect(layout.frames).toHaveLength(scene.frames.length);
       }
-      timings[`${name}: ${scene.cards.length} cards, ${scene.frames.length} frames, ${layout.edges.length} lines`] = runs.sort((a, b) => a - b)[2];
-      expect(layout.nodes).toHaveLength(scene.cards.length);
-      expect(layout.frames).toHaveLength(scene.frames.length);
     }
     for (const [name, ms] of Object.entries(timings)) {
       expect(ms, name).toBeLessThan(TEST_BOUND_MS);

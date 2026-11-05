@@ -360,7 +360,7 @@ is not flagged: it changes how the two existing dim states look (an accessibilit
 |---|---|---|---|---|
 | 0 | Rates on hover and the highlight (the amendment of 2026-11-03; **built**) | `plannerText.ts` (`shortRateText`), `bubbleRow.ts`, `layoutSite.ts` (`bubbleRowSize` keeps the rate row), `lineHighlight.ts`, `HighlightLayer.tsx`, `SiteGraph.tsx` (`[data-rate]`, `[data-line-hit]`, `data-hl-edge`/`data-hl-node`, the legend row), `index.css` (`--opacity-graph-cover`, `[data-rate]` hidden at rest with a mouse) | Unit tests of the format and the highlight; RTL: the canvas untouched by a hover; e2e: hover a line and a card, reduced motion, touch at rest, hover frame times on `planner-large`; `ui-reviewer`, `test-hunter` | None new (the demo is not flagged) |
 | 1 | Dim tokens and `focusSet` (**built**, 2026-11-05: see "Build note, PR 1" at the end) | `index.css` (`--color-graph-dim-line`, drop `--opacity-graph-dim`), `focusSet.ts` with states 1, 3 and the highlight (3a, the amendment) only (today's), every user of the opacity token: `SiteGraph.tsx` (lines, march strokes, moving glyphs, labels, cards, machine frames), `DestinationCaps.tsx`, ~~`HighlightLayer.tsx` (its cover and `--opacity-graph-cover`)~~ (the cover was dropped 2026-11-03: see the amendment's "no dimming on hover"), and the tests that read it (`SiteGraph.test.tsx`, `SiteGraph.focus.test.tsx`, `SiteGraph.marchLayer.hunt.test.tsx`, `SiteGraph.highlight.test.tsx`, `e2e/planner-graph.spec.ts`); contrast test | Unit tests of `focusSet`; contrast at 4.5:1 for dimmed text and 3:1 for the dim line on canvas and surface; the item-filter baselines change in this PR (not flagged); item focus, still behind `planner.itemFocus`, by its RTL test; lit and dimmed clearly apart on the screenshots (Decision 3); the hover frame-time bound still holds; `ui-reviewer`, `test-hunter` | None new |
-| 2 | Ports: model, layout and drawing | `ports.ts` (pure: sides from `returnFlows`, the fold to "+N", order by the router), `canvasScene.ts` (`bundleFlows` and `edgeKeyOf` by item when the flag is on), `layoutSite.ts` (`cardSize`, peer rule), `orthogonalRoute.ts` (sides as input, ends at port heights, same-port levels in `free`, track ties), `SiteGraph.tsx` (port discs, both arrowhead forms behind the flag, trims from the disc's edge, the stop bar at the port), `marching.ts` (`marchHoles`), `plannerPrefs.ts` (the flag), `frontend-planner-map.md` | Unit tests: one port per item per side, return ports, "+N" past 6, one line per item; ADR-0059's metrics test with ports on (no edge through a card, crossings within 10%); the layout benchmarks recorded here; flag off draws exactly today's canvas (baselines unchanged); `test-hunter`, `ui-reviewer` | Demo world: a group with 7 inputs (the fold), a fan-out, a loop, a train on a port |
+| 2 | Ports: model, layout and drawing (**built** behind the flag, 2026-11-05: see "Build note, PR 2") | `ports.ts` (pure: sides from `returnFlows`, the fold to "+N", order by the router), `canvasScene.ts` (`bundleFlows` and `edgeKeyOf` by item when the flag is on), `layoutSite.ts` (`cardSize`, peer rule), `orthogonalRoute.ts` (sides as input, ends at port heights, same-port levels in `free`, track ties), `SiteGraph.tsx` (port discs, both arrowhead forms behind the flag, trims from the disc's edge, the stop bar at the port), `marching.ts` (`marchHoles`), `plannerPrefs.ts` (the flag), `frontend-planner-map.md` | Unit tests: one port per item per side, return ports, "+N" past 6, one line per item; ADR-0059's metrics test with ports on (no edge through a card, crossings within 10%); the layout benchmarks recorded here; flag off draws exactly today's canvas (baselines unchanged); `test-hunter`, `ui-reviewer` | Demo world: a group with 7 inputs (the fold), a fan-out, a loop, a train on a port |
 | 3 | End labels and the fallback (the rate row in `shortRateText`'s form and shown only while highlighted with a mouse, per the amendment) | `endLabels.ts` (pure: label words, bands, `endLabelFit`), `layoutSite.ts` (bands to dagre, the off-centre card in its box), `orthogonalRoute.ts` (left and right column reach, tracks and straightening outside the bands), `SiteGraph.tsx` (labels, the empty middle box, fallback bubbles, level of detail), the port-line list in the overlay | Unit tests of the fit rule (a long line gets two labels, a squeezed one its bubble, the grid none) and of the `PORT_PITCH` inequality; no label meets a card, cap, pill or other label on the dense scenes; picture width recorded; layout benchmarks again; `test-hunter`, `ui-reviewer` | A pair of cards in a narrow frame (the fallback), an unknown-item line |
 | 4 | Motion, focus targets and frame times | `marching.ts`, `capLayout.ts` and `glyphMotion.ts` (lit candidates only), `ItemFocusLayer.tsx` (stops unchanged; the port-line list's Escape), e2e frame-time and pan-zoom records | The regression bound with ports on; keyboard reaches every line with labels drawn; axe | `planner-large` with the flag on |
 | 5 | Focus states and the legend | `focusSet.ts` (states 2, 4, 5 and emphasis, per the owner's answers, ordered after the highlight 3a), `graphModel.ts` (`reachFromCard`), `GroupPanel.tsx` ("Show what ... feeds and needs"), the status line, `Legend` rows | Unit tests per state and their order; e2e states `planner-dim-context`, `planner-dim-select`, `planner-dim-path`; axe with dimmed text; `ui-reviewer` | Demo factory with a group outside its home site |
@@ -593,3 +593,39 @@ entry fall away); whether the highlight should dim in PR 1's colours is a new qu
 - **Decision 3's fallback taken.** On the first screenshots (the item-filtered site) a dimmed card with muted words and
   grey icons read only faintly dimmed, as `ui-reviewer` expected. So a dimmed card's raised fill (`surface-2`) sinks to the
   graph's own `surface`, and the card reads as an outline. No new token: muted on `surface` is already pinned at 4.5:1.
+
+## Build note, PR 2 (2026-11-05): ports behind `planner.ports`
+
+- **Flag.** `planner.ports` (`plannerPrefs.ts`): off unless "on"; the demo build reads it as on unless "off". Open question 5
+  is `planner.portArrows`: the recommended form (no arrowhead into a left input port; a return line keeps its own) is the
+  default, "keep" draws the arrowhead. Both forms are built; the owner's answer picks the default and the other goes.
+- **Model** (`ports.ts`, pure): a port per card, side, direction and item. Direction is in the id, so a card that takes an
+  item in and also sends the same item back on a return line has two ports, not one in-and-out port. The fold keeps the
+  `PORTS_MAX - 1` items of highest summed rate (then name). In and out on one side share the cap; a side that holds both
+  folds each, so it can show two "+N" ports (only with return flows on that side). `bundleFlows(flows, true)` keys by item
+  (`itemKeyOf`) and sets `CanvasFlow.portItem`, which `edgeKeyOf` appends, so focus finds the per-item line.
+- **Card height.** A card holds `(n - 1) × PORT_PITCH + 2 × PORT_INSET` for its fuller edge's `n` ports, which keeps every
+  port centre `PORT_INSET` inside the top and bottom (Decision 1's purpose; its "ports times the pitch plus the insets"
+  would add a pitch to every card). The overview's peer height is taken before this growth.
+- **Router** (`orthogonalRoute.ts`): `RouteEdge` takes `srcSide`/`tgtSide`/`srcPort`/`tgtPort`; ports down an edge are
+  ordered by return last, then where their lines go next (the first level that is not a straightened run following the
+  end, else the far end), then summed rate, then name; `straighten`'s `free` ignores lines on the same port; `orderTracks`
+  breaks ties by the far end's height. `RouteOutput.portAt` gives each port's centre. Without ports, unchanged.
+- **Layout.** A line into a port ends `PORT_D / 2` short (at the disc's edge), so the arrowhead, the stop bar and every
+  trim are measured from there. The grid fallback spreads ports in model order and draws straight lines without that trim.
+  `marchHoles` cuts a round hole per disc.
+- **Drawing.** `PortDiscs` in the card's group (and a machines frame's): the item's 16 px icon, else initials, "?" or
+  "+N"; `<title>` from `portTitle` ("Iron Plate in, 120 items/min"); plain discs below `BUBBLE_DETAIL_ZOOM`. No focusable
+  element; dims with its card.
+- **Crossings** (`layoutPorts.test.ts`, the dense 40-group scene): 36 with ports off and 41 with them on (+14%), but the
+  lines go from 65 to 69, since a pair exchanging two items draws two. Per line drawn that is 0.554 against 0.594 (+7%),
+  inside the 10% bound, which judges the order rule; the extra lines are the cost "Consequences" names.
+- **Benchmarks** (this dev box, median of five cold runs; ADR-0061's blow-up rows with ports off and on): closed 1 and 2
+  ms (3 and 8 lines); areas blown up 9 and 17 ms (15 and 41 lines); Expand all to the cap 55 and 66 ms (64 and 83 lines);
+  one factory of 59 groups 35 and 41 ms (76 lines both). The 160-group measured-size site: overview 56 and 56 ms, focused
+  49 and 56 ms. All under the 100 ms budget, so `EXPAND_MAX_CARDS` stays 60. The overview is where per-item lines add most.
+- **Demo.** The world already had a fan-out (ingots, plates), a loop (rods back from the rotor assembler) and a train
+  between two platforms. The storage depot now also keeps each line's surplus (ingots, rods, screws, ore, plates), so it
+  takes seven items in and folds two into "+2".
+- **Not yet:** end labels and the fallback bubble rule (PR 3), lit-only motion (PR 4), the focus states (PR 5), the demo
+  review (PR 6). With ports on, every line still draws its middle bubble, now of one item.

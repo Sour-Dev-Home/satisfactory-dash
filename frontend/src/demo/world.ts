@@ -815,6 +815,13 @@ export function productionGraph(now: number): ProductionGraphResponse {
         plannerEdge(N.reinforced, N.depot, RIP_ITEM, null, "unknown", { mixed: true, conveyorCount: 4, flow: "output", destination: "storage" }),
         plannerEdge(N.reinforcedBacked, N.depot, RIP_ITEM, 0.5, "estimated", { flow: "output", destination: "storage" }),
         plannerEdge(N.frames, N.depot,["Desc_ModularFrame_C", "Modular Frame"], 2, "measured", { flow: "output", destination: "storage" }),
+        // The depot also keeps each line's surplus, so it takes seven items in: past the ports' cap of six on one edge, the
+        // two slowest fold into one "+2" port (ADR-0063 Decision 1).
+        plannerEdge(N.smelters, N.depot, INGOT_ITEM, 5, "estimated", { flow: "output", destination: "storage" }),
+        plannerEdge(N.rods, N.depot, ROD_ITEM, 2, "estimated", { flow: "output", destination: "storage" }),
+        plannerEdge(N.screws, N.depot, SCREW_ITEM, 3, "estimated", { flow: "output", destination: "storage" }),
+        plannerEdge(N.dockPlatform, N.depot, ORE_ITEM, 4, "estimated", { flow: "output", destination: "storage", itemFrom: "upstream" }),
+        plannerEdge(N.plates, N.depot, ["Desc_IronPlate_C", "Iron Plate"], 1, "estimated", { flow: "output", destination: "storage" }),
         { ...plannerEdge(N.oil, N.refinery, ["Desc_LiquidOil_C", "Crude Oil"], 30, "measured", { capacityPerMinute: 300 }), kind: "pipe" },
         plannerEdge(N.refinery, N.plasticStore, ["Desc_Plastic_C", "Plastic"], 20, "estimated", { flow: "output", destination: "storage" }),
         {
