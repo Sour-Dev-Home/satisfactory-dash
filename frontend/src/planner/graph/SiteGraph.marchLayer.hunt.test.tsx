@@ -64,16 +64,15 @@ describe("the march layer, hunted", () => {
     expect([...after].some((b) => b.split(",").slice(2).join(",") === `${FOCUS_CARD_W.toFixed(2)},${FOCUS_CARD_H.toFixed(2)}`)).toBe(true);
   });
 
-  it("dims a marching line with its canvas line when another line is in focus", async () => {
+  // ADR-0063 build PR 4 (Decision 3): a dimmed line does not march at all, so the march budget goes to what is lit.
+  it("marches only lit lines when another line is in focus", async () => {
     const svg = await openGraph();
+    const before = layerOf(svg)!.querySelectorAll("[data-march-edge]").length;
     fireEvent.click(svg.querySelector('[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]')!);
     const canvasDim = new Set([...svg.querySelectorAll('[data-edge-layer="lines"] [data-edge]')].filter((g) => g.hasAttribute("data-dim")).map((g) => g.getAttribute("data-edge")));
-    const marched = [...layerOf(svg)!.querySelectorAll("[data-march-edge]")];
-    expect(marched.length).toBeGreaterThan(0);
-    for (const m of marched) {
-      const dimmed = m.querySelector(":scope > g")!.hasAttribute("data-dim");
-      expect(dimmed).toBe(canvasDim.has(m.getAttribute("data-march-edge")));
-    }
     expect(canvasDim.size).toBeGreaterThan(0);
+    const marched = [...(layerOf(svg)?.querySelectorAll("[data-march-edge]") ?? [])];
+    for (const m of marched) expect(canvasDim.has(m.getAttribute("data-march-edge"))).toBe(false);
+    expect(marched.length).toBeLessThan(before);
   });
 });
