@@ -112,7 +112,8 @@ export function focusSet(focused: FocusedLine | null, reach: Reach | null, more:
       dims: context.outside.size > 0,
       card: lit,
       edge: (e) => lit(e.flow.from) && lit(e.flow.to),
-      emphasised: (key) => context.products.has(key),
+      // A product group outside the home site is dimmed, not emphasised: a heavier border on a greyed card reads as both.
+      emphasised: (key) => context.products.has(key) && !context.outside.has(key),
     };
   }
   return ALL_LIT;

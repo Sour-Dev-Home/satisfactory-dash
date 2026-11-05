@@ -1198,6 +1198,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       ),
     [layout],
   );
+  // State 2 holds only while its card's panel is open: opening another card (or none) ends it for good, so reopening the
+  // first card does not bring it back.
+  if (feedsKey !== null && feedsKey !== openKey) setFeedsKey(null);
   const cardReach = useMemo(
     () => (portsOn && feedsKey !== null && feedsKey === openKey && laidByKey.has(feedsKey) ? reachFromCard(feedsKey, layout.flows, flowReturns) : null),
     [portsOn, feedsKey, openKey, laidByKey, layout, flowReturns],

@@ -69,6 +69,13 @@ describe("focusSet", () => {
     expect(focusSet(null, null, { selected: { key: "b", neighbours: new Set() }, context: { outside: new Set(["a"]), products: new Set() } }).state).toBe(4);
   });
 
+  it("state 5 does not emphasise a product card that is dimmed (outside the home site)", () => {
+    const lights = focusSet(null, null, { context: { outside: new Set(["a"]), products: new Set(["a", "c"]) } });
+    expect(lights.card("a")).toBe(false);
+    expect(lights.emphasised("a")).toBe(false);
+    expect(lights.emphasised("c")).toBe(true);
+  });
+
   it("state 5 with nothing outside dims nothing but still emphasises; with neither, everything is plain", () => {
     const only = focusSet(null, null, { context: { outside: new Set(), products: new Set(["c"]) } });
     expect(only.dims).toBe(false);

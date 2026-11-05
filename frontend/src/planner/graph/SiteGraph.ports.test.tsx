@@ -103,6 +103,20 @@ describe("focus states, flag on", () => {
     expect(dimmedCards(svg)).toBe(0);
   });
 
+  it("does not bring 'feeds and needs' back when the first card is reopened after another", async () => {
+    const svg = await openGraph({ [PORTS_KEY]: "on" });
+    const cards = [...svg.querySelectorAll("[data-card]")];
+    expect(cards.length).toBeGreaterThan(1);
+    fireEvent.click(cards[cards.length - 1]);
+    fireEvent.click(within(await screen.findByRole("complementary")).getByRole("button", { name: /^Show what .+ feeds and needs$/ }));
+    expect(screen.getByRole("status")).toHaveTextContent(/^Showing what /);
+    fireEvent.click(cards[0]);
+    fireEvent.click(cards[cards.length - 1]);
+    const again = within(await screen.findByRole("complementary")).getByRole("button", { name: /^Show what .+ feeds and needs$/ });
+    expect(again).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("status")).not.toHaveTextContent(/^Showing what /);
+  });
+
   it("dims nothing on opening a card with the flag off", async () => {
     const svg = await openGraph();
     const cards = [...svg.querySelectorAll("[data-card]")];
