@@ -86,6 +86,12 @@
   --color-map-grid: #3a4148;
   /* The backing chip behind a building icon: the game's icons are dark glyphs that vanish on the dark card. */
   --color-icon-chip: #c4ccd6;
+  /* A Planner line outside the focus (ADR-0063 Decision 3): grey whatever its carrier, 3:1 or more on the canvas and the
+     surface (WCAG 1.4.11: it still says a flow exists) and well under a lit belt's --color-muted (lineWidth.test.ts). */
+  --color-graph-dim-line: #6e757c;
+  /* A Planner card's own outlines (a machines frame, its rows, the pills): muted, and the dim grey when the card dims. Its
+     own token so a dimmed card can grey them without greying its muted words (which must stay at 4.5:1). */
+  --color-graph-card-edge: var(--color-muted);
   /* Borders and text on the soft status backgrounds (banners, the error notice). */
   --color-bad-edge: rgb(239 83 80 / 0.35);
   --color-bad-on-soft: #ff8a80;
@@ -147,9 +153,8 @@
   /* The planner canvas's floor: a short drawing keeps a small canvas instead of 320 px of empty space (ADR-0055). */
   --spacing-graph-min: 200px;
   --spacing-overview-rail: 17rem;
-  /* The planner graph (ADR-0050): the side panel's width, and what an item filter dims. */
+  /* The planner graph (ADR-0050): the side panel's width. */
   --spacing-graph-panel: 22rem;
-  --opacity-graph-dim: 0.25;
   /* How far an overflow fade reaches in from the canvas edge (the graph) and the nav's edge (the main tabs). */
   --spacing-graph-fade: 3rem;
   --spacing-nav-fade: 2rem;
@@ -466,6 +471,36 @@
     [data-rate] {
       opacity: 0;
     }
+  }
+  /* Dimming outside the focus (ADR-0063 Decision 3): by colour, not opacity, so dimmed words stay readable. A dimmable group
+     carries `data-dim-kind` always (so the colour change eases both ways) and `data-dim` while dimmed; it redefines the
+     colour tokens its children's utilities read. A line goes grey whatever its carrier (belt grey, pipe blue, mixed amber,
+     the pulse); `--color-line` (an unknown rate's line, a card's border) is already quieter, so it stays. A card or label
+     keeps its fill, its words go `--color-muted` (4.5:1 or more: lineWidth.test.ts), its icons grey. State tones (a stalled
+     mark's amber, blue, grey) stay in both (owner answer 4), as do the keyboard's ring and a pick's tint. */
+  [data-dim-kind] :is(path, rect, circle, text, image) {
+    transition-property: stroke, fill, color, filter;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-standard);
+  }
+  [data-dim-kind="line"][data-dim] {
+    --color-muted: var(--color-graph-dim-line);
+    --color-info: var(--color-graph-dim-line);
+    --color-warn: var(--color-graph-dim-line);
+    --color-fg-strong: var(--color-graph-dim-line);
+    /* The moving transport glyph's strokes (`stroke-fg`) sit in a line group too. */
+    --color-fg: var(--color-graph-dim-line);
+  }
+  [data-dim-kind="card"][data-dim] {
+    --color-fg: var(--color-muted);
+    --color-fg-strong: var(--color-muted);
+    --color-graph-card-edge: var(--color-graph-dim-line);
+    /* Decision 3's fallback, taken on the first screenshots (muted words and grey icons alone read only faintly dimmed): the
+       card's raised fill sinks to the canvas's own surface, so a dimmed card reads as an outline. Muted stays 4.5:1 on it. */
+    --color-surface-2: var(--color-surface);
+  }
+  [data-dim-kind="card"][data-dim] image {
+    filter: grayscale(1);
   }
   dd {
     color: var(--color-fg-strong);

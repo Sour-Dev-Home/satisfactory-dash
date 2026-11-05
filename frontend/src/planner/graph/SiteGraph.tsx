@@ -9,6 +9,7 @@ import type { FactoryTree } from "../factoryTree";
 import { bottleneckCountText, carrierWord, siteFindings } from "../plannerText";
 import { GroupPanel } from "./GroupPanel";
 import { TOO_LARGE_TO_EXPAND, expandAllKeys, factoryScene, flowTitle, overviewScene, sceneSummary, siteScene, type Card, type CanvasFlow, type FactoryView, type Scene } from "./canvasScene";
+import { focusSet } from "./focusSet";
 import { minedRates, reachFor, siteItems } from "./graphModel";
 import type { FactoryModel } from "./hierarchy";
 import { BuildingGlyph, GLYPH_BOX } from "./buildingGlyphs";
@@ -1121,9 +1122,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setFolds(open ? { flipped: bubbles } : { flipped: bubbles, machines: new Set() });
   };
 
-  // Focus is hop-1 (owner answer 1): only the focused line and its two cards stay lit; otherwise the item filter decides.
-  const lit = (key: string) => (focus !== null && focusEdge !== undefined ? key === focusEdge.flow.from || key === focusEdge.flow.to : reach === null || reach.nodes.has(key));
-  const edgeLit = (e: LaidEdge) => (focus !== null ? edgeKeyOf(e.flow) === focus.edgeKey : reach === null || e.parts.some((i) => reach.edges.has(i)));
+  // What is lit and what dims (ADR-0063 Decision 3): item focus is hop-1 (owner answer 1), else the item filter decides.
+  const lights = focusSet(focus !== null && focusEdge !== undefined ? { edgeKey: focus.edgeKey, from: focusEdge.flow.from, to: focusEdge.flow.to } : null, reach);
+  const lit = (key: string) => lights.card(key);
+  const edgeLit = (e: LaidEdge) => lights.edge(e);
 
   // The highlight (ADR-0063 amendment, 2026-11-03): the line or card under the mouse, else the line whose bubble or the card
   // whose button the keyboard is on. It shows the rates of that line (a card: all its lines), drawn by `HighlightLayer`
@@ -1827,7 +1829,7 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
   const dash = edgeDash(e.flow.rate);
   const underArrow = stroke.double ? DOUBLE_UNDER_ARROW : LINE_UNDER_ARROW;
   return (
-    <g data-edge={e.index} data-hl-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-edge={e.index} data-hl-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} data-dim-kind="line" data-dim={dim ? "" : undefined}>
       <title>{flowTitle(e.flow, from, to)}</title>
       <path
         d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? underArrow : STOP_BAR_GAP)}
@@ -1995,7 +1997,7 @@ function MarchLine({ edge: e, step, dim }: { edge: LaidEdge; step: RateStep; dim
   return (
     <g data-march-edge={e.index} data-march-step={step}>
       {dash !== undefined && <path d={d} fill="none" strokeWidth={stroke.width + MARCH_COVER_PAD} data-march-cover="" className="stroke-surface" />}
-      <g className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+      <g data-dim-kind="line" data-dim={dim ? "" : undefined}>
         {dash !== undefined && (
           <path d={d} fill="none" strokeWidth={stroke.width} strokeDasharray={dash} data-march={step} className={cn(edgeClass(e.flow), MARCH_CLASS.get(step))} />
         )}
@@ -2034,7 +2036,7 @@ function MarchLine({ edge: e, step, dim }: { edge: LaidEdge; step: RateStep; dim
  */
 function MovingGlyph({ glyph, dim }: { glyph: GlyphCandidate<LaidEdge>; dim: boolean }) {
   return (
-    <g data-moving="true" data-glyph-edge={glyph.edge.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-moving="true" data-glyph-edge={glyph.edge.index} data-dim-kind="line" data-dim={dim ? "" : undefined}>
       <TransportGlyph mode={glyph.edge.flow.carrier} />
       <animateMotion path={glyph.path} dur={`${glyph.seconds}s`} repeatCount="indefinite" calcMode="linear" />
     </g>
@@ -2056,7 +2058,7 @@ function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }:
   const { left, cy } = bubbleRowOrigin(e);
   const at = bubbleOffsets(row);
   return (
-    <g data-edge-label={e.index} data-hl-edge={e.index} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-edge-label={e.index} data-hl-edge={e.index} data-dim-kind="card" data-dim={dim ? "" : undefined}>
       <title>{flowTitle(e.flow, from, to)}</title>
       {/* In the box the layout reserved for it: a pill over its own line, so the line stops at the bubbles. */}
       <rect
@@ -2315,7 +2317,9 @@ function CardView({
       data-node={n.key}
       data-hl-node={n.key}
       data-picked={picked || undefined}
-      className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}
+      data-dim-kind="card"
+      data-dim={dim ? "" : undefined}
+      className="cursor-pointer"
     >
       <title>{card.description}</title>
       {/* A pile of cards behind a bubble or a fold: more than one thing is in it. */}
@@ -2387,7 +2391,7 @@ function CardView({
         >
           <title>{machinesToggleName(card)}</title>
           <rect y={(PILL_H - PILL_HIT) / 2} width={EXPAND_W} height={PILL_HIT} className="fill-transparent" />
-          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-graph-card-edge" />
           <text x={EXPAND_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
             Expand
           </text>
@@ -2407,7 +2411,7 @@ function CardView({
         >
           <title>{blowUpName(card)}</title>
           <rect y={(PILL_H - PILL_HIT) / 2} width={EXPAND_W} height={PILL_HIT} className="fill-transparent" />
-          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} strokeDasharray={card.blowUp.fits ? undefined : "4 3"} className={card.blowUp.fits ? "fill-surface-2 stroke-muted" : "fill-surface stroke-line"} />
+          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} strokeDasharray={card.blowUp.fits ? undefined : "4 3"} className={card.blowUp.fits ? "fill-surface-2 stroke-graph-card-edge" : "fill-surface stroke-line"} />
           <text x={EXPAND_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className={cn("text-sm font-semibold", card.blowUp.fits ? "fill-fg" : "fill-muted")}>
             Expand
           </text>
@@ -2444,7 +2448,7 @@ function UpstreamPill({ node: n, onToggle }: { node: LaidNode; onToggle: () => v
     >
       <title>{upstreamName(n.card)}</title>
       <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(pillW + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
-      <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+      <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-graph-card-edge" />
       <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
         {pillText}
       </text>
@@ -2497,7 +2501,9 @@ function MachinesFrame({
       data-hl-node={n.key}
       data-machines-open=""
       data-picked={picked || undefined}
-      className={cn("cursor-pointer transition-opacity", dim && "opacity-graph-dim")}
+      data-dim-kind="card"
+      data-dim={dim ? "" : undefined}
+      className="cursor-pointer"
     >
       <title>{card.description}</title>
       <rect
@@ -2507,7 +2513,7 @@ function MachinesFrame({
         strokeWidth={ringed || picked ? 3 : 1}
         strokeDasharray="6 4"
         // A stronger edge than a bubble frame's (stroke-line), so an opened group reads apart from an opened bubble.
-        className={cn("fill-surface", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-muted")}
+        className={cn("fill-surface", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-graph-card-edge")}
       />
       {picked && <rect width={n.width} height={n.height} rx={10} className="pointer-events-none fill-info-soft" />}
       {picked && (
@@ -2539,7 +2545,7 @@ function MachinesFrame({
         <title>{machinesToggleName(card)}</title>
         <rect y={(FRAME_HEADER_H - PILL_HIT) / 2} width={COLLAPSE_W} height={PILL_HIT} className="fill-transparent" />
         {/* Styled as its Expand pill (and the upstream pill): one control in two states. */}
-        <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+        <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-graph-card-edge" />
         <text x={COLLAPSE_W / 2} y={FRAME_HEADER_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
           Collapse
         </text>
@@ -2566,7 +2572,7 @@ function MachinesFrame({
               rx={6}
               strokeWidth={on ? 3 : 1}
               strokeDasharray={m.id === null ? "6 4" : undefined}
-              className={cn(m.id === null ? "fill-surface" : "fill-surface-2", on ? "stroke-accent" : "stroke-muted")}
+              className={cn(m.id === null ? "fill-surface" : "fill-surface-2", on ? "stroke-accent" : "stroke-graph-card-edge")}
             />
             {m.lines.map((line, k) =>
               line === "" ? null : (

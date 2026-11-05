@@ -93,4 +93,19 @@ describe("the mixed line's contrast (WCAG 1.4.11, 3:1 for a graphic)", () => {
   it("keeps a transport's rails (muted, or warn when mixed) at 3:1 against the canvas and the gap between them", () => {
     for (const rail of ["muted", "warn"]) for (const surface of ["surface", "canvas"]) expect(ratio(hex(rail), hex(surface)), `${rail} on ${surface}`).toBeGreaterThanOrEqual(3);
   });
+
+  // ADR-0063 Decision 3: dimming is by colour. A dimmed line still says a flow exists (3:1, WCAG 1.4.11) yet reads well under
+  // the quietest lit line that has a colour of its own (a belt's muted grey); dimmed words wear muted (4.5:1, WCAG 1.4.3) on
+  // every fill a card, a label pill or the canvas has.
+  it("keeps the dimmed line at 3:1 on the canvas and the surface, and clearly under a lit belt", () => {
+    for (const surface of ["surface", "canvas"]) {
+      const dim = ratio(hex("graph-dim-line"), hex(surface));
+      expect(dim, surface).toBeGreaterThanOrEqual(3);
+      expect(ratio(hex("muted"), hex(surface)) / dim, `lit against dim on ${surface}`).toBeGreaterThanOrEqual(1.8);
+    }
+  });
+
+  it("keeps dimmed words (muted) at 4.5:1 on the canvas, the surface and surface-2", () => {
+    for (const surface of ["canvas", "surface", "surface-2"]) expect(ratio(hex("muted"), hex(surface)), surface).toBeGreaterThanOrEqual(4.5);
+  });
 });

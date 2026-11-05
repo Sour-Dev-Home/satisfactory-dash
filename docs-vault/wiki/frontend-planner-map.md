@@ -168,6 +168,12 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   The layer fades by its own opacity (`transition-opacity`); reduced motion zeroes both. Off during a make-room glide; a pan, a pinch or a new layout ends the pointer's target. A
   finger or pen highlights only where `ratesHideAtRest()` (`RATES_HIDE_QUERY`, the `hover-pointer` variant in
   `index.css`): a hybrid device; on a touch screen it ends a mouse's highlight instead.
+- Dimming (ADR-0063 build PR 1): `focusSet.ts` is the one rule for what is lit (item focus, hop-1, then the item filter's
+  reach); `SiteGraph`'s `lit` and `edgeLit` call it. A dimmable group (a line, a march stroke, a moving glyph, a cap's
+  stroke: `data-dim-kind="line"`; a card, a machines frame, a line's label: `"card"`) gets `data-dim` while dimmed, and
+  `index.css` redefines the colour tokens under it: a line goes `--color-graph-dim-line` whatever its carrier, a card's
+  words go `--color-muted` and its icons grey. No opacity on anything that holds text; state tones, the keyboard's ring
+  and a pick's tint stay. The colour change eases by `--duration-fast`, zeroed under reduced motion.
 - Stalled marks (ADR-0062 build PR 2): a card whose product reads 0 with all its machines backed up, underfed, paused or
   idle has `Card.stalled` (`stalledOf`), and the lines leaving it `CanvasFlow.stalled` (`withStalledFlows`; not a line
   measured above 0; a bundle only when every part is). In marks mode (`planner.stateStyle`, the default; the toolbar's
