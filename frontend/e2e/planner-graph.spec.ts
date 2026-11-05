@@ -54,7 +54,8 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ore" });
   await expect(page.getByRole("status")).toContainText("groups carry or feed this item");
   await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "All items" });
-  await expect(page.getByRole("status")).toHaveCount(0);
+  // The status line stays mounted (ADR-0063 build PR 7a), empty once nothing is filtered.
+  await expect(page.getByRole("status")).toHaveText("");
 
   // The group panel: Enter on a group's button opens it, Escape closes it and returns focus to the group.
   const group = page.getByRole("button", { name: /^8× Constructor, Iron Plate/ });
