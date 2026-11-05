@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { bundleFlows, type CanvasFlow } from "./canvasScene";
 import { LABEL_LINE_H, PILL_HIT } from "./layoutSite";
 import { TRANSPORT_W } from "./lineWidth";
-import { END_LABEL_CLEAR, END_LABEL_ROW_GAP, PORT_D, PORT_INSET, PORT_PITCH, PORTS_MAX, portModel, portOffsets, portsHeight, portsPerCard } from "./ports";
+import { END_LABEL_CLEAR, END_LABEL_ROW_GAP, PORT_D, PORT_INSET, PORT_PITCH, PORTS_MAX, portModel, portOffsets, portsHeight, portsPerCard, portTitle } from "./ports";
 
 const flow = (from: string, to: string, itemName: string | null, ratePerMinute: number | null, extra: Partial<CanvasFlow> = {}): CanvasFlow => ({
   from,
@@ -116,8 +116,25 @@ describe("portModel", () => {
     expect(portModel(drawnOf(inputs), new Set()).ports.some((p) => p.item === "+")).toBe(false);
   });
 
-  it("names the summed rate of known parts only (an unknown rate counts as 0)", () => {
+  it("names the summed rate of known parts only (an unknown rate counts as 0), and calls that sum 'at least'", () => {
     const { ports } = portModel(drawnOf([flow("a", "b", "Ore", null), flow("c", "b", "Ore", 12)]), new Set());
-    expect(ports.find((p) => p.card === "b")!.rate).toBe(12);
+    const b = ports.find((p) => p.card === "b")!;
+    expect(b.rate).toBe(12);
+    expect(b.quality).toBe("atLeast");
+  });
+});
+
+describe("portTitle", () => {
+  it("says the item, the direction and the rate in words", () => {
+    const p = portModel(drawnOf([flow("a", "b", "Iron Plate", 120)]), new Set()).ports[0];
+    expect(portTitle({ ...p, unit: "items/min" })).toBe("Iron Plate out, 120 items/min");
+    expect(portTitle({ ...p, dir: "in", quality: "unknown", unit: "items/min" })).toBe("Iron Plate in, rate unknown");
+  });
+
+  it("lists a fold's items, with a rate only when they share a unit", () => {
+    const inputs = Array.from({ length: 7 }, (_, i) => flow(`s${i}`, "sink", `Item ${i}`, (i + 1) * 10));
+    const fold = portModel(drawnOf(inputs), new Set()).ports.find((p) => p.item === "+")!;
+    expect(portTitle({ ...fold, unit: "items/min" })).toBe("2 items in: Item 1, Item 0, 30 items/min");
+    expect(portTitle({ ...fold, unit: null })).toBe("2 items in: Item 1, Item 0");
   });
 });

@@ -54,7 +54,7 @@ const isKnown = (f: CanvasFlow): boolean => f.quality !== "unknown" && f.ratePer
 const rateOf = (f: CanvasFlow): number => (isKnown(f) ? f.ratePerMinute! : 0);
 
 /** The quality of a sum of parts: unknown with no number, "at least" when one is missing, measured only when all are. */
-function summedQuality(parts: readonly CanvasFlow[]): FlowQuality {
+export function summedQuality(parts: readonly CanvasFlow[]): FlowQuality {
   const sure = parts.filter(isKnown);
   if (sure.length === 0) return "unknown";
   if (sure.length < parts.length || parts.some((p) => p.quality === "atLeast")) return "atLeast";

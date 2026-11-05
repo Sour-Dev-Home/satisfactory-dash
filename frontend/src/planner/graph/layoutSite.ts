@@ -4,6 +4,7 @@ import { bundleFlows, groupCard, siteScene, type Card, type CanvasFlow, type Fra
 import { buildingIconUrl } from "./buildingIcons";
 import { capSlots } from "./capModel";
 import { BUBBLE_D, bubbleRow, bubblesWidth, edgeKeyOf, type BubbleRow } from "./bubbleRow";
+import type { FlowQuality } from "./hierarchy";
 import { routeOrthogonal } from "./orthogonalRoute";
 import { PORT_D, PORT_PITCH, portModel, portOffsets, portsHeight, portsPerCard, type PortItem, type PortModel, type Side } from "./ports";
 import { GLYPH_HALO_RADIUS, GLYPH_SIZE } from "./transportModes";
@@ -104,6 +105,7 @@ export interface LaidPort {
   item: string;
   items: PortItem[];
   rate: number;
+  quality: FlowQuality;
   /** Its lines' unit, or null when a fold mixes items and fluid (never summed). */
   unit: CanvasFlow["unit"] | null;
   /** How many lines attach. */
@@ -869,6 +871,7 @@ function attachPorts(nodes: LaidNode[], model: PortModel, drawn: readonly Canvas
       item: port.item,
       items: port.items,
       rate: port.rate,
+      quality: port.quality,
       unit: units.size === 1 ? [...units][0] : null,
       lines: port.flows.length,
       x: port.side === "l" ? 0 : n.width,

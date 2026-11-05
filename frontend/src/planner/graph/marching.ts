@@ -1,4 +1,5 @@
 import type { CanvasFlow } from "./canvasScene";
+import { PORT_D } from "./ports";
 import { rateStep, type RateStep } from "./rateStep";
 import { isInView, type Stage, type View } from "./viewport";
 
@@ -139,7 +140,7 @@ export interface MarchHole extends Box {
  * whole canvas, so without these holes a marching line would show through a label or a card it runs under. Per layout.
  */
 export function marchHoles(
-  nodes: readonly { x: number; y: number; width: number; height: number; card: { kind: string } }[],
+  nodes: readonly { x: number; y: number; width: number; height: number; card: { kind: string }; ports?: readonly { x: number; y: number }[] | undefined }[],
   edges: readonly { labelX: number; labelY: number; labelWidth: number; labelHeight: number }[],
   /** How tall the controls are that a card centres on its top and bottom edges (its warn badge, its pills): half of it sticks
    *  out above and below. Those stand `CARD_DECOR_INSET` in from the sides, so the hole for them leaves the sides, where lines
@@ -158,6 +159,8 @@ export function marchHoles(
     if (n.card.kind === "bubble" || n.card.kind === "fold") {
       out.push({ x: n.x + CARD_STACK_OFFSET, y: n.y + CARD_STACK_OFFSET, width: n.width, height: n.height, rx: CARD_RX });
     }
+    // An item port's disc stands half outside its card's edge (ADR-0063 Decision 1): its own round hole.
+    for (const p of n.ports ?? []) out.push({ x: n.x + p.x - PORT_D / 2, y: n.y + p.y - PORT_D / 2, width: PORT_D, height: PORT_D, rx: PORT_D / 2 });
   }
   return out;
 }

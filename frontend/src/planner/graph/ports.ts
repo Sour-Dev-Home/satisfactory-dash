@@ -1,5 +1,6 @@
-import { itemKeyOf } from "./bubbleRow";
+import { itemKeyOf, itemRateText, summedQuality } from "./bubbleRow";
 import type { CanvasFlow } from "./canvasScene";
+import type { FlowQuality } from "./hierarchy";
 
 // ADR-0063 Decision 1: a card's end of the lines of one item on one side is a port, a small item disc on the card's edge.
 // Pure: which ports each card has, which port each line's ends attach to, and the fold past the cap. Their order down an
@@ -48,8 +49,9 @@ export interface Port {
   items: PortItem[];
   /** The drawn flows (indexes) that attach here. */
   flows: number[];
-  /** Their summed known rate. */
+  /** Their summed known rate, and how sure that sum is (ADR-0053 Decision 3: weakest wins, "at least" with a part missing). */
   rate: number;
+  quality: FlowQuality;
 }
 
 /** Which ports a line's two ends attach to, and on which side of each card. */
@@ -127,7 +129,18 @@ export function portModel(drawn: readonly CanvasFlow[], returns: ReadonlySet<num
           continue;
         }
         const id = idOf(s, it.key);
-        ports.push({ id, card: s.card, side: s.side, dir: s.dir, returning: s.returning, item: it.key, items: [{ key: it.key, name: it.name, className: it.className, rate: it.rate }], flows: it.flows, rate: it.rate });
+        ports.push({
+          id,
+          card: s.card,
+          side: s.side,
+          dir: s.dir,
+          returning: s.returning,
+          item: it.key,
+          items: [{ key: it.key, name: it.name, className: it.className, rate: it.rate }],
+          flows: it.flows,
+          rate: it.rate,
+          quality: summedQuality(it.flows.map((f) => drawn[f])),
+        });
         for (const f of it.flows) portOfFlow.set(`${f}\u0001${s.dir}`, id);
       }
       if (folded.length > 0) {
@@ -143,6 +156,7 @@ export function portModel(drawn: readonly CanvasFlow[], returns: ReadonlySet<num
           items: [...folded].sort(byRateThenName).map(({ key, name, className, rate }) => ({ key, name, className, rate })),
           flows,
           rate: folded.reduce((sum, it) => sum + it.rate, 0),
+          quality: summedQuality(flows.map((f) => drawn[f])),
         });
         for (const f of flows) portOfFlow.set(`${f}\u0001${s.dir}`, id);
       }
@@ -150,6 +164,19 @@ export function portModel(drawn: readonly CanvasFlow[], returns: ReadonlySet<num
   }
   const ends = drawn.map((_, i): FlowEnds => ({ src: portOfFlow.get(`${i}\u0001out`)!, tgt: portOfFlow.get(`${i}\u0001in`)!, ...sides[i] }));
   return { ports, ends };
+}
+
+/**
+ * A port's `<title>` for pointer hover (Decision 1, "Not a target"): "Iron Plate in, 120 items/min"; a fold lists its items
+ * ("2 items in: Screw, Rotor, …"), with a rate only when they share one unit (items and m³ are never added).
+ */
+export function portTitle(p: Pick<Port, "item" | "items" | "dir" | "rate" | "quality"> & { unit: CanvasFlow["unit"] | null }): string {
+  const rate = p.unit === null ? null : itemRateText({ rate: p.rate, quality: p.quality }, p.unit);
+  if (p.item === "+") {
+    const names = p.items.map((i) => i.name ?? "Item unknown").join(", ");
+    return `${p.items.length} items ${p.dir}: ${names}${rate === null ? "" : `, ${rate}`}`;
+  }
+  return `${p.items[0]?.name ?? "Item unknown"} ${p.dir}, ${rate ?? "rate unknown"}`;
 }
 
 /** How many ports each card has on its fuller side: what its height must hold. */
