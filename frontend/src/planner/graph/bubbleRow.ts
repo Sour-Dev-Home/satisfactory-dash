@@ -54,15 +54,27 @@ const isKnown = (f: CanvasFlow): boolean => f.quality !== "unknown" && f.ratePer
 const rateOf = (f: CanvasFlow): number => (isKnown(f) ? f.ratePerMinute! : 0);
 
 /** The quality of a sum of parts: unknown with no number, "at least" when one is missing, measured only when all are. */
-function summedQuality(parts: readonly CanvasFlow[]): FlowQuality {
+export function summedQuality(parts: readonly CanvasFlow[]): FlowQuality {
   const sure = parts.filter(isKnown);
   if (sure.length === 0) return "unknown";
   if (sure.length < parts.length || parts.some((p) => p.quality === "atLeast")) return "atLeast";
   return parts.every((p) => p.quality === "measured") ? "measured" : "estimated";
 }
 
-/** A line's identity across polls (ADR-0060 Decision 2): its ends, carrier, kind and unit, which `bundleFlows` groups by. */
-export const edgeKeyOf = (flow: Pick<CanvasFlow, "from" | "to" | "carrier" | "flow" | "unit">): string => [flow.from, flow.to, flow.carrier, flow.flow, flow.unit].join("|");
+/**
+ * A line's identity across polls (ADR-0060 Decision 2): its ends, carrier, kind and unit, which `bundleFlows` groups by,
+ * and with ports on (ADR-0063 Decision 1) its one item, since a pair of cards then draws a line per item.
+ */
+export const edgeKeyOf = (flow: Pick<CanvasFlow, "from" | "to" | "carrier" | "flow" | "unit" | "portItem">): string =>
+  [flow.from, flow.to, flow.carrier, flow.flow, flow.unit, ...(flow.portItem === undefined ? [] : [flow.portItem])].join("|");
+
+/** An item's key on a line (`BubbleItem.key`): `c:<class>`, or `n:<name>` for a classless one (`n:` for an unknown item). */
+export function itemKeyOf(f: Pick<CanvasFlow, "itemClassName" | "itemName">): string {
+  const className = f.itemClassName === null || f.itemClassName === "" ? null : f.itemClassName;
+  const name = f.itemName === null || f.itemName === "" ? null : f.itemName;
+  // Prefixed, so a class "X" and a classless item named "X" stay two items.
+  return className !== null ? `c:${className}` : `n:${name ?? ""}`;
+}
 
 /** An item's rate in words, for its button and its list row: "about 120 items/min", or "rate unknown". */
 export function itemRateText(item: Pick<BubbleItem, "rate" | "quality">, unit: CanvasFlow["unit"]): string {
@@ -78,8 +90,7 @@ export function bubbleItems(flow: CanvasFlow): BubbleItem[] {
   for (const p of flow.parts ?? [flow]) {
     const name = p.itemName === null || p.itemName === "" ? null : p.itemName;
     const className = p.itemClassName === null || p.itemClassName === "" ? null : p.itemClassName;
-    // Prefixed, so a class "X" and a classless item named "X" stay two items.
-    const key = className !== null ? `c:${className}` : `n:${name ?? ""}`;
+    const key = itemKeyOf(p);
     const seen = byKey.get(key);
     if (seen === undefined) byKey.set(key, { item: { key, className, name, text: itemIconText(name ?? undefined), rate: rateOf(p), quality: "unknown" }, parts: [p] });
     else {

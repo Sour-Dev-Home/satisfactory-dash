@@ -20,6 +20,7 @@ import {
   type StalledKind,
 } from "../plannerText";
 import { levelOf, levelOwner, type FactoryTree, type TreeNode } from "../factoryTree";
+import { itemKeyOf } from "./bubbleRow";
 import { glyphKindOf, type GlyphKind } from "./buildingIcons";
 import { sumCapRates, withCapStalled, type DestinationCap } from "./capModel";
 import { rateStep, withStepWord, type RateStep } from "./rateStep";
@@ -218,6 +219,11 @@ export interface CanvasFlow {
    * never stalled (it is moving); a bundle is stalled only when every part is. Absent = not stalled.
    */
   stalled?: StalledKind | undefined;
+  /**
+   * With ports on (ADR-0063 Decision 1): the one item this line carries, as its `BubbleItem` key (`itemKeyOf`), set by
+   * `bundleFlows`. Part of the line's key (`edgeKeyOf`) and its port. Absent with ports off.
+   */
+  portItem?: string | undefined;
 }
 
 export type SceneLevel = "overview" | "factory" | "site";
@@ -321,17 +327,23 @@ const known = (f: Pick<CanvasFlow, "quality" | "ratePerMinute">): boolean => f.q
  * sums the rate by ADR-0053 Decision 3's rule (weakest quality wins, "at least" when a part has no number). Nothing is
  * dropped: `parts` keeps every link, the tooltip (`flowTitle`) lists each with its own rate, and the outline lists
  * every link. Returns the drawn flows in first-seen order, each with the indexes of the links it stands for.
+ *
+ * `byItem` (ports on, ADR-0063 Decision 1, amending the above): the item joins the key, so a line carries one item (links
+ * of no known item still share one "?" line), and each drawn flow says which in `portItem`.
  */
-export function bundleFlows(flows: readonly CanvasFlow[]): { flow: CanvasFlow; members: number[] }[] {
+export function bundleFlows(flows: readonly CanvasFlow[], byItem = false): { flow: CanvasFlow; members: number[] }[] {
   const groups = new Map<string, number[]>();
   flows.forEach((f, i) => {
     // The unit too: a carrier can move items and fluid, and those never sum (hierarchy.ts keys on it as well).
-    const key = [f.from, f.to, f.carrier, f.flow, f.unit].join("\u0001");
+    const key = [f.from, f.to, f.carrier, f.flow, f.unit, ...(byItem ? [itemKeyOf(f)] : [])].join("\u0001");
     const list = groups.get(key);
     if (list === undefined) groups.set(key, [i]);
     else list.push(i);
   });
-  return [...groups.values()].map((members) => ({ flow: members.length === 1 ? flows[members[0]] : bundledFlow(members.map((i) => flows[i])), members }));
+  return [...groups.values()].map((members) => {
+    const flow = members.length === 1 ? flows[members[0]] : bundledFlow(members.map((i) => flows[i]));
+    return { flow: byItem ? { ...flow, portItem: itemKeyOf(flows[members[0]]) } : flow, members };
+  });
 }
 
 function bundledFlow(parts: readonly CanvasFlow[]): CanvasFlow {

@@ -90,4 +90,14 @@ describe("make room (ADR-0060 build PR 4)", () => {
     expect(focused.placeMs).toBeLessThan(5_000);
     expect(layoutStats().routerFailures).toBe(0);
   });
+
+  it("measures the same site with ports on (ADR-0063 Decision 5, recorded in its build note)", () => {
+    const ports = { ports: true };
+    const overview = layoutScene(scene, graph.topologyHash, undefined, ports);
+    const target = middle(overview);
+    const focused = layoutScene(scene, graph.topologyHash, focusOn(target), ports);
+    console.info(`[ADR-0063 ports benchmark] overview ${overview.placeMs.toFixed(1)} ms, focused ${focused.placeMs.toFixed(1)} ms (160 groups, ${overview.edges.length} lines)`);
+    expect(focused.placeMs).toBeLessThan(5_000);
+    expect(layoutStats().routerFailures).toBe(0);
+  });
 });

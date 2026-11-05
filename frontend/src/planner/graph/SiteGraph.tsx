@@ -45,11 +45,12 @@ import {
   type LaidEdge,
   type LaidFrame,
   type LaidNode,
+  type LaidPort,
   type SiteLayout,
 } from "./layoutSite";
 import { overviewFoldsKey, useFolds } from "./foldMemory";
 import { machineCardKey, machineCards, type MachineCardText } from "./machineCards";
-import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStateStyle, useStorageDetail, type MotionPref } from "./plannerPrefs";
+import { MOTION_OPTIONS, motionOn, readItemFocus, readPortArrows, readPorts, useCollapsedUpstream, useMotionPref, useStateStyle, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { StateMarkGlyph } from "./StateMark";
 import type { StalledKind } from "../plannerText";
 import { machineState } from "../../factory/machineState";
@@ -91,7 +92,8 @@ import { CARD_RX, bubbleCentre, bubbleRowOrigin, itemCardText } from "./itemCard
 import { pointerStore, rateAnchor, ratesHideAtRest, targetAt, type HighlightTarget } from "./lineHighlight";
 import { HighlightLayer } from "./HighlightLayer";
 import { tweenMs, useTween } from "./useTween";
-import { itemIconUrl } from "./itemIcons";
+import { itemIconText, itemIconUrl } from "./itemIcons";
+import { PORT_D, PORT_ICON, portTitle } from "./ports";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -383,7 +385,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           : factoryScene(graph, target.model, view),
     [target, graph, view, expanded],
   );
-  const overview = useMemo(() => layoutScene(scene, graph.topologyHash), [scene, graph.topologyHash]);
+  // ADR-0063 ports, behind their flag (on in the demo unless "off"), and open question 5's arrowhead form.
+  const [portsOn] = useState(readPorts);
+  const [portArrows] = useState(readPortArrows);
+  const layoutOptions = useMemo(() => ({ ports: portsOn }), [portsOn]);
+  const overview = useMemo(() => layoutScene(scene, graph.topologyHash, undefined, layoutOptions), [scene, graph.topologyHash, layoutOptions]);
   const rates = useMemo(() => minedRates(graph.edges), [graph.edges]);
   // Item focus (ADR-0060 builds PR 3 and 4), behind its flag, here because the picture makes room for the focused line.
   // A focus whose line (or item) left the graph (a poll) clears: lines are found by key, not index.
@@ -396,8 +402,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // drawn: focus then only dims. Both layouts are remembered, so moving between them costs nothing after the first time.
   const roomFor = focus?.edgeKey ?? null;
   const room = useMemo(
-    () => (roomFor === null ? null : layoutScene(scene, graph.topologyHash, { edgeKey: roomFor, width: FOCUS_CARD_W, height: FOCUS_CARD_H })),
-    [scene, graph.topologyHash, roomFor],
+    () => (roomFor === null ? null : layoutScene(scene, graph.topologyHash, { edgeKey: roomFor, width: FOCUS_CARD_W, height: FOCUS_CARD_H }, layoutOptions)),
+    [scene, graph.topologyHash, roomFor, layoutOptions],
   );
   const layout = room !== null && room.placeMs <= FOCUS_LAYOUT_BUDGET_MS ? room : overview;
   const nodeByKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
@@ -1474,6 +1480,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                           to={to?.title ?? ""}
                           detail={detail}
                           focusable={focusable}
+                          portArrows={portArrows}
                         />
                       );
                     })}
@@ -1499,6 +1506,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   capsMarching={capSlotsMarching.get(n.key)}
                   ringedCap={keyCap !== null && keyCap.nodeKey === n.key ? keyCap.slot : null}
                   onCap={() => showCapDetail(n.card)}
+                  detail={detail}
                 />
               ))}
               {/* Over the cards: the focused item's detail card, and one that is closing (shrinking back to its bubble). */}
@@ -1816,6 +1824,8 @@ type EdgeProps = {
   to: string;
   detail: BubbleDetail;
   focusable?: Focusable | undefined;
+  /** Open question 5 (ADR-0063): a line into a left input port keeps its arrowhead only when this is on. */
+  portArrows?: boolean | undefined;
 };
 
 /** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. A stalled line in marks mode ends
@@ -1823,20 +1833,24 @@ type EdgeProps = {
  *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. A transport draws a double
  *  line (amendment Decision 6): its wide stroke with a gap in the canvas colour down its middle, two rails, dashed alike. It
  *  is always still: a marching line's motion and a transport's moving glyph are drawn over it by `MarchLayer`. */
-function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
+function EdgeLine({ edge: e, markerId, marks, dim, from, to, portArrows }: EdgeProps) {
   const stalled = marks ? e.flow.stalled : undefined;
   const stroke = lineStroke(e.flow);
   const dash = edgeDash(e.flow.rate);
-  const underArrow = stroke.double ? DOUBLE_UNDER_ARROW : LINE_UNDER_ARROW;
+  // ADR-0063 Decision 1: a line into a left input port drops its arrowhead (the port's side says the direction), unless the
+  // owner's answer to open question 5 keeps it; a return line, into a right port, always keeps it. Its path already ends at
+  // the disc's edge, so the trims below are measured from there.
+  const arrow = e.tgtPort === undefined || e.returning === true || portArrows === true;
+  const underArrow = !arrow ? 0 : stroke.double ? DOUBLE_UNDER_ARROW : LINE_UNDER_ARROW;
   return (
-    <g data-edge={e.index} data-hl-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} data-dim-kind="line" data-dim={dim ? "" : undefined}>
+    <g data-edge={e.index} data-hl-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} data-returning={e.returning === true ? "" : undefined} data-dim-kind="line" data-dim={dim ? "" : undefined}>
       <title>{flowTitle(e.flow, from, to)}</title>
       <path
         d={roundedOrthogonalPath(e.points, undefined, stalled === undefined ? underArrow : STOP_BAR_GAP)}
         fill="none"
         strokeWidth={stroke.width}
         strokeDasharray={dash}
-        markerEnd={`url(#${stalled !== undefined ? `${markerId}-${stalled}` : stroke.double ? `${markerId}-double` : markerId})`}
+        markerEnd={stalled === undefined && !arrow ? undefined : `url(#${stalled !== undefined ? `${markerId}-${stalled}` : stroke.double ? `${markerId}-double` : markerId})`}
         className={edgeClass(e.flow)}
       />
       {stroke.inner !== null && stroke.double && (
@@ -2194,6 +2208,46 @@ function ItemBubble({
 }
 
 /**
+ * A card's item ports (ADR-0063 Decision 1): a disc per port, centred on the card's left or right edge, with its item's icon
+ * (or initials, "?" for an unknown item, "+N" for a fold; never blank). Part of the card: drawn inside its group, so a
+ * click on one is a click on the card, and no new focusable element. Its words are in its `<title>` for pointer hover, and
+ * already in the card's description and each line's button. Below `BUBBLE_DETAIL_ZOOM` only the disc.
+ */
+function PortDiscs({ ports, detail }: { ports: readonly LaidPort[] | undefined; detail: BubbleDetail }) {
+  if (ports === undefined || ports.length === 0) return null;
+  return (
+    <g data-ports="">
+      {ports.map((p) => (
+        <PortDisc key={p.id} port={p} detail={detail} />
+      ))}
+    </g>
+  );
+}
+
+function PortDisc({ port: p, detail }: { port: LaidPort; detail: BubbleDetail }) {
+  const only = p.item === "+" ? undefined : p.items[0];
+  const url = only?.className === null || only?.className === undefined ? undefined : itemIconUrl(only.className, 32);
+  const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
+  const picture = detail.full && url !== undefined && url !== failedUrl;
+  const text = p.item === "+" ? `+${p.items.length}` : itemIconText(only?.name ?? undefined);
+  return (
+    <g data-port={p.item} data-port-side={p.side} data-port-dir={p.dir} data-port-returning={p.returning ? "" : undefined} data-icon={!detail.full ? "disc" : picture ? "image" : "text"}>
+      <title>{portTitle(p)}</title>
+      <circle cx={p.x} cy={p.y} r={PORT_D / 2} strokeWidth={1} className="fill-icon-chip stroke-graph-card-edge" />
+      {picture ? (
+        <image href={url} x={p.x - PORT_ICON / 2} y={p.y - PORT_ICON / 2} width={PORT_ICON} height={PORT_ICON} onError={() => setFailedUrl(url)} />
+      ) : (
+        detail.full && (
+          <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central" className="fill-surface text-port font-semibold">
+            {text}
+          </text>
+        )
+      )}
+    </g>
+  );
+}
+
+/**
  * An expanded bubble's frame: a dashed box round its groups. Its title and a Collapse button sit on tabs that straddle the
  * top edge (half above it, in the gap dagre leaves between frames, half in the frame's own padding), like a fieldset legend.
  */
@@ -2260,6 +2314,7 @@ function CardView({
   capsMarching,
   ringedCap,
   onCap,
+  detail,
 }: {
   node: LaidNode;
   finding: number;
@@ -2286,11 +2341,14 @@ function CardView({
   ringedCap: number | null;
   /** A cap chosen: the card's detail. */
   onCap: () => void;
+  /** The zoom's level of detail, for its ports' discs (ADR-0063). */
+  detail: BubbleDetail;
 }) {
   const card = n.card;
   if (card.machines?.open === true && machines !== undefined) {
     return (
       <MachinesFrame
+        detail={detail}
         node={n}
         words={machines}
         finding={finding}
@@ -2417,6 +2475,7 @@ function CardView({
           </text>
         </g>
       )}
+      <PortDiscs ports={n.ports} detail={detail} />
     </g>
   );
 }
@@ -2473,6 +2532,7 @@ function MachinesFrame({
   onToggleUpstream,
   onMachine,
   onCollapse,
+  detail,
 }: {
   node: LaidNode;
   words: readonly MachineCardText[];
@@ -2485,6 +2545,7 @@ function MachinesFrame({
   onToggleUpstream: () => void;
   onMachine: (machine: MachineCardText) => void;
   onCollapse: () => void;
+  detail: BubbleDetail;
 }) {
   const card = n.card;
   const slots = words.length;
@@ -2585,6 +2646,7 @@ function MachinesFrame({
         );
       })}
       <UpstreamPill node={n} onToggle={onToggleUpstream} />
+      <PortDiscs ports={n.ports} detail={detail} />
     </g>
   );
 }

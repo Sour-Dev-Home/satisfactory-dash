@@ -168,6 +168,12 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   The layer fades by its own opacity (`transition-opacity`); reduced motion zeroes both. Off during a make-room glide; a pan, a pinch or a new layout ends the pointer's target. A
   finger or pen highlights only where `ratesHideAtRest()` (`RATES_HIDE_QUERY`, the `hover-pointer` variant in
   `index.css`): a hybrid device; on a touch screen it ends a mouse's highlight instead.
+- Ports (ADR-0063 build PR 2, behind `planner.ports`; on in the demo unless "off"): `ports.ts` (pure) gives each card a
+  port per side, direction and item, folding past `PORTS_MAX` into "+N"; `bundleFlows(flows, true)` draws a line per item
+  (`CanvasFlow.portItem`, part of `edgeKeyOf`). `layoutScene(scene, hash, focus, { ports })` grows cards to hold their
+  ports, passes sides and ports to the router (`RouteEdge.srcPort`..., `RouteOutput.portAt`), ends a line at its target
+  disc's edge and hangs `LaidPort`s on each `LaidNode`. `SiteGraph` draws them (`PortDiscs`, inside the card's group, no
+  focusable element) and drops the arrowhead into a left input port unless `planner.portArrows` is "keep" (open question 5).
 - Dimming (ADR-0063 build PR 1): `focusSet.ts` is the one rule for what is lit (item focus, hop-1, then the item filter's
   reach); `SiteGraph`'s `lit` and `edgeLit` call it. A dimmable group (a line, a march stroke, a moving glyph, a cap's
   stroke: `data-dim-kind="line"`; a card, a machines frame, a line's label: `"card"`) gets `data-dim` while dimmed, and

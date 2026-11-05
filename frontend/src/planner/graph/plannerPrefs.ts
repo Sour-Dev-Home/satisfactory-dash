@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { IS_DEMO } from "../../demo/mode";
 
 /**
  * The planner canvas's per-viewer choices (ADR-0055 Decision 6): whether storage is drawn in detail, and whether the
@@ -74,6 +75,25 @@ export const writeStateStyle = (pref: StateStylePref): void => write(STATE_STYLE
 export const ITEM_FOCUS_KEY = "planner.itemFocus";
 
 export const readItemFocus = (): boolean => read(ITEM_FOCUS_KEY) === "on";
+
+/**
+ * The ports flag (ADR-0063 build plan): item ports on the card edges, one line per item. Off by default until the owner
+ * reviews it on the demo (build PR 6); the demo build reads it as on unless it is "off". No control in the UI.
+ */
+export const PORTS_KEY = "planner.ports";
+
+export function readPorts(): boolean {
+  const raw = read(PORTS_KEY);
+  return IS_DEMO ? raw !== "off" : raw === "on";
+}
+
+/**
+ * Open question 5 (ADR-0063 Decision 1), still the owner's: does a line into a left input port keep its arrowhead? Both
+ * forms are built; the recommended one (drop it, keep it on return lines) is the default, and "keep" draws it.
+ */
+export const PORT_ARROWS_KEY = "planner.portArrows";
+
+export const readPortArrows = (): boolean => read(PORT_ARROWS_KEY) === "keep";
 
 export const COLLAPSED_KEY = "planner.collapsed";
 /** At most this many collapsed cards are kept, each key at most this long: a hand-edited value cannot grow without bound. */

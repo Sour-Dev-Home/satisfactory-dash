@@ -155,6 +155,9 @@
   --spacing-overview-rail: 17rem;
   /* The planner graph (ADR-0050): the side panel's width. */
   --spacing-graph-panel: 22rem;
+  /* An item port's words (ADR-0063 Decision 1): initials, "?" or "+N" inside a 20-unit disc, where text-xs (12 px) made
+     "+12" as wide as the disc. 9 px fits "+12" and two wide initials with a unit to spare each side. */
+  --text-port: 0.5625rem;
   /* How far an overflow fade reaches in from the canvas edge (the graph) and the nav's edge (the main tabs). */
   --spacing-graph-fade: 3rem;
   --spacing-nav-fade: 2rem;

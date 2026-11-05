@@ -18,6 +18,22 @@ export interface RouteEdge {
   waypoints: Point[];
   /** Which waypoint is the label's (it must stay on the route); undefined when none. */
   label?: number | undefined;
+  /**
+   * With ports (ADR-0063 Decision 1): the side each end is on, decided before layout by the port model (a forward line out
+   * of the right and into the left, a return flow the other way round), and the port each end attaches to. Without them
+   * the side comes from the next column, as before.
+   */
+  srcSide?: "l" | "r" | undefined;
+  tgtSide?: "l" | "r" | undefined;
+  srcPort?: string | undefined;
+  tgtPort?: string | undefined;
+}
+
+/** What orders a port down its edge, after where its lines go next: return ports last, then summed rate, then name. */
+export interface PortOrder {
+  returning: boolean;
+  rate: number;
+  name: string;
 }
 
 export interface RouteInput {
@@ -27,6 +43,9 @@ export interface RouteInput {
   labels: (Box | undefined)[];
   /** Boxes that only move with the columns (frames). */
   frames?: Box[];
+  /** With ports: every port the edges name, and the distance between two ports' centres on one edge. */
+  ports?: ReadonlyMap<string, PortOrder> | undefined;
+  portPitch?: number | undefined;
 }
 
 export interface RouteOptions {
@@ -51,6 +70,8 @@ export interface RouteOutput {
   widened: number;
   /** Vertical tracks used, in all. */
   tracks: number;
+  /** With ports: each port's centre, on its card's edge. */
+  portAt: Map<string, Point>;
 }
 
 interface Level {
@@ -68,6 +89,8 @@ interface Leg {
   /** The heights on the gap's left side and right side. */
   yl: number;
   yr: number;
+  /** With ports: the edge's far end's height, which breaks the ties that lines sharing a port's height make. */
+  far?: number | undefined;
 }
 
 const cx = (b: Box) => b.x + b.width / 2;
@@ -93,7 +116,7 @@ const leftOfCost = (a: Leg, b: Leg) => inside(b.yl, a) + inside(a.yr, b);
 /** The legs of one gap, left to right: each inserted where it adds the least crossing. */
 export function orderTracks<T extends Leg>(legs: readonly T[]): T[] {
   const order: T[] = [];
-  const sorted = [...legs].sort((a, b) => (a.yl + a.yr) / 2 - (b.yl + b.yr) / 2 || a.edge - b.edge);
+  const sorted = [...legs].sort((a, b) => (a.yl + a.yr) / 2 - (b.yl + b.yr) / 2 || (a.far ?? 0) - (b.far ?? 0) || a.edge - b.edge);
   for (const leg of sorted) {
     let best = 0;
     let bestCost = Infinity;
@@ -140,35 +163,97 @@ export function routeOrthogonal(input: RouteInput, options: RouteOptions = {}): 
     ];
   });
 
-  if (options.straighten === true) straighten(levels, cards, labels, colOf, CLEAR);
+  const ports = input.ports;
+  // Lines on one port leave or enter at one height: they are meant to coincide, so they never block each other's runs.
+  const sharesPort = (a: number, b: number): boolean => {
+    if (ports === undefined) return false;
+    const ea = input.edges[a];
+    const eb = input.edges[b];
+    return (ea.srcPort !== undefined && ea.srcPort === eb.srcPort) || (ea.tgtPort !== undefined && ea.tgtPort === eb.tgtPort);
+  };
+  if (options.straighten === true) straighten(levels, cards, labels, colOf, CLEAR, sharesPort);
 
-  // Ends: the side towards the next level, several ends on one side spread along it in the order of where they go.
-  const ends = new Map<string, { edge: number; which: "src" | "tgt"; toward: number }[]>();
-  const sideOf: { src: "l" | "r"; tgt: "l" | "r" }[] = levels.map((lv) => {
+  // Ends: the side the port model gave, or else the side towards the next level.
+  const sideOf: { src: "l" | "r"; tgt: "l" | "r" }[] = levels.map((lv, i) => {
     const n = lv.length;
-    const src = lv[1].col >= lv[0].col ? "r" : "l";
-    const tgt = lv[n - 2].col <= lv[n - 1].col ? "l" : "r";
+    const src = input.edges[i].srcSide ?? (lv[1].col >= lv[0].col ? "r" : "l");
+    const tgt = input.edges[i].tgtSide ?? (lv[n - 2].col <= lv[n - 1].col ? "l" : "r");
     return { src, tgt };
   });
-  input.edges.forEach((e, i) => {
-    const lv = levels[i];
-    const add = (key: string, side: "l" | "r", which: "src" | "tgt", toward: number) => {
-      const k = `${key}\u0001${side}`;
-      ends.set(k, [...(ends.get(k) ?? []), { edge: i, which, toward }]);
-    };
-    add(e.from, sideOf[i].src, "src", lv[1].y);
-    add(e.to, sideOf[i].tgt, "tgt", lv[lv.length - 2].y);
-  });
-  for (const [k, list] of ends) {
-    const card = byKey.get(k.split("\u0001")[0])!;
-    list.sort((a, b) => a.toward - b.toward || a.edge - b.edge);
-    list.forEach((end, j) => {
-      const y = card.y + (card.height * (j + 1)) / (list.length + 1);
-      const lv = levels[end.edge];
-      const at = end.which === "src" ? 0 : lv.length - 1;
-      lv[at].y = y;
-      for (const l of lv) if (l.follow === end.which) l.y = y;
+  const placeEnd = (end: { edge: number; which: "src" | "tgt" }, y: number) => {
+    const lv = levels[end.edge];
+    lv[end.which === "src" ? 0 : lv.length - 1].y = y;
+    for (const l of lv) if (l.follow === end.which) l.y = y;
+  };
+  // A port's height on its card (from the card's top), and its side: cards move only sideways from here, so its centre
+  // is known once the columns have shifted.
+  const portDy = new Map<string, { card: string; side: "l" | "r"; dy: number }>();
+  if (ports === undefined) {
+    // Several ends on one side spread along it in the order of where they go (ADR-0059 Decision 1: no ports).
+    const ends = new Map<string, { edge: number; which: "src" | "tgt"; toward: number }[]>();
+    input.edges.forEach((e, i) => {
+      const lv = levels[i];
+      const add = (key: string, side: "l" | "r", which: "src" | "tgt", toward: number) => {
+        const k = `${key}\u0001${side}`;
+        ends.set(k, [...(ends.get(k) ?? []), { edge: i, which, toward }]);
+      };
+      add(e.from, sideOf[i].src, "src", lv[1].y);
+      add(e.to, sideOf[i].tgt, "tgt", lv[lv.length - 2].y);
     });
+    for (const [k, list] of ends) {
+      const card = byKey.get(k.split("\u0001")[0])!;
+      list.sort((a, b) => a.toward - b.toward || a.edge - b.edge);
+      list.forEach((end, j) => placeEnd(end, card.y + (card.height * (j + 1)) / (list.length + 1)));
+    }
+  } else {
+    // ADR-0063 Decision 1: every end at its port's height. Ports down an edge, `portPitch` apart and centred on it, in the
+    // order of where their lines go next (the mean height of the next level), return ports last, then by summed rate
+    // (highest first), then by name, which keeps the crossings dagre's order gives.
+    const PITCH = input.portPitch ?? 48;
+    const byPort = new Map<string, { card: string; side: "l" | "r"; ends: { edge: number; which: "src" | "tgt"; toward: number }[] }>();
+    // Where an end goes next: the first level along the line that does not just keep this end's height (a straightened
+    // run follows its end, so it says nothing), or else the far end's.
+    const towardOf = (lv: Level[], which: "src" | "tgt"): number => {
+      const along = which === "src" ? lv.slice(1) : lv.slice(0, -1).reverse();
+      return (along.find((l) => l.follow !== which) ?? along[along.length - 1]).y;
+    };
+    input.edges.forEach((e, i) => {
+      const lv = levels[i];
+      const add = (port: string, card: string, side: "l" | "r", which: "src" | "tgt", toward: number) => {
+        const p = byPort.get(port) ?? { card, side, ends: [] };
+        p.ends.push({ edge: i, which, toward });
+        byPort.set(port, p);
+      };
+      add(e.srcPort!, e.from, sideOf[i].src, "src", towardOf(lv, "src"));
+      add(e.tgtPort!, e.to, sideOf[i].tgt, "tgt", towardOf(lv, "tgt"));
+    });
+    const bySide = new Map<string, string[]>();
+    for (const [id, p] of byPort) {
+      const k = `${p.card}\u0001${p.side}`;
+      bySide.set(k, [...(bySide.get(k) ?? []), id]);
+    }
+    const toward = (id: string) => {
+      const list = byPort.get(id)!.ends;
+      return list.reduce((s, e) => s + e.toward, 0) / list.length;
+    };
+    for (const [k, ids] of bySide) {
+      const card = byKey.get(k.split("\u0001")[0])!;
+      const order = (id: string) => ports.get(id) ?? { returning: false, rate: 0, name: "" };
+      ids.sort(
+        (a, b) =>
+          Number(order(a).returning) - Number(order(b).returning) ||
+          toward(a) - toward(b) ||
+          order(b).rate - order(a).rate ||
+          order(a).name.localeCompare(order(b).name) ||
+          a.localeCompare(b),
+      );
+      ids.forEach((id, j) => {
+        const dy = card.height / 2 + (j - (ids.length - 1) / 2) * PITCH;
+        const p = byPort.get(id)!;
+        portDy.set(id, { card: p.card, side: p.side, dy });
+        for (const end of p.ends) placeEnd(end, card.y + dy);
+      });
+    }
   }
 
   // Legs, by gap (gap g lies between columns g and g + 1).
@@ -179,7 +264,8 @@ export function routeOrthogonal(input: RouteInput, options: RouteOptions = {}): 
       const b = lv[k + 1];
       if (Math.abs(a.y - b.y) < 1e-6) continue;
       const g = b.col > a.col ? a.col : b.col < a.col ? a.col - 1 : Math.min(a.col, centres.length - 2);
-      const leg: Leg = b.col >= a.col ? { edge: e, at: k, yl: a.y, yr: b.y } : { edge: e, at: k, yl: b.y, yr: a.y };
+      const far = ports === undefined ? undefined : lv[lv.length - 1].y;
+      const leg: Leg = b.col >= a.col ? { edge: e, at: k, yl: a.y, yr: b.y, far } : { edge: e, at: k, yl: b.y, yr: a.y, far };
       legsByGap.set(g, [...(legsByGap.get(g) ?? []), leg]);
     }
   });
@@ -223,7 +309,12 @@ export function routeOrthogonal(input: RouteInput, options: RouteOptions = {}): 
     pts.push({ x: sideOf[e].tgt === "l" ? t.x : t.x + t.width, y: lv[lv.length - 1].y });
     return pts;
   });
-  return { cards, labels, frames, paths, widened: extra.reduce((a, b) => a + b, 0), tracks };
+  const portAt = new Map<string, Point>();
+  for (const [id, p] of portDy) {
+    const c = byKey.get(p.card)!;
+    portAt.set(id, { x: p.side === "r" ? c.x + c.width : c.x, y: c.y + p.dy });
+  }
+  return { cards, labels, frames, paths, widened: extra.reduce((a, b) => a + b, 0), tracks, portAt };
 }
 
 /**
@@ -231,7 +322,14 @@ export function routeOrthogonal(input: RouteInput, options: RouteOptions = {}): 
  * card or label box within `clear`, and no other edge's level within `clear`. Greedy, edge by edge, farthest run first;
  * the label's level and the ends stay.
  */
-function straighten(levels: Level[][], cards: readonly RouteCard[], labels: readonly (Box | undefined)[], colOf: (x: number) => number, clear: number): void {
+function straighten(
+  levels: Level[][],
+  cards: readonly RouteCard[],
+  labels: readonly (Box | undefined)[],
+  colOf: (x: number) => number,
+  clear: number,
+  sharesPort: (a: number, b: number) => boolean = () => false,
+): void {
   const cardsByCol = new Map<number, Box[]>();
   for (const c of cards) cardsByCol.set(colOf(cx(c)), [...(cardsByCol.get(colOf(cx(c))) ?? []), c]);
   const labelsByCol = new Map<number, { box: Box; edge: number }[]>();
@@ -241,7 +339,7 @@ function straighten(levels: Level[][], cards: readonly RouteCard[], labels: read
   const free = (col: number, y: number, edge: number) => {
     if ((cardsByCol.get(col) ?? []).some((c) => y > c.y - clear && y < c.y + c.height + clear)) return false;
     if ((labelsByCol.get(col) ?? []).some((l) => l.edge !== edge && y > l.box.y - clear && y < l.box.y + l.box.height + clear)) return false;
-    return !levels.some((lv, e) => e !== edge && lv.some((l) => l.col === col && Math.abs(l.y - y) < clear));
+    return !levels.some((lv, e) => e !== edge && !sharesPort(e, edge) && lv.some((l) => l.col === col && Math.abs(l.y - y) < clear));
   };
   // The label's level moves only with its box, and only where the whole box is free in its column.
   const freeLabel = (col: number, y: number, edge: number) => {
