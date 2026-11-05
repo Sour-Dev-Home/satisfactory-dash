@@ -26,7 +26,8 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   // The canvas's short rate (ADR-0063 amendment, 2026-11-03); with a mouse it shows only on hover (its own test below).
   await expect(ironOre.locator(":scope > text", { hasText: /^120\/min$/ })).toBeAttached();
 
-  // Wheel zoom about the pointer, then drag to pan.
+  // Wheel zoom about the pointer, then drag to pan. The canvas can run past a phone's screen, so bring it into view first.
+  await svg.scrollIntoViewIfNeeded();
   const box = (await svg.boundingBox())!;
   const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const fitted = await scaleOf(svg);
