@@ -1,0 +1,7 @@
+- 2026-11-05 — Planner focus states and the legend's new rows, behind `planner.ports` (ADR-0063 build PR 5, Decision 3; owner answers 1 to 3, 2026-11-01).
+  - **What a group feeds and needs** (state 2): a button in the group panel lights the group and everything upstream and downstream of it (`reachFromCard`, never across a loop's return flow); the status line says "Showing what <group> feeds and needs: N of M cards". Escape ends it, then closes the panel.
+  - **A selected group** (state 4, owner answer 2): with its panel open in a factory or site, the group and its neighbours stay lit, the rest dims ("Showing <group> and its neighbours").
+  - **An opened factory's context** (state 5, owner answers 1 and 3): its groups outside the home site dim, and the groups that make its products get a heavier border (no new colour); said once in the canvas's accessible name.
+  - **Legend:** rows for a port, for dimmed things and for the heavier border, each when the canvas draws it.
+  - `focusSet` gains the states in the ADR's order and says which applies; `factoryContextOf` and `reachFromCard` are pure.
+  - Tests: `focusSet.test.ts` (each state and the order), `focusStates.test.ts` (the walk stops at a return flow; the demo factory's outside and product groups), `SiteGraph.ports.test.tsx` (select, feeds and needs, Escape's steps, nothing with the flag off); e2e states `planner-dim-select`, `planner-dim-path`, `planner-dim-context`.

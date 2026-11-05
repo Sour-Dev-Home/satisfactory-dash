@@ -30,6 +30,7 @@ export function GroupPanel({
   onClose,
   onPopOut,
   machineId,
+  feedsAndNeeds,
 }: {
   id: string;
   node: PlannerNode;
@@ -46,6 +47,11 @@ export function GroupPanel({
    * is shown here, beside the button, since this is where the action was taken.
    */
   onPopOut?: (() => Promise<void>) | undefined;
+  /**
+   * ADR-0063 Decision 3, state 2 (behind the ports flag): "Show what <group> feeds and needs" lights the group and
+   * everything upstream and downstream of it. Worded apart from the item card's "Show the whole path" (the item filter).
+   */
+  feedsAndNeeds?: { on: boolean; onToggle: () => void } | undefined;
 }) {
   const server = useSelectedServer();
   const factory = useQuery(queries.factory(server.id));
@@ -89,6 +95,11 @@ export function GroupPanel({
               </>
             )}
           </p>
+          {feedsAndNeeds !== undefined && (
+            <button type="button" aria-pressed={feedsAndNeeds.on} onClick={feedsAndNeeds.onToggle} className="min-h-touch justify-self-start">
+              {`Show what ${label} feeds and needs`}
+            </button>
+          )}
           {/* What the card no longer prints: the recipe, every output, the loop marker and the factory view's further words. */}
           <section aria-label={`About ${label}`} className="grid gap-1 text-sm">
             {recipe !== null && (

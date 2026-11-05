@@ -179,6 +179,10 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   A line whose two labels fit gets `LaidEdge.endLabels` and draws no middle bubble (the box stays reserved); otherwise its
   bubble. `SiteGraph`'s `EndLabels` draws them (rate row `data-rate`), `HighlightLayer` draws a lit line's rate there, and
   with item focus a label opens its line's focus or `PortLineList` (`ItemFocusLayer.tsx`).
+- Focus states (ADR-0063 build PR 5, the ports flag): `focusSet(focused, reach, { cardReach, selected, context })` adds
+  state 2 (`reachFromCard`, the group panel's "Show what … feeds and needs"), state 4 (an open group and its neighbours)
+  and state 5 (`factoryContextOf`: an opened factory's groups outside its home site dim, its product groups get a heavier
+  border). The status line says states 2 and 4; state 5 is in the canvas's name. The legend's port, dimmed and emphasis rows.
 - Dimming (ADR-0063 build PR 1): `focusSet.ts` is the one rule for what is lit (item focus, hop-1, then the item filter's
   reach); `SiteGraph`'s `lit` and `edgeLit` call it. A dimmable group (a line, a march stroke, a moving glyph, a cap's
   stroke: `data-dim-kind="line"`; a card, a machines frame, a line's label: `"card"`) gets `data-dim` while dimmed, and

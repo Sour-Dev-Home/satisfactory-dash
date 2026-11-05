@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { serversSingle } from "@satisfactory-dash/shared/fixtures";
@@ -74,6 +74,45 @@ describe("ports, flag on", () => {
   });
 });
 
+// ADR-0063 build PR 5: a selected card dims to its neighbours (state 4), and "Show what … feeds and needs" (state 2).
+describe("focus states, flag on", () => {
+  const dimmedCards = (svg: Element) => svg.querySelectorAll("[data-card][data-dim]").length;
+
+  it("dims to the open card's neighbours, says so, and the panel's button shows what it feeds and needs; Escape steps back", async () => {
+    const svg = await openGraph({ [PORTS_KEY]: "on" });
+    expect(dimmedCards(svg)).toBe(0);
+    // A click on a card opens its panel.
+    const cards = [...svg.querySelectorAll("[data-card]")];
+    fireEvent.click(cards[cards.length - 1]);
+    const status = screen.getByRole("status");
+    await screen.findByText(/^Showing .+ and its neighbours$/);
+    const neighboursOnly = dimmedCards(svg);
+    const panel = await screen.findByRole("complementary");
+    const button = within(panel).getByRole("button", { name: /^Show what .+ feeds and needs$/ });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-pressed", "true");
+    expect(status).toHaveTextContent(/^Showing what .+ feeds and needs: \d+ of \d+ cards$/);
+    // What it feeds and needs reaches at least as far as its neighbours.
+    expect(dimmedCards(svg)).toBeLessThanOrEqual(neighboursOnly);
+    // Escape ends "feeds and needs" first, then closes the panel (which ends the neighbours' dimming).
+    fireEvent.keyDown(svg, { key: "Escape" });
+    expect(status).toHaveTextContent(/and its neighbours$/);
+    fireEvent.keyDown(svg, { key: "Escape" });
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(dimmedCards(svg)).toBe(0);
+  });
+
+  it("dims nothing on opening a card with the flag off", async () => {
+    const svg = await openGraph();
+    const cards = [...svg.querySelectorAll("[data-card]")];
+    fireEvent.click(cards[cards.length - 1]);
+    await screen.findByRole("complementary");
+    expect(dimmedCards(svg)).toBe(0);
+    expect(screen.queryByRole("button", { name: /feeds and needs$/ })).toBeNull();
+  });
+});
+
 // ADR-0063 build PR 3: end labels, and the middle bubble as the fallback.
 describe("end labels, flag on", () => {
   it("draws a name and a rate beside each port whose label fits, and leaves those lines' middles empty", async () => {
@@ -97,7 +136,8 @@ describe("end labels, flag on", () => {
     const label = svg.querySelector("[data-end-label]")!;
     expect(label).not.toHaveClass("cursor-pointer");
     fireEvent.click(label);
-    expect(screen.queryByRole("status")).toBeNull();
+    // With ports on the status line stays mounted (PR 5's states speak there); a click on a label says nothing in it.
+    expect(screen.queryByRole("status")?.textContent ?? "").toBe("");
   });
 
   it("with item focus on, a port of one line focuses its item; a port of several opens their list", async () => {
