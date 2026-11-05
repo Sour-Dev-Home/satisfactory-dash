@@ -17,7 +17,7 @@ function GraphSkeleton() {
   return (
     <>
       <SkeletonStatus>Loading the graph…</SkeletonStatus>
-      <Skeleton className="h-map min-h-map-min rounded-card" />
+      <Skeleton className="h-map sm:h-graph-max min-h-graph-min rounded-card" />
     </>
   );
 }

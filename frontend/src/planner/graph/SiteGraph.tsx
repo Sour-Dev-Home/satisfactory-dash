@@ -1469,7 +1469,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
             onClick={onCanvasClick}
             // A pan must not start a text selection or drag a building icon away as an image.
             onDragStart={(e) => e.preventDefault()}
-            className={cn("max-h-graph-max min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode && !pickingFactories ? "cursor-crosshair" : "cursor-grab")}
+            className={cn("max-h-map sm:max-h-graph-max min-h-graph-min w-full touch-none select-none rounded-card border border-line bg-surface", selectMode && !pickingFactories ? "cursor-crosshair" : "cursor-grab")}
           >
             <defs>
               <marker id={markerId} viewBox="0 0 10 10" refX={ARROW_REF_X} refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
@@ -2011,7 +2011,7 @@ function MarchLayer({
   fadeIn: boolean;
   maskId: string;
   /**
-   * The canvas's own height attribute. With the canvas's own height limits (`max-h-graph-max min-h-graph-min`) it sizes the layer
+   * The canvas's own height attribute. With the canvas's own height limits (`max-h-map sm:max-h-graph-max min-h-graph-min`) it sizes the layer
    * exactly as the canvas is sized: the box around the canvas is taller by the inline svg's baseline gap, so `inset-0` would not match.
    */
   height: number;
@@ -2025,7 +2025,7 @@ function MarchLayer({
       preserveAspectRatio="xMidYMid meet"
       // The canvas's 1px border is transparent here, so the two content boxes (and the viewBox in them) are the same; its
       // rounded corners clip the strokes as the canvas's clip its lines.
-      className="pointer-events-none absolute top-0 left-0 max-h-graph-max min-h-graph-min w-full rounded-card border border-transparent will-change-transform"
+      className="pointer-events-none absolute top-0 left-0 max-h-map sm:max-h-graph-max min-h-graph-min w-full rounded-card border border-transparent will-change-transform"
     >
       <defs>
         <mask id={maskId} maskUnits="userSpaceOnUse" x={-MARCH_MASK_PAD} y={-MARCH_MASK_PAD} width={bounds.width + 2 * MARCH_MASK_PAD} height={bounds.height + 2 * MARCH_MASK_PAD}>
