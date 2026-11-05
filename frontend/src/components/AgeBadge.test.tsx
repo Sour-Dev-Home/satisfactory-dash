@@ -19,6 +19,11 @@ describe("AgeBadge", () => {
     [59, "< 1 min"],
     [60, "1 min"],
     [200, "3 min"],
+    [3599, "59 min"],
+    [3600, "1 h"],
+    [47 * 3600 + 3599, "47 h"],
+    [48 * 3600, "2 d"],
+    [62006 * 60, "43 d"],
   ])("reads %d s old as %s", (seconds, label) => {
     expect(renderAt(seconds).querySelector("[data-age-label]")).toHaveTextContent(label);
   });

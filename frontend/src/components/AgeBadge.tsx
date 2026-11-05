@@ -6,14 +6,24 @@ import { dataAgeText } from "./dataAgeText";
 /** Under this many seconds the status reads "live"; the backend polls well inside it. */
 const LIVE_UNDER_S = 15;
 
-/** The badge's coarse label: `live`, `< 1 min`, then whole minutes, so it changes rarely. */
-function coarseAge(observedAt: string, now: number): "live" | "< 1 min" | `${number} min` | "unknown" {
+/**
+ * The badge's coarse label: `live`, `< 1 min`, then whole minutes, hours and days, so it changes rarely and stays short
+ * (an old read once said "62006 min").
+ */
+function coarseAge(
+  observedAt: string,
+  now: number,
+): "live" | "< 1 min" | `${number} min` | `${number} h` | `${number} d` | "unknown" {
   const observed = Date.parse(observedAt);
   if (Number.isNaN(observed)) return "unknown";
   const seconds = Math.floor(Math.max(0, now - observed) / 1000);
   if (seconds < LIVE_UNDER_S) return "live";
   if (seconds < 60) return "< 1 min";
-  return `${Math.floor(seconds / 60)} min`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.floor(hours / 24)} d`;
 }
 
 /**
