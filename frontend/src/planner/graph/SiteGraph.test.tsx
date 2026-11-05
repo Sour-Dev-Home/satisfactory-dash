@@ -68,7 +68,7 @@ const scaleOf = (svg: HTMLElement) => Number(/scale\(([\d.e-]+)\)/.exec(transfor
 const pointer = (type: string, pointerId: number, clientX: number, clientY: number) =>
   fireEvent(window, Object.assign(new MouseEvent(type, { clientX, clientY }), { pointerId }));
 const groupButton =(name: RegExp) => screen.findByRole("button", { name });
-const dimmed = (svg: HTMLElement) => svg.querySelectorAll(":scope > g > g.opacity-graph-dim").length;
+const dimmed = (svg: HTMLElement) => svg.querySelectorAll(":scope > g > g[data-dim]").length;
 
 describe("the site view toggle", () => {
   it("opens on the outline where there is no wide screen, and the graph is one press away", async () => {
@@ -350,7 +350,7 @@ describe("the graph's readable chrome", () => {
     expect(svg.getAttribute("aria-label")).toMatch(/6 connections/);
     expect(svg.querySelectorAll('[data-edge-layer="lines"] path[marker-end]')).toHaveLength(5);
     fireEvent.change(screen.getByRole("combobox", { name: "Item" }), { target: { value: "Desc_Stone_C" } });
-    expect(label).not.toHaveClass("opacity-graph-dim");
+    expect(label).not.toHaveAttribute("data-dim");
     // The text path keeps a row per link.
     fireEvent.click(screen.getByRole("button", { name: "Outline" }));
     fireEvent.click(screen.getByRole("button", { name: "All connections" }));

@@ -125,12 +125,12 @@ test("an item filter dims the groups it does not reach", async ({ page, mockApi 
   await page.getByRole("button", { name: "Open site: Iron Plate site" }).click();
   await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site/ });
-  await expect(svg.locator("g.opacity-graph-dim")).toHaveCount(0);
+  await expect(svg.locator("g[data-dim]")).toHaveCount(0);
   await page.getByRole("combobox", { name: "Item" }).selectOption({ label: "Iron Ingot" });
   await expect(page.getByRole("status")).toContainText("4 of 5 groups carry or feed this item");
   // The recycler (its card) and nothing else of the cards is faded; the edges that miss the item are too.
-  await expect(svg.locator("g.opacity-graph-dim", { has: page.locator("title", { hasText: "Iron Plate Recycle" }) }).first()).toBeAttached();
-  expect(await svg.locator("g.opacity-graph-dim").count()).toBeGreaterThan(0);
+  await expect(svg.locator("g[data-dim]", { has: page.locator("title", { hasText: "Iron Plate Recycle" }) }).first()).toBeAttached();
+  expect(await svg.locator("g[data-dim]").count()).toBeGreaterThan(0);
 });
 
 // ADR-0063 amendment (2026-11-03): with a mouse a line's rate label is hidden at rest and fades in while the line is
@@ -158,7 +158,7 @@ test("hovering a line shows its rate and dims nothing; hovering a card lights al
   // At rest: no rate shows, nothing is dimmed, and the highlight layer is clear. It lies exactly over the canvas, as its own
   // compositing layer.
   for (const rate of await svg.locator("[data-rate]").all()) expect(await opacityOf(rate)).toBe("0");
-  await expect(svg.locator("g.opacity-graph-dim")).toHaveCount(0);
+  await expect(svg.locator("g[data-dim]")).toHaveCount(0);
   expect(await opacityOf(layer)).toBe("0");
   // The legend says how to show them (only where they hide at rest).
   await expect(page.getByText("Point at or focus a line or a card to show its rates.")).toBeVisible();

@@ -1,0 +1,6 @@
+- 2026-11-05 — The Planner dims by colour, not opacity (ADR-0063 build PR 1, Decision 3; owner, 2026-11-01).
+  - **`planner/graph/focusSet.ts`** (new, pure): what is lit, in one rule: item focus (hop-1, the focused line by its key) first, then the item filter's reach, else everything. `SiteGraph`'s `lit` and `edgeLit` call it.
+  - **Grey, not faded.** A dimmed line, march stroke, moving glyph or cap stroke goes `--color-graph-dim-line` (new, #6e757c) whatever its carrier; a dimmed card, machines frame or line label keeps its fill, its words go `--color-muted` and its icons grey. Dimmed words now stay readable (they were a quarter opacity, far under 4.5:1). Stalled marks keep their tone (owner answer 4), as do the keyboard's ring and a pick's tint. The change eases by `--duration-fast` (zero under reduced motion).
+  - How: a dimmable group carries `data-dim-kind` and `data-dim`; `index.css` redefines the colour tokens under it. `--opacity-graph-dim` is gone.
+  - Card borders and unknown-rate lines keep `--color-line`, already darker than the dim grey (ADR-0063's build note).
+  - Tests: `focusSet.test.ts`; contrast checks in `lineWidth.test.ts` (the dim line at 3:1 and well under a lit belt, muted words at 4.5:1); the canvas tests and the e2e item-filter test read `data-dim` instead of the opacity class.

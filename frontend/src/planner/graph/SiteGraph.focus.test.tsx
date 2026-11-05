@@ -39,7 +39,7 @@ async function openGraph({ flag, fourItems = false }: { flag: boolean; fourItems
 }
 
 const bubbleList = () => screen.queryByRole("list", { name: "Items on the lines" });
-const dimmed = (svg: HTMLElement, selector: string) => [...svg.querySelectorAll(selector)].filter((g) => g.classList.contains("opacity-graph-dim")).length;
+const dimmed = (svg: HTMLElement, selector: string) => [...svg.querySelectorAll(selector)].filter((g) => g.hasAttribute("data-dim")).length;
 const ironOreButton = () => screen.getByRole("button", { name: /^Iron Ore, 120 items\/min, from / });
 
 describe("item focus, flag off (the default)", () => {
@@ -83,7 +83,7 @@ describe("item focus, flag on", () => {
     expect(button).toHaveAttribute("aria-expanded", "true");
     expect(svg.querySelector('[data-focused] ')?.getAttribute("data-bubble")).toBe("Desc_OreIron_C");
     const label = svg.querySelector('[data-focused]')!.closest("[data-edge-label]")!;
-    expect(label).not.toHaveClass("opacity-graph-dim");
+    expect(label).not.toHaveAttribute("data-dim");
     const labels = svg.querySelectorAll("[data-edge-label]");
     expect(dimmed(svg, "[data-edge-label]")).toBe(labels.length - 1);
     const cards = svg.querySelectorAll("[data-card]");

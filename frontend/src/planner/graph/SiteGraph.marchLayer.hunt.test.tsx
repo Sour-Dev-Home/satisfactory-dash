@@ -67,11 +67,11 @@ describe("the march layer, hunted", () => {
   it("dims a marching line with its canvas line when another line is in focus", async () => {
     const svg = await openGraph();
     fireEvent.click(svg.querySelector('[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]')!);
-    const canvasDim = new Set([...svg.querySelectorAll('[data-edge-layer="lines"] [data-edge]')].filter((g) => g.classList.contains("opacity-graph-dim")).map((g) => g.getAttribute("data-edge")));
+    const canvasDim = new Set([...svg.querySelectorAll('[data-edge-layer="lines"] [data-edge]')].filter((g) => g.hasAttribute("data-dim")).map((g) => g.getAttribute("data-edge")));
     const marched = [...layerOf(svg)!.querySelectorAll("[data-march-edge]")];
     expect(marched.length).toBeGreaterThan(0);
     for (const m of marched) {
-      const dimmed = m.querySelector(":scope > g")!.classList.contains("opacity-graph-dim");
+      const dimmed = m.querySelector(":scope > g")!.hasAttribute("data-dim");
       expect(dimmed).toBe(canvasDim.has(m.getAttribute("data-march-edge")));
     }
     expect(canvasDim.size).toBeGreaterThan(0);

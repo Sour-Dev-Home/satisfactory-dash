@@ -65,7 +65,7 @@ const badgeWidth = (text: string): number => Math.max(CAP_BADGE_H, text.length *
 export function CapMarchStroke({ cap: c, dim }: { cap: CapMarch; dim: boolean }) {
   const d = `M${c.x0} ${c.y}H${c.x1}`;
   return (
-    <g data-march-cap={c.id} data-march-step={c.step} className={cn("transition-opacity", dim && "opacity-graph-dim")}>
+    <g data-march-cap={c.id} data-march-step={c.step} data-dim-kind="line" data-dim={dim ? "" : undefined}>
       {c.quality === "estimated" ? (
         <path d={d} fill="none" strokeWidth={c.width} strokeDasharray={capDash("estimated")} data-march={c.step} className={cn(c.stroke, MARCH_CLASS.get(c.step))} />
       ) : (
