@@ -44,7 +44,6 @@ const machinesOf = (key: string) => nodes.find((n) => n.key === key)!.machineIds
 const rodIds = machinesOf("Build_ConstructorMk1_C|Iron Rod|1250|100");
 const sinkIds = machinesOf("Build_ResourceSink_C||1300|100");
 const rodWorks = [...rodIds, ...sinkIds].map(memberOf);
-const rodWorksAll = rodWorks;
 const plateKeys = BASE.data.factories!.find((f) => f.key !== ROD)!.nodeKeys;
 const plateMembers = plateKeys.flatMap((k) => machinesOf(k)).map(memberOf);
 
@@ -56,7 +55,7 @@ let listReads: number;
 
 function serve(opts: { revision?: boolean; connected?: boolean; members?: PlannerDesignationMember[]; replace?: (n: number) => Response | undefined } = {}) {
   const revised = opts.revision ?? true;
-  const rodWorks = opts.members ?? rodWorksAll;
+  const members = opts.members ?? rodWorks;
   const factories = BASE.data.factories!.map((f) => (f.key === ROD ? { ...f, name: "Rod works", designationId: DESIGNATION, sideProducts: [] } : f));
   const apart = opts.connected === false;
   const data = {
@@ -66,11 +65,11 @@ function serve(opts: { revision?: boolean; connected?: boolean; members?: Planne
     transports: apart ? [] : BASE.data.transports,
     factories,
   };
-  const designation = { id: DESIGNATION, name: "Rod works", mode: "core", members: rodWorks, createdAt: CREATED, updatedAt: CREATED, ...(revised ? { revision: 2 } : {}) };
+  const designation = { id: DESIGNATION, name: "Rod works", mode: "core", members, createdAt: CREATED, updatedAt: CREATED, ...(revised ? { revision: 2 } : {}) };
   const list = {
     designations: [designation],
     matches: [
-      { designationId: DESIGNATION, matched: rodWorks.length, missing: 0, ...(revised ? { memberBuildingIds: rodWorks.map((m) => m.id) } : {}) },
+      { designationId: DESIGNATION, matched: members.length, missing: 0, ...(revised ? { memberBuildingIds: members.map((m) => m.id) } : {}) },
     ],
   };
   server.use(
