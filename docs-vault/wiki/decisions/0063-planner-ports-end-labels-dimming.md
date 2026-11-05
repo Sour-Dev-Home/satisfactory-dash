@@ -716,3 +716,22 @@ entry fall away); whether the highlight should dim in PR 1's colours is a new qu
   like the legend's other rows.
 - **e2e states:** `planner-dim-select`, `planner-dim-path` and `planner-dim-context` (with the flag in the state's storage),
   each screenshotted and axe-checked by `states.spec.ts`.
+
+## Build note, PR 7a (2026-11-05): ports for everyone, the flag removed from the UI
+
+- **Owner's demo review** (build PR 6): the three questions answered "yes" (see "Owner's answers, 2026-11-05"). Every line
+  keeps its arrowhead (question 5), the wider picture and the legend's words stand.
+- **Flag removed.** `planner.ports` and `planner.portArrows` are gone from `plannerPrefs.ts`; `SiteGraph` always lays out
+  with ports (`LAYOUT_OPTIONS`), and the focus states 2, 4 and 5, the feeds-and-needs button and the legend's rows are
+  unconditional. The status line is always mounted (an empty live region when it has nothing to say).
+- **Regressions found by moving the tests to the ports picture**, each fixed with a test that fails without it: a moving
+  glyph rode through a line's end labels (`motionPathAround` now leaps several boxes, the end labels' as well as the
+  middle box); a port's line list came back under the group panel (opening a card, a machine or a cap's detail now closes
+  it); pointing at an end label ended the highlight (a one-line port's label now targets its line).
+- **Known, for the owner:** on an end-labelled line nothing at the label says stalled (the stop bar and the card's mark
+  remain); pointing at a port label shared by several lines highlights nothing.
+- **Split.** Build PR 7 is two PRs: this one (what users see), and 7b, which deletes the code nothing reaches any more:
+  `layoutScene`'s `ports: false` path, `bundleFlows`' several-items-per-line form, the "+k" chip, `ItemList` and
+  `chipName`, and moves their unit tests to the ports picture.
+- **e2e:** the three dim states no longer set the flag; the ports frame-time test records the ports canvas only (its
+  comparison with the ports-off canvas went with the flag). Every planner baseline is regenerated.
