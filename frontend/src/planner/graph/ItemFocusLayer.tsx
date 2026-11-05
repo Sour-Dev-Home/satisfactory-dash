@@ -152,3 +152,79 @@ export function ItemList({
     </section>
   );
 }
+
+/** One line at a port, as `PortLineList` lists it: its key, its one item, and its two cards' titles. */
+export interface PortLine {
+  edgeKey: string;
+  flow: CanvasFlow;
+  item: BubbleItem | undefined;
+  from: string;
+  to: string;
+}
+
+/**
+ * The lines at one port (ADR-0063 Decision 2), opened from the end label of a port with several: one item fanning out to
+ * several groups, or several sources into one. Each focusable as its bubble is, named as its bubble button is. The same
+ * non-modal panel as `ItemList`; Escape or Close closes it.
+ */
+export function PortLineList({
+  id,
+  lines,
+  focus,
+  onFocusItem,
+  onClose,
+}: {
+  id: string;
+  lines: readonly PortLine[];
+  focus: ItemFocus | null;
+  onFocusItem: (edgeKey: string, item: BubbleItem) => void;
+  onClose: () => void;
+}) {
+  const headingId = `${id}-heading`;
+  const first = useRef<HTMLButtonElement>(null);
+  useEffect(() => first.current?.focus(), []);
+  const shown = lines.flatMap((l) => (l.item === undefined ? [] : [{ ...l, item: l.item }]));
+  const name = shown[0]?.item.name ?? "Item unknown";
+  return (
+    <section
+      id={id}
+      aria-labelledby={headingId}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.preventDefault();
+        onClose();
+      }}
+      className="flex h-full flex-col"
+    >
+      <div data-overlay-header="" className="flex shrink-0 items-start justify-between gap-2 border-b border-transparent px-4 pt-4 pb-3 group-data-scrolled:border-line">
+        <h3 id={headingId} className="m-0 text-base font-semibold">{`${shown.length} lines of ${name}`}</h3>
+        <button type="button" onClick={onClose} className="min-h-touch">
+          Close
+        </button>
+      </div>
+      <div data-overlay-body="" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <ul className="m-0 flex list-none flex-col gap-1 px-4 pt-0 pb-4">
+          {shown.map((l, i) => {
+            const on = focus !== null && focus.edgeKey === l.edgeKey && focus.item === l.item.key;
+            return (
+              <li key={l.edgeKey}>
+                <button
+                  ref={i === 0 ? first : undefined}
+                  type="button"
+                  aria-label={bubbleName(l.item, l.flow.unit, l.from, l.to)}
+                  aria-pressed={on}
+                  onClick={() => onFocusItem(l.edgeKey, l.item)}
+                  className={cn("flex min-h-touch w-full items-center gap-2 rounded-md px-2 text-left", on && "bg-surface-2")}
+                >
+                  <ListIcon item={l.item} />
+                  <span className="min-w-0 flex-1">{`${l.from} to ${l.to}`}</span>
+                  <span className="text-sm text-muted">{itemRateText(l.item, l.flow.unit)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </section>
+  );
+}

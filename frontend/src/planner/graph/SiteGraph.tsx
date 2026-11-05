@@ -81,7 +81,7 @@ import {
   type BubbleStop,
   type ItemFocus,
 } from "./bubbleRow";
-import { BubbleButtons, ItemList } from "./ItemFocusLayer";
+import { BubbleButtons, ItemList, PortLineList } from "./ItemFocusLayer";
 import { CapButtons, CapMarchStroke, CapRow } from "./DestinationCaps";
 import { capCandidates, capStops, marchingCaps, type CapMarch, type CapStop } from "./capLayout";
 import { ItemCard } from "./ItemCard";
@@ -93,7 +93,7 @@ import { pointerStore, rateAnchor, ratesHideAtRest, targetAt, type HighlightTarg
 import { HighlightLayer } from "./HighlightLayer";
 import { tweenMs, useTween } from "./useTween";
 import { itemIconText, itemIconUrl } from "./itemIcons";
-import { PORT_D, PORT_ICON, portTitle } from "./ports";
+import { PORT_D, PORT_ICON, PORT_PITCH, portTitle } from "./ports";
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -488,6 +488,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // Item focus's other state: the line whose "+k" list is open, the bubble stop that holds the tab stop and the one the
   // keyboard is on (ringed), and what the status line last said.
   const [listKey, setListKey] = useState<string | null>(null);
+  // The port whose lines' list is open (ADR-0063 Decision 2: an end label of a port with several lines).
+  const [portListId, setPortListId] = useState<string | null>(null);
   const [activeStop, setActiveStop] = useState<string | null>(null);
   const [keyStop, setKeyStop] = useState<BubbleStop | null>(null);
   const [announced, setAnnounced] = useState("");
@@ -880,7 +882,36 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     }
     // The list takes the group panel's place over the canvas.
     setOpenKey(null);
+    setPortListId(null);
     setListKey(edgeKey);
+  };
+  // ADR-0063 Decision 2: a port's end label. A port of one line focuses that line's item, as its bubble would; a port of
+  // several opens the list of its lines (`PortLineList`), each focusable as a bubble is.
+  const portLines = (portId: string) => layout.edges.filter((e) => e.srcPort === portId || e.tgtPort === portId);
+  const closePortList = () => {
+    const lines = portListId === null ? [] : portLines(portListId);
+    setPortListId(null);
+    // Back to the first line's bubble stop: the label itself is a picture, not a stop.
+    const first = lines[0];
+    const item = first?.bubbles.all[0];
+    if (first !== undefined && item !== undefined) bubbleButtons.current.get(stopId(edgeKeyOf(first.flow), item.key))?.focus();
+  };
+  const onPortLabel = (port: LaidPort) => {
+    if (dragged.current) return;
+    const lines = portLines(port.id);
+    const only = lines.length === 1 ? lines[0] : undefined;
+    const item = only?.bubbles.all[0];
+    if (only !== undefined && item !== undefined) {
+      focusItem(edgeKeyOf(only.flow), item);
+      return;
+    }
+    if (portListId === port.id) {
+      closePortList();
+      return;
+    }
+    setOpenKey(null);
+    setListKey(null);
+    setPortListId(port.id);
   };
   const activateStop = (stop: BubbleStop) => {
     // A key press, not the end of a drag.
@@ -1509,6 +1540,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   detail={detail}
                 />
               ))}
+              <EndLabels nodes={layout.nodes} lit={lit} detail={detail} onLabel={itemFocusOn ? onPortLabel : undefined} />
               {/* Over the cards: the focused item's detail card, and one that is closing (shrinking back to its bubble). */}
               {closingCard !== null && card(closingCard, true)}
               {focus !== null && card(focus, false)}
@@ -1765,6 +1797,21 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                 focusItem(listKey, item);
               }}
               onClose={closeList}
+            />
+          </CanvasOverlay>
+        )}
+        {overlayPlace !== null && openNode === undefined && itemFocusOn && portListId !== null && portLines(portListId).length > 1 && (
+          <CanvasOverlay key={`port|${portListId}`} place={overlayPlace} onHeight={onOverlayHeight}>
+            <PortLineList
+              key={portListId}
+              id={`${panelId}-port-lines`}
+              lines={portLines(portListId).map((e) => ({ edgeKey: edgeKeyOf(e.flow), flow: e.flow, item: e.bubbles.all[0], from: titleOf(e.flow.from), to: titleOf(e.flow.to) }))}
+              focus={focus}
+              onFocusItem={(edgeKey, item) => {
+                dragged.current = false;
+                focusItem(edgeKey, item);
+              }}
+              onClose={closePortList}
             />
           </CanvasOverlay>
         )}
@@ -2071,6 +2118,20 @@ function EdgeLabel({ edge: e, marks, dim, moving, from, to, detail, focusable }:
   // The same geometry the detail card's morph starts from (`bubbleCentre`).
   const { left, cy } = bubbleRowOrigin(e);
   const at = bubbleOffsets(row);
+  if (e.endLabels !== undefined) {
+    // ADR-0063 Decision 2: its end labels say what and how much, so the middle stays clear. The box is still reserved (the
+    // detail card grows from it, the keyboard's bubble stop is unchanged), and a transport's glyph keeps its rest place there.
+    if (!transport || moving) return null;
+    return (
+      <g data-edge-label={e.index} data-hl-edge={e.index} data-end-labelled="" data-dim-kind="card" data-dim={dim ? "" : undefined}>
+        <title>{flowTitle(e.flow, from, to)}</title>
+        <rect x={e.labelX - e.labelWidth / 2} y={e.labelY - e.labelHeight / 2} width={e.labelWidth} height={e.labelHeight} rx={Math.min(e.labelHeight, e.labelWidth) / 2} data-label-pill="" className="fill-surface" />
+        <g transform={`translate(${e.mid.x} ${e.mid.y})`} data-moving="false">
+          <TransportGlyph mode={e.flow.carrier} />
+        </g>
+      </g>
+    );
+  }
   return (
     <g data-edge-label={e.index} data-hl-edge={e.index} data-dim-kind="card" data-dim={dim ? "" : undefined}>
       <title>{flowTitle(e.flow, from, to)}</title>
@@ -2206,6 +2267,55 @@ function ItemBubble({
     </g>
   );
 }
+
+/**
+ * The ports' end labels (ADR-0063 Decision 2): beside each port whose label fits (`endLabelFit`), outside its card, the
+ * item's name above the line and its short rate below. The rate follows the amendment's rule (`data-rate`): hidden at rest
+ * with a mouse, where `HighlightLayer` draws it while the line is highlighted; shown at rest on a touch screen. Decorative to
+ * a screen reader (the words are in each line's button and the card's description); dims with its card. With item focus on,
+ * a click on a port of one line focuses that line's item, and on a port of several opens their list (`onLabel`): its target
+ * is the label's box grown to a pitch tall, at least 24 by 24. Below the detail zoom, nothing.
+ */
+function EndLabels({ nodes, lit, detail, onLabel }: { nodes: readonly LaidNode[]; lit: (key: string) => boolean; detail: BubbleDetail; onLabel?: ((port: LaidPort) => void) | undefined }) {
+  if (!detail.full) return null;
+  return (
+    <g data-end-labels="" aria-hidden="true">
+      {nodes.flatMap((n) =>
+        (n.ports ?? []).flatMap((p) => {
+          const l = p.label;
+          if (l === undefined) return [];
+          const hitW = Math.max(l.box.width, LABEL_HIT_MIN);
+          const midY = (l.nameY + l.rateY) / 2;
+          return [
+            <g
+              key={p.id}
+              data-end-label={p.item}
+              data-lines={p.lines}
+              data-dim-kind="card"
+              data-dim={lit(n.key) ? undefined : ""}
+              onClick={onLabel === undefined ? undefined : () => onLabel(p)}
+              className={cn(onLabel !== undefined && "cursor-pointer")}
+            >
+              <title>{portTitle(p)}</title>
+              {onLabel !== undefined && <rect x={l.anchor === "start" ? l.box.x : l.box.x + l.box.width - hitW} y={midY - PORT_PITCH / 2} width={hitW} height={PORT_PITCH} className="fill-transparent" />}
+              <text x={l.x} y={l.nameY} textAnchor={l.anchor} dominantBaseline="central" className="fill-fg text-sm">
+                {l.name}
+              </text>
+              {l.rate !== "" && (
+                <text x={l.x} y={l.rateY} textAnchor={l.anchor} dominantBaseline="central" data-rate="" className="fill-muted text-sm">
+                  {l.rate}
+                </text>
+              )}
+            </g>,
+          ];
+        }),
+      )}
+    </g>
+  );
+}
+
+/** WCAG 2.5.8's least target size, in layout units at zoom 1: an end label's target is at least this wide. */
+const LABEL_HIT_MIN = 24;
 
 /**
  * A card's item ports (ADR-0063 Decision 1): a disc per port, centred on the card's left or right edge, with its item's icon
