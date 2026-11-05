@@ -1,0 +1,3 @@
+- 2026-11-05 — The planner canvas is taller (owner request): from the `sm` breakpoint up its ceiling is 90% of the screen height (`--spacing-graph-max`, was the world map's `--spacing-map`, 60%) and its floor 400 px (`--spacing-graph-min-wide`, was 200 px), so a big factory shows about half as much again. Phones keep the 60% ceiling and the 200 px floor: the canvas takes touch drags, and the page needs room to scroll past it. The loading placeholder matches. The world map's height is unchanged.
+  - `ui-reviewer` (diff only): nothing blocking; its two suggestions (the phone ceiling, the placeholder's height) are taken.
+  - `e2e/planner-graph.spec.ts`' pan-and-zoom test scrolls the canvas into view before the wheel zoom, since the canvas can now run past the screen.
