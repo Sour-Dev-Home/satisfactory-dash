@@ -633,7 +633,13 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     setOverlayH(h);
   }, []);
   const openLaid = openNode === undefined ? undefined : laidByKey.get(openNode.key);
-  const overlayBox = openLaid ?? (listEdge === undefined ? undefined : labelBox(listEdge));
+  // A port's line list (ADR-0063 Decision 2) floats beside the end label it was opened from, or its card without one.
+  const portListAt = useMemo(() => {
+    if (portListId === null) return undefined;
+    const n = layout.nodes.find((x) => x.ports?.some((p) => p.id === portListId));
+    return n?.ports?.find((p) => p.id === portListId)?.label?.box ?? n;
+  }, [portListId, layout]);
+  const overlayBox = openLaid ?? (listEdge === undefined ? portListAt : labelBox(listEdge));
   const overlayPlace = overlayBox === undefined ? null : placeOverlay(screenRect(viewport, overlayBox), overlayH, stage, wide);
 
   // When it opens over what was clicked (no side had room, or below lg the card is in the bottom half), the view moves the
@@ -888,6 +894,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // ADR-0063 Decision 2: a port's end label. A port of one line focuses that line's item, as its bubble would; a port of
   // several opens the list of its lines (`PortLineList`), each focusable as a bubble is.
   const portLines = (portId: string) => layout.edges.filter((e) => e.srcPort === portId || e.tgtPort === portId);
+  // A poll that leaves the port with fewer than two lines closes its list for good, rather than hiding it to come back.
+  if (portListId !== null && portLines(portListId).length < 2) setPortListId(null);
   const closePortList = () => {
     const lines = portListId === null ? [] : portLines(portListId);
     setPortListId(null);
@@ -929,14 +937,16 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   const onCanvasClick = (event: ReactMouseEvent<SVGSVGElement>) => {
     if (dragged.current) return;
     const on = (selector: string) => event.target instanceof Element && event.target.closest(selector) !== null;
-    if (on("[data-bubble], [data-bubble-more], [data-card], [data-item-card]")) return;
+    // An end label (ADR-0063) is a target of its own, like a bubble: its click is not a press on the background.
+    if (on("[data-bubble], [data-bubble-more], [data-card], [data-item-card], [data-end-label]")) return;
     if (focus !== null) {
       leaveFocus();
       return;
     }
-    if ((openKey === null && listKey === null) || on("[data-frame-collapse]")) return;
+    if ((openKey === null && listKey === null && portListId === null) || on("[data-frame-collapse]")) return;
     setOpenKey(null);
     setListKey(null);
+    setPortListId(null);
     viewportRef.current?.focus({ preventScroll: true });
   };
 
@@ -2283,7 +2293,8 @@ function EndLabels({ nodes, lit, detail, onLabel }: { nodes: readonly LaidNode[]
       {nodes.flatMap((n) =>
         (n.ports ?? []).flatMap((p) => {
           const l = p.label;
-          if (l === undefined) return [];
+          // Never a label at a position that is not a number (a degenerate layout): no label rather than a broken attribute.
+          if (l === undefined || ![l.x, l.nameY, l.rateY, l.box.width].every(Number.isFinite)) return [];
           const hitW = Math.max(l.box.width, LABEL_HIT_MIN);
           const midY = (l.nameY + l.rateY) / 2;
           return [

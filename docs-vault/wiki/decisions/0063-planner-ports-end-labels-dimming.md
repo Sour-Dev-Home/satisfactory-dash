@@ -656,5 +656,10 @@ entry fall away); whether the highlight should dim in PR 1's colours is a new qu
   3633 with them on (+70%: the bands, about two per rank). That is the "too wide at the fitted zoom" question under "Revisit
   when", for the owner's demo review (PR 6). Layout benchmarks with bands: Expand all at the cap 54 ms, the 160-group site
   61 ms overview and 62 ms focused, all under 100 ms. Crossings on the dense scene are unchanged (41).
-- A one-off React warning ("Received NaN for the `y` attribute") showed once in `SiteGraph.ports.test.tsx` during
-  development and did not recur in later runs of the file or the planner suite; noted in case it returns.
+- **An import cycle, found in review.** `endLabels.ts` and `layoutSite.ts` import each other, and the row offset was a
+  module-level constant built from `LABEL_LINE_H`: loaded in the app's order it read `undefined`, so every label's y was NaN
+  (a React warning in one test run, and no visible labels), while the unit tests, loading the modules the other way round,
+  passed. It is now a function (`rowOffset()`), and `EndLabels` draws no label at a position that is not a number.
+- **Two more, found by the port list's test:** a click on an end label bubbled to the canvas as a press on the background
+  (leaving focus at once), and the floating panel had no anchor for a port list. The canvas now ignores end-label clicks as
+  it does bubbles, a background press also closes the port list, and the list floats beside its label (or its card).

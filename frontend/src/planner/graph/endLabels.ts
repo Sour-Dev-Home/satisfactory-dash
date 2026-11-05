@@ -20,8 +20,12 @@ export const END_LABEL_GAP = 4;
  * than it fails the fit, and its line draws its middle bubble.
  */
 export const RATE_ROW_CHARS = 13;
-/** Each row's centre, above and below the line: half the widest line, the row gap, half a row. */
-export const ROW_OFFSET = TRANSPORT_W / 2 + END_LABEL_ROW_GAP + LABEL_LINE_H / 2;
+/**
+ * Each row's centre, above and below the line: half the widest line, the row gap, half a row. A function, not a constant:
+ * this module and layoutSite.ts import each other, so a value from there read while this module loads can be undefined
+ * (it made every label's y NaN in the app, though not in the unit tests, which load the two the other way round).
+ */
+export const rowOffset = (): number => TRANSPORT_W / 2 + END_LABEL_ROW_GAP + LABEL_LINE_H / 2;
 
 export interface EndLabelWords {
   /** As drawn: the item's name cut at `END_LABEL_NAME_CHARS`, or "+N items" for a fold. */
@@ -79,9 +83,9 @@ export function placeEndLabel(at: { x: number; y: number }, side: "l" | "r", wor
     ...words,
     x,
     anchor: right ? "start" : "end",
-    nameY: at.y - ROW_OFFSET,
-    rateY: at.y + ROW_OFFSET,
-    box: { x: right ? x : x - width, y: at.y - ROW_OFFSET - LABEL_LINE_H / 2, width, height: 2 * ROW_OFFSET + LABEL_LINE_H },
+    nameY: at.y - rowOffset(),
+    rateY: at.y + rowOffset(),
+    box: { x: right ? x : x - width, y: at.y - rowOffset() - LABEL_LINE_H / 2, width, height: 2 * rowOffset() + LABEL_LINE_H },
   };
 }
 

@@ -106,6 +106,8 @@ describe("end labels, flag on", () => {
     expect(single).not.toBeNull();
     fireEvent.click(single!);
     expect(await screen.findByRole("status")).toHaveTextContent(/^Focused /);
+    // And it stays focused: the click is not also a press on the background, which would leave focus.
+    expect(screen.getByRole("status")).not.toHaveTextContent(/^Left focus|^$/);
     const several = svg.querySelector('[data-end-label]:not([data-lines="1"])');
     if (several !== null) {
       fireEvent.click(several);

@@ -182,7 +182,9 @@ export function PortLineList({
 }) {
   const headingId = `${id}-heading`;
   const first = useRef<HTMLButtonElement>(null);
-  useEffect(() => first.current?.focus(), []);
+  const close = useRef<HTMLButtonElement>(null);
+  // To the first line; to Close when no line has an item to focus.
+  useEffect(() => (first.current ?? close.current)?.focus(), []);
   const shown = lines.flatMap((l) => (l.item === undefined ? [] : [{ ...l, item: l.item }]));
   const name = shown[0]?.item.name ?? "Item unknown";
   return (
@@ -197,8 +199,8 @@ export function PortLineList({
       className="flex h-full flex-col"
     >
       <div data-overlay-header="" className="flex shrink-0 items-start justify-between gap-2 border-b border-transparent px-4 pt-4 pb-3 group-data-scrolled:border-line">
-        <h3 id={headingId} className="m-0 text-base font-semibold">{`${shown.length} lines of ${name}`}</h3>
-        <button type="button" onClick={onClose} className="min-h-touch">
+        <h3 id={headingId} className="m-0 text-base font-semibold">{`${shown.length} ${shown.length === 1 ? "line" : "lines"} of ${name}`}</h3>
+        <button ref={close} type="button" onClick={onClose} className="min-h-touch">
           Close
         </button>
       </div>

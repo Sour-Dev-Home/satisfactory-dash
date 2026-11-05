@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import * as demoWorld from "../../demo/world";
 import { siteScene, type CanvasFlow, type Card, type Scene } from "./canvasScene";
-import { END_LABEL_GAP, END_LABEL_NAME_CHARS, ROW_OFFSET, bandWidth, endLabelFit, endLabelWidth, endLabelWords, placeEndLabel } from "./endLabels";
+import { END_LABEL_GAP, END_LABEL_NAME_CHARS, bandWidth, endLabelFit, endLabelWidth, endLabelWords, placeEndLabel, rowOffset } from "./endLabels";
 import { LABEL_LINE_H, clearLayoutMemo, layoutScene, type LaidEdge, type SiteLayout } from "./layoutSite";
 import { TRANSPORT_W } from "./lineWidth";
 import { END_LABEL_CLEAR, END_LABEL_ROW_GAP, PORT_D, PORT_PITCH } from "./ports";
@@ -48,9 +48,9 @@ describe("placing a label", () => {
   });
 
   it("keeps the labels of two ports on one edge apart: a pitch holds both rows round the widest line and a clearance", () => {
-    // The rows' outer edges sit ROW_OFFSET + half a row from the line; the next port's are a pitch down.
-    expect(2 * (ROW_OFFSET + LABEL_LINE_H / 2)).toBeLessThanOrEqual(PORT_PITCH - END_LABEL_CLEAR + 1e-9);
-    expect(ROW_OFFSET).toBe(TRANSPORT_W / 2 + END_LABEL_ROW_GAP + LABEL_LINE_H / 2);
+    // The rows' outer edges sit rowOffset() + half a row from the line; the next port's are a pitch down.
+    expect(2 * (rowOffset() + LABEL_LINE_H / 2)).toBeLessThanOrEqual(PORT_PITCH - END_LABEL_CLEAR + 1e-9);
+    expect(rowOffset()).toBe(TRANSPORT_W / 2 + END_LABEL_ROW_GAP + LABEL_LINE_H / 2);
   });
 
   it("sizes a band from the disc's half, a gap, the widest label and a gap; none without ports", () => {
@@ -146,6 +146,30 @@ describe("end labels in the layout", () => {
     const labelled = on.edges.filter((e) => e.endLabels !== undefined).length;
     console.info(`[ADR-0063 end labels] demo iron works: ${labelled} of ${on.edges.length} lines draw end labels; width ${Math.round(off.width)} to ${Math.round(on.width)} (ports off to on)`);
     expect(labelled).toBeGreaterThan(0);
+  });
+
+  it("keeps the placement when only the rates move (bands come from names and a fixed allowance)", () => {
+    const a = layoutScene(chain, undefined, undefined, { ports: true });
+    const moved: Scene = { ...chain, flows: chain.flows.map((f) => ({ ...f, ratePerMinute: (f.ratePerMinute ?? 0) + 1 })) };
+    const b = layoutScene(moved, undefined, undefined, { ports: true });
+    expect(b.nodes.map((n) => [n.key, n.x, n.y])).toEqual(a.nodes.map((n) => [n.key, n.x, n.y]));
+    expect(b.width).toBe(a.width);
+  });
+
+  it("puts line ends on the drawn card's edges and a card with ports on one side only keeps no band on the other", () => {
+    const l = layoutScene(chain, undefined, undefined, { ports: true });
+    const byKey = new Map(l.nodes.map((n) => [n.key, n]));
+    for (const e of l.edges) {
+      const from = byKey.get(e.flow.from)!;
+      const to = byKey.get(e.flow.to)!;
+      expect(e.points[0].x).toBeCloseTo(from.x + from.width + 0, 0);
+      expect(Math.abs(e.points[e.points.length - 1].x - to.x)).toBeLessThan(PORT_D);
+    }
+    // A has only right ports; its picture starts at the drawn card (no left band).
+    const a = byKey.get("A")!;
+    expect(a.ports!.every((p) => p.side === "r")).toBe(true);
+    expect(a.x).toBeGreaterThanOrEqual(0);
+    for (const n of l.nodes) expect(n.x + n.width).toBeLessThanOrEqual(l.width);
   });
 
   it("draws no end labels with ports off", () => {
