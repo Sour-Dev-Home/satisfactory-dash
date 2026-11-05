@@ -72,6 +72,17 @@ export function HighlightLayer({
         <g key={shape} transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.k})`}>
           <g key={shown.id} data-highlight-rates="" className="animate-reveal">
             {litEdges.map((e) => {
+              // A line with end labels (ADR-0063 Decision 2) shows its rate in both labels' rate rows, where the canvas keeps
+              // them hidden with a mouse; one without, in the middle under its bubbles.
+              if (e.endLabels !== undefined) {
+                return [e.endLabels.src, e.endLabels.tgt].map((l, i) =>
+                  l.rate === "" ? null : (
+                    <text key={`${e.index}-${i}`} x={l.x} y={l.rateY} textAnchor={l.anchor} dominantBaseline="central" strokeWidth={4} data-highlight-rate={e.index} className="fill-fg stroke-surface text-sm paint-stroke-first">
+                      {l.rate}
+                    </text>
+                  ),
+                );
+              }
               const at = rateAnchor(e);
               return (
                 <text key={e.index} x={at.x} y={at.y} textAnchor="middle" dominantBaseline="central" strokeWidth={4} data-highlight-rate={e.index} className="fill-fg stroke-surface text-sm paint-stroke-first">

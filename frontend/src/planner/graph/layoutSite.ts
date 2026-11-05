@@ -4,6 +4,7 @@ import { bundleFlows, groupCard, siteScene, type Card, type CanvasFlow, type Fra
 import { buildingIconUrl } from "./buildingIcons";
 import { capSlots } from "./capModel";
 import { BUBBLE_D, bubbleRow, bubblesWidth, edgeKeyOf, type BubbleRow } from "./bubbleRow";
+import { bandLabelWidth, bandWidth, endLabelFit, endLabelWords, type EndLabel, type EndLabelWords } from "./endLabels";
 import type { FlowQuality } from "./hierarchy";
 import { routeOrthogonal } from "./orthogonalRoute";
 import { PORT_D, PORT_PITCH, portModel, portOffsets, portsHeight, portsPerCard, type PortItem, type PortModel, type Side } from "./ports";
@@ -113,7 +114,12 @@ export interface LaidPort {
   /** Its centre, relative to the card's top-left: on the left edge (0) or the right (the card's width). */
   x: number;
   y: number;
+  /** Its end label (ADR-0063 Decision 2), in the picture's coordinates, when it fits; absent otherwise. */
+  label?: EndLabel | undefined;
 }
+
+/** The port model, and with end labels each card's bands (left and right), as the placers take them. */
+type PortsInput = PortModel & { insets?: ReadonlyMap<string, { l: number; r: number }> | undefined };
 
 /** What the layout is asked to draw beyond the scene. */
 export interface LayoutOptions {
@@ -169,6 +175,8 @@ export interface LaidEdge {
   srcPort?: string | undefined;
   tgtPort?: string | undefined;
   returning?: boolean | undefined;
+  /** Both its ports' end labels, when both fit (Decision 2): the line then draws them and its middle box stays empty. */
+  endLabels?: { src: EndLabel; tgt: EndLabel } | undefined;
 }
 
 export interface SiteLayout {
@@ -490,7 +498,7 @@ export function returnFlows(cardKeys: readonly string[], flows: readonly { from:
  * handling cannot route (it throws "Not possible to find intersection inside of the rectangle" on some parallel edges that
  * skip a rank).
  */
-function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], merged: boolean, ports?: PortModel): Placed {
+function placeWith(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], merged: boolean, ports?: PortsInput): Placed {
   const g = new dagre.graphlib.Graph({ multigraph: true, compound: true });
   const nodesep = scene.frames.length > 0 ? NODE_SEP + FRAME_HEADER_H / 2 : NODE_SEP;
   // Loops are broken here (`returnFlows`), so dagre gets a graph without cycles. `tight-tree` gave the fewest crossings
@@ -619,7 +627,7 @@ function routed(
   labels: readonly LabelBox[],
   placed: Placed,
   labelWaypoint: (flow: number) => number | undefined,
-  ports?: PortModel,
+  ports?: PortsInput,
 ): Placed {
   // ADR-0063 Decision 1: the router takes each end's side and port from the port model, and orders each edge's ports.
   const portOrder =
@@ -628,7 +636,9 @@ function routed(
       : new Map(ports.ports.map((p) => [p.id, { returning: p.returning, rate: p.rate, name: p.item === "+" ? "￿" : (p.items[0]?.name ?? "") }]));
   const cards = scene.cards.map((c, i) => {
     const centre = placed.centres.get(c.key)!;
-    return { key: c.key, x: centre.x - sizes[i].width / 2, y: centre.y - sizes[i].height / 2, width: sizes[i].width, height: sizes[i].height };
+    // With end labels, the box is the card and its two bands; the lines attach at the drawn card's edges inside it.
+    const inset = ports?.insets?.get(c.key);
+    return { key: c.key, x: centre.x - sizes[i].width / 2, y: centre.y - sizes[i].height / 2, width: sizes[i].width, height: sizes[i].height, insetL: inset?.l, insetR: inset?.r };
   });
   const frameKeys = scene.frames.filter((f) => placed.frames.has(f.key)).map((f) => f.key);
   const out = routeOrthogonal(
@@ -713,7 +723,7 @@ function placeGrid(scene: Scene, sizes: readonly CardSize[], drawn: readonly Can
   return { centres, frames, paths, stack: drawn.map(() => 0), labelAt: drawn.map(() => null), width: MARGIN * 2 + cols * cellW, height: MARGIN * 2 + head + rows * cellH };
 }
 
-function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], ports?: PortModel): Placed {
+function place(scene: Scene, sizes: readonly CardSize[], drawn: readonly CanvasFlow[], labels: readonly LabelBox[], ports?: PortsInput): Placed {
   // Separate first: each flow gets its own label box and, from the router, its own track (ADR-0059 measured this form).
   // Merged (one dagre edge per pair of cards, labels stacked in its box) is the fallback for shapes dagre cannot route.
   for (const merged of [false, true]) {
@@ -765,6 +775,16 @@ export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutF
       : undefined;
   const portCount = ports === undefined ? undefined : portsPerCard(ports);
   const sizes = portCount === undefined ? peerSizes : peerSizes.map((s, i) => ({ ...s, height: Math.max(s.height, portsHeight(portCount.get(scene.cards[i].key) ?? 0)) }));
+  // End labels (ADR-0063 Decision 2): each port's words, and beside each card side a band as wide as its widest label.
+  // dagre and the router see the card widened by its two bands (the drawn card off centre in that box, by the difference
+  // of its bands), so no track, card or other label enters a band. The band is sized from names and a fixed rate
+  // allowance, never the live rate, so a poll that only moves rates keeps the placement (the memo).
+  const words = ports === undefined ? undefined : portWords(ports, drawn);
+  const insets = ports === undefined || words === undefined ? undefined : bandsOf(ports, words);
+  const boxes = insets === undefined ? sizes : sizes.map((s, i) => {
+    const b = insets.get(scene.cards[i].key);
+    return b === undefined ? s : { ...s, width: s.width + b.l + b.r };
+  });
   // Each label is a bubble row; a transport's also holds its mode's glyph, at the pill's left: dagre reserves room for both.
   const rows = drawn.map(bubbleRow);
   const pills = drawn.map((f, k) => {
@@ -773,11 +793,11 @@ export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutF
   });
   const labels =
     focus === undefined ? pills : drawn.map((f, k) => (edgeKeyOf(f) === focus.edgeKey ? { width: Math.max(pills[k].width, focus.width), height: Math.max(pills[k].height, focus.height) } : pills[k]));
-  const key = `${topologyHash ?? ""}|${scene.level}|${ports === undefined ? "" : "ports"}|${signature(scene, sizes, labels, drawn)}`;
+  const key = `${topologyHash ?? ""}|${scene.level}|${ports === undefined ? "" : "ports"}|${signature(scene, boxes, labels, drawn)}`;
   let placement = memo.get(key);
   if (placement === undefined) {
     const start = performance.now();
-    const placed = place(scene, sizes, drawn, labels, ports);
+    const placed = place(scene, boxes, drawn, labels, ports === undefined ? undefined : { ...ports, insets });
     stats.lastMs = performance.now() - start;
     placement = { ...placed, ms: stats.lastMs };
     stats.slowestMs = Math.max(stats.slowestMs, stats.lastMs);
@@ -794,7 +814,9 @@ export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutF
   const nodes: LaidNode[] = scene.cards.map((card, i) => {
     const s = sizes[i];
     const c = p.centres.get(card.key)!;
-    return { key: card.key, x: c.x - s.width / 2, y: c.y - s.height / 2, ...s, card };
+    // The drawn card in its box: in by its left band (none without end labels).
+    const left = c.x - boxes[i].width / 2 + (insets?.get(card.key)?.l ?? 0);
+    return { key: card.key, x: left, y: c.y - s.height / 2, ...s, card };
   });
   if (ports !== undefined) attachPorts(nodes, ports, drawn, p.portAt);
   const frames: LaidFrame[] = scene.frames.flatMap((f: Frame) => {
@@ -835,7 +857,35 @@ export function layoutScene(scene: Scene, topologyHash?: string, focus?: LayoutF
       ...(end === undefined ? {} : { srcPort: end.src, tgtPort: end.tgt, returning: end.srcSide === "l" }),
     };
   });
+  // Which ports' labels fit, and so which lines draw end labels instead of their middle bubble (Decision 2's fallback).
+  // Only where the router put the ends on the ports: the grid fallback draws ports but no end labels.
+  if (words !== undefined && p.portAt !== undefined) {
+    const fit = endLabelFit(nodes, edges, words);
+    for (const n of nodes) for (const port of n.ports ?? []) port.label = fit.labels.get(port.id);
+    for (const e of edges) if (fit.lines.has(e.index)) e.endLabels = { src: fit.labels.get(e.srcPort!)!, tgt: fit.labels.get(e.tgtPort!)! };
+  }
   return { nodes, frames, edges, flows, width: p.width, height: p.height, placeMs: p.ms };
+}
+
+/** Each port's end-label words (Decision 2), with its lines' unit (none for a fold that mixes items and fluid). */
+function portWords(model: PortModel, drawn: readonly CanvasFlow[]): Map<string, EndLabelWords> {
+  return new Map(
+    model.ports.map((p) => {
+      const units = new Set(p.flows.map((f) => drawn[f].unit));
+      return [p.id, endLabelWords({ ...p, unit: units.size === 1 ? [...units][0] : null })];
+    }),
+  );
+}
+
+/** Each card's left and right band: as wide as the widest label on that side, by its name and the rate allowance. */
+function bandsOf(model: PortModel, words: ReadonlyMap<string, EndLabelWords>): Map<string, { l: number; r: number }> {
+  const widths = new Map<string, { l: number[]; r: number[] }>();
+  for (const p of model.ports) {
+    const w = widths.get(p.card) ?? { l: [], r: [] };
+    w[p.side].push(bandLabelWidth(words.get(p.id)!));
+    widths.set(p.card, w);
+  }
+  return new Map([...widths].map(([card, w]) => [card, { l: bandWidth(w.l), r: bandWidth(w.r) }]));
 }
 
 /** A route's last point moved out to the target port's disc edge: left of a left port, right of a right one. */

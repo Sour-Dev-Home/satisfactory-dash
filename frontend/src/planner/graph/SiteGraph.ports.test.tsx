@@ -45,8 +45,7 @@ describe("ports, flag on", () => {
   it("draws a disc per port inside its card, an input on the left and an output on the right, each with its words", async () => {
     const svg = await openGraph({ [PORTS_KEY]: "on" });
     const ports = [...svg.querySelectorAll("[data-port]")];
-    expect(ports.length).toBeGreaterThan(0);
-    for (const p of ports) {
+    expect(ports.length).toBeGreaterThan(0);    for (const p of ports) {
       // Part of the card: inside its group, so a click on it is the card's.
       expect(p.closest("[data-card]")).not.toBeNull();
       // A return flow's ports are the other way round (out on the left, in on the right).
@@ -72,5 +71,49 @@ describe("ports, flag on", () => {
   it("keeps the arrowhead when the owner's answer is 'keep'", async () => {
     const svg = await openGraph({ [PORTS_KEY]: "on", [PORT_ARROWS_KEY]: "keep" });
     for (const l of lines(svg)) expect(l).toHaveAttribute("marker-end");
+  });
+});
+
+// ADR-0063 build PR 3: end labels, and the middle bubble as the fallback.
+describe("end labels, flag on", () => {
+  it("draws a name and a rate beside each port whose label fits, and leaves those lines' middles empty", async () => {
+    const svg = await openGraph({ [PORTS_KEY]: "on" });
+    const labels = [...svg.querySelectorAll("[data-end-label]")];
+    expect(labels.length).toBeGreaterThan(0);
+    for (const l of labels) {
+      const [name, rate] = [...l.querySelectorAll("text")];
+      expect(name.textContent).not.toBe("");
+      // The rate follows the amendment's rule: hidden at rest with a mouse (index.css), drawn by the highlight layer.
+      if (rate !== undefined) expect(rate).toHaveAttribute("data-rate");
+    }
+    // An end-labelled line draws no bubbles in its middle (a transport keeps only its resting glyph there).
+    for (const g of svg.querySelectorAll("[data-end-labelled]")) expect(g.querySelector("[data-bubble]")).toBeNull();
+    // Decorative: nothing new to tab to.
+    expect(svg.querySelector("[data-end-labels] [tabindex]")).toBeNull();
+  });
+
+  it("is a picture with item focus off: a click on a label does nothing", async () => {
+    const svg = await openGraph({ [PORTS_KEY]: "on" });
+    const label = svg.querySelector("[data-end-label]")!;
+    expect(label).not.toHaveClass("cursor-pointer");
+    fireEvent.click(label);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("with item focus on, a port of one line focuses its item; a port of several opens their list", async () => {
+    const svg = await openGraph({ [PORTS_KEY]: "on", "planner.itemFocus": "on" });
+    const single = svg.querySelector('[data-end-label][data-lines="1"]');
+    expect(single).not.toBeNull();
+    fireEvent.click(single!);
+    expect(await screen.findByRole("status")).toHaveTextContent(/^Focused /);
+    // And it stays focused: the click is not also a press on the background, which would leave focus.
+    expect(screen.getByRole("status")).not.toHaveTextContent(/^Left focus|^$/);
+    const several = svg.querySelector('[data-end-label]:not([data-lines="1"])');
+    if (several !== null) {
+      fireEvent.click(several);
+      const list = await screen.findByRole("region", { name: /^\d+ lines of / });
+      fireEvent.keyDown(list, { key: "Escape" });
+      expect(screen.queryByRole("region", { name: /^\d+ lines of / })).toBeNull();
+    }
   });
 });

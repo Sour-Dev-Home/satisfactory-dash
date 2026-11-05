@@ -174,6 +174,11 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   ports, passes sides and ports to the router (`RouteEdge.srcPort`..., `RouteOutput.portAt`), ends a line at its target
   disc's edge and hangs `LaidPort`s on each `LaidNode`. `SiteGraph` draws them (`PortDiscs`, inside the card's group, no
   focusable element) and drops the arrowhead into a left input port unless `planner.portArrows` is "keep" (open question 5).
+- End labels (ADR-0063 build PR 3, same flag): `endLabels.ts` (pure) gives each port's words, its band and `endLabelFit`.
+  dagre gets each card widened by its two bands; the router's `RouteCard.insetL`/`insetR` attach ends at the drawn edge.
+  A line whose two labels fit gets `LaidEdge.endLabels` and draws no middle bubble (the box stays reserved); otherwise its
+  bubble. `SiteGraph`'s `EndLabels` draws them (rate row `data-rate`), `HighlightLayer` draws a lit line's rate there, and
+  with item focus a label opens its line's focus or `PortLineList` (`ItemFocusLayer.tsx`).
 - Dimming (ADR-0063 build PR 1): `focusSet.ts` is the one rule for what is lit (item focus, hop-1, then the item filter's
   reach); `SiteGraph`'s `lit` and `edgeLit` call it. A dimmable group (a line, a march stroke, a moving glyph, a cap's
   stroke: `data-dim-kind="line"`; a card, a machines frame, a line's label: `"card"`) gets `data-dim` while dimmed, and

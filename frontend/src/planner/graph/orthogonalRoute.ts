@@ -9,6 +9,13 @@ export type Box = { x: number; y: number; width: number; height: number };
 
 export interface RouteCard extends Box {
   key: string;
+  /**
+   * With end labels (ADR-0063 Decision 2): the box is the card widened by a label band on each side, which the router
+   * treats as the card for its columns, tracks and straightening; the drawn card stands this far in from the box's left
+   * and right edges, and the lines' ends (and the ports) attach there.
+   */
+  insetL?: number | undefined;
+  insetR?: number | undefined;
 }
 
 export interface RouteEdge {
@@ -95,6 +102,8 @@ interface Leg {
 
 const cx = (b: Box) => b.x + b.width / 2;
 const cy = (b: Box) => b.y + b.height / 2;
+/** A card's drawn left or right edge: its box's, in by the label band on that side (none without end labels). */
+const edgeX = (c: RouteCard, side: "l" | "r") => (side === "r" ? c.x + c.width - (c.insetR ?? 0) : c.x + (c.insetL ?? 0));
 
 /** Sorted column centres: the x values, those within `tol` of each other as one. */
 function columnsOf(xs: readonly number[], tol = 1): number[] {
@@ -300,20 +309,17 @@ export function routeOrthogonal(input: RouteInput, options: RouteOptions = {}): 
   const paths = levels.map((lv, e) => {
     const s = byKey.get(input.edges[e].from)!;
     const t = byKey.get(input.edges[e].to)!;
-    const pts: Point[] = [{ x: sideOf[e].src === "r" ? s.x + s.width : s.x, y: lv[0].y }];
+    const pts: Point[] = [{ x: edgeX(s, sideOf[e].src), y: lv[0].y }];
     for (let k = 0; k + 1 < lv.length; k++) {
       const x = trackX.get(`${e}\u0001${k}`);
       if (x === undefined) continue;
       pts.push({ x, y: lv[k].y }, { x, y: lv[k + 1].y });
     }
-    pts.push({ x: sideOf[e].tgt === "l" ? t.x : t.x + t.width, y: lv[lv.length - 1].y });
+    pts.push({ x: edgeX(t, sideOf[e].tgt), y: lv[lv.length - 1].y });
     return pts;
   });
   const portAt = new Map<string, Point>();
-  for (const [id, p] of portDy) {
-    const c = byKey.get(p.card)!;
-    portAt.set(id, { x: p.side === "r" ? c.x + c.width : c.x, y: c.y + p.dy });
-  }
+  for (const [id, p] of portDy) portAt.set(id, { x: edgeX(byKey.get(p.card)!, p.side), y: byKey.get(p.card)!.y + p.dy });
   return { cards, labels, frames, paths, widened: extra.reduce((a, b) => a + b, 0), tracks, portAt };
 }
 
