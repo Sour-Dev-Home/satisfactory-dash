@@ -19,12 +19,14 @@ test("a site's graph pans, zooms, filters by item and opens a group's machines",
   await page.getByRole("button", { name: "Graph", exact: true }).click();
   const svg = page.getByRole("img", { name: /^Graph of Iron Plate site: 5 groups, 5 connections/ });
   await expect(svg).toBeVisible();
-  // dagre has laid out the cards, and the edge labels are drawn: the item as its icon bubble over the rate (ADR-0060;
-  // the <title> tooltip keeps the words).
-  const ironOre = svg.locator('[data-edge-label]:has([data-bubble="Desc_OreIron_C"])').first();
-  await expect(ironOre.locator('[data-bubble] image[href$="-32.webp"], [data-bubble] image[href$="-64.webp"]')).toBeVisible();
+  // dagre has laid out the cards with their item ports, and each line's end labels are drawn beside its ports (ADR-0063:
+  // the port disc shows the item's icon, the label its name over the rate; the <title> tooltips keep the words).
+  await expect(svg.locator('[data-port="c:Desc_OreIron_C"] image[href$="-32.webp"]').first()).toBeVisible();
+  const ironOre = svg.locator('[data-end-label="c:Desc_OreIron_C"]');
+  await expect(ironOre).toHaveCount(2);
+  await expect(ironOre.first().locator(":scope > text", { hasText: /^Iron Ore$/ })).toBeVisible();
   // The canvas's short rate (ADR-0063 amendment, 2026-11-03); with a mouse it shows only on hover (its own test below).
-  await expect(ironOre.locator(":scope > text", { hasText: /^120\/min$/ })).toBeAttached();
+  await expect(ironOre.locator(":scope > text", { hasText: /^120\/min$/ })).toHaveCount(2);
 
   // Wheel zoom about the pointer, then drag to pan. The canvas can run past a phone's screen, so bring it into view first.
   await svg.scrollIntoViewIfNeeded();
@@ -154,8 +156,13 @@ test("hovering a line shows its rate and dims nothing; hovering a card lights al
   await mockApi("planner-group-panel");
   const svg = await openIronSite(page);
   const layer = page.locator("[data-highlight-layer]");
-  const ironOre = svg.locator('[data-edge-label]:has([data-bubble="Desc_OreIron_C"])').first();
-  const index = await ironOre.getAttribute("data-edge-label");
+  // The iron-ore line's end labels (ADR-0063 Decision 2): a one-line port's label is its line's highlight target.
+  const oreLabels = svg.locator('[data-end-label="c:Desc_OreIron_C"]');
+  await expect(oreLabels).toHaveCount(2);
+  const ironOre = oreLabels.first();
+  const index = await ironOre.getAttribute("data-hl-edge");
+  expect(index).toMatch(/^\d+$/);
+  await expect(oreLabels.last()).toHaveAttribute("data-hl-edge", index!);
   // At rest: no rate shows, nothing is dimmed, and the highlight layer is clear. It lies exactly over the canvas, as its own
   // compositing layer.
   for (const rate of await svg.locator("[data-rate]").all()) expect(await opacityOf(rate)).toBe("0");
@@ -168,21 +175,23 @@ test("hovering a line shows its rate and dims nothing; hovering a card lights al
   expect(await layer.evaluate((el) => getComputedStyle(el).willChange)).toBe("transform");
   const before = await ironOre.boundingBox();
 
-  // The line (here its bubbles): the layer fades in (its own opacity, by the motion token) with the line's rate, rising
-  // in. Nothing else dims (the owner dropped it, 2026-11-03).
-  await ironOre.hover();
+  // The line (here its end label's name): the layer fades in (its own opacity, by the motion token) with the line's rate
+  // in both its end labels' rate rows, rising in. Nothing else dims (the owner dropped it, 2026-11-03).
+  await ironOre.locator(":scope > text").first().hover();
   await expect(layer).toHaveAttribute("data-highlight", "");
   expect(await layer.evaluate((el) => getComputedStyle(el).transitionDuration)).not.toBe("0s");
   await expect.poll(() => opacityOf(layer)).toBe("1");
   const lit = layer.locator("[data-highlight-rate]");
-  await expect(lit).toHaveCount(1);
-  await expect(lit).toHaveAttribute("data-highlight-rate", index!);
-  await expect(lit).toHaveText("120/min");
+  await expect(lit).toHaveCount(2);
+  for (const one of await lit.all()) {
+    await expect(one).toHaveAttribute("data-highlight-rate", index!);
+    await expect(one).toHaveText("120/min");
+  }
   await expect(layer.locator("mask, rect, path")).toHaveCount(0);
   // The canvas is not touched: nothing in it changed opacity, and nothing moved (the label's room was reserved).
   const other = svg.locator(`[data-edge-layer="lines"] [data-edge]:not([data-edge="${index}"])`).first();
   expect(await opacityOf(other)).toBe("1");
-  expect(await opacityOf(rateOf(ironOre))).toBe("0");
+  for (const label of await oreLabels.all()) expect(await opacityOf(rateOf(label))).toBe("0");
   expect(await ironOre.boundingBox()).toEqual(before);
   await expectNoAxeViolations(page, testInfo);
 
@@ -209,7 +218,8 @@ test("under reduced motion a hovered line's rate appears at once, with no transi
   const svg = await openIronSite(page);
   const layer = page.locator("[data-highlight-layer]");
   expect(await layer.evaluate((el) => getComputedStyle(el).transitionDuration)).toBe("0s");
-  await svg.locator('[data-edge-label]:has([data-bubble="Desc_OreIron_C"])').first().hover();
+  // The iron-ore line's end label (ADR-0063 Decision 2), its line's highlight target.
+  await svg.locator('[data-end-label="c:Desc_OreIron_C"] > text').first().hover();
   await expect(layer).toHaveAttribute("data-highlight", "");
   expect(await opacityOf(layer)).toBe("1");
   const rates = layer.locator("[data-highlight-rates]");
@@ -225,7 +235,9 @@ test("a touch screen shows every line's rate at rest, and a tap changes no highl
   const rates = svg.locator("[data-rate]");
   expect(await rates.count()).toBeGreaterThan(0);
   for (const rate of await rates.all()) expect(await opacityOf(rate)).toBe("1");
-  await expect(rates.filter({ hasText: /^120\/min$/ })).toHaveCount(1);
+  // The iron-ore line's rate, once in each of its two end labels (ADR-0063 Decision 2).
+  await expect(rates.filter({ hasText: /^120\/min$/ })).toHaveCount(2);
+  await expect(svg.locator('[data-end-label="c:Desc_OreIron_C"] > [data-rate]', { hasText: /^120\/min$/ })).toHaveCount(2);
   await expect(page.getByText("Point at or focus a line or a card to show its rates.")).toBeHidden();
   await expectNoAxeViolations(page, testInfo);
 });
@@ -599,7 +611,9 @@ test("with the item-focus flag on, the keyboard focuses a link's item and Escape
   await expect(bubbles.first()).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(bubbles.first()).toHaveAttribute("aria-expanded", "true");
-  await expect(svg.locator("[data-focused]")).toHaveCount(1);
+  // Its line draws end labels, not a bubble (ADR-0063 Decision 2): only the focused line stays lit.
+  const lines = svg.locator('[data-edge-layer="lines"] [data-edge]');
+  await expect(lines.and(page.locator(":not([data-dim])"))).toHaveCount(1);
   await expect(page.getByRole("status")).toContainText("Focused");
   // The bubble has become its detail card (build PR 5), with its 128 px icon from our own origin (the CSP's img-src).
   const card = svg.locator("[data-item-card]");
@@ -608,7 +622,7 @@ test("with the item-focus flag on, the keyboard focuses a link's item and Escape
   await expect(page.getByRole("group", { name: / card$/ }).getByRole("button", { name: /^Close / })).toBeAttached();
   await expectNoAxeViolations(page, testInfo);
   await page.keyboard.press("Escape");
-  await expect(svg.locator("[data-focused]")).toHaveCount(0);
+  await expect(lines.and(page.locator("[data-dim]"))).toHaveCount(0);
   await expect(card).toHaveCount(0);
   await expect(bubbles.first()).toBeFocused();
   await expect(page.getByRole("status")).toContainText("Overview");
