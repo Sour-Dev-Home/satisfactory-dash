@@ -51,7 +51,7 @@ import {
 } from "./layoutSite";
 import { overviewFoldsKey, useFolds } from "./foldMemory";
 import { machineCardKey, machineCards, type MachineCardText } from "./machineCards";
-import { MOTION_OPTIONS, motionOn, readItemFocus, readPortArrows, readPorts, useCollapsedUpstream, useMotionPref, useStateStyle, useStorageDetail, type MotionPref } from "./plannerPrefs";
+import { MOTION_OPTIONS, motionOn, readItemFocus, useCollapsedUpstream, useMotionPref, useStateStyle, useStorageDetail, type MotionPref } from "./plannerPrefs";
 import { StateMarkGlyph } from "./StateMark";
 import type { StalledKind } from "../plannerText";
 import { machineState } from "../../factory/machineState";
@@ -123,6 +123,8 @@ const DRAG_SLOP = 4;
 const WHEEL_SENSITIVITY = 0.0015;
 /** The upstream control on a card: a pill of this height at the card's bottom-left, with a hit area up to the touch size. */
 const PILL_MIN_W = 24;
+// ADR-0063 ports: item ports on the card edges, one line per item (the flag removed in build PR 7, 2026-11-05).
+const LAYOUT_OPTIONS = { ports: true } as const;
 /** Why the toolbar's blow-up "Expand all" is disabled: every card here would pass `EXPAND_MAX_CARDS`. */
 const NOTHING_FITS = "Nothing here fits under the cap; open a factory to see its parts.";
 /** A lasso adds a point once the pointer is this far (stage units) from the last one. */
@@ -388,11 +390,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           : factoryScene(graph, target.model, view),
     [target, graph, view, expanded],
   );
-  // ADR-0063 ports, behind their flag (on in the demo unless "off"), and open question 5's arrowhead form.
-  const [portsOn] = useState(readPorts);
-  const [portArrows] = useState(readPortArrows);
-  const layoutOptions = useMemo(() => ({ ports: portsOn }), [portsOn]);
-  const overview = useMemo(() => layoutScene(scene, graph.topologyHash, undefined, layoutOptions), [scene, graph.topologyHash, layoutOptions]);
+  const overview = useMemo(() => layoutScene(scene, graph.topologyHash, undefined, LAYOUT_OPTIONS), [scene, graph.topologyHash]);
   const rates = useMemo(() => minedRates(graph.edges), [graph.edges]);
   // Item focus (ADR-0060 builds PR 3 and 4), behind its flag, here because the picture makes room for the focused line.
   // A focus whose line (or item) left the graph (a poll) clears: lines are found by key, not index.
@@ -405,8 +403,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // drawn: focus then only dims. Both layouts are remembered, so moving between them costs nothing after the first time.
   const roomFor = focus?.edgeKey ?? null;
   const room = useMemo(
-    () => (roomFor === null ? null : layoutScene(scene, graph.topologyHash, { edgeKey: roomFor, width: FOCUS_CARD_W, height: FOCUS_CARD_H }, layoutOptions)),
-    [scene, graph.topologyHash, roomFor, layoutOptions],
+    () => (roomFor === null ? null : layoutScene(scene, graph.topologyHash, { edgeKey: roomFor, width: FOCUS_CARD_W, height: FOCUS_CARD_H }, LAYOUT_OPTIONS)),
+    [scene, graph.topologyHash, roomFor],
   );
   const layout = room !== null && room.placeMs <= FOCUS_LAYOUT_BUDGET_MS ? room : overview;
   const nodeByKey = useMemo(() => new Map(graph.nodes.map((n) => [n.key, n])), [graph]);
@@ -900,6 +898,16 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // ADR-0063 Decision 2: a port's end label. A port of one line focuses that line's item, as its bubble would; a port of
   // several opens the list of its lines (`PortLineList`), each focusable as a bubble is.
   const portLines = (portId: string) => layout.edges.filter((e) => e.srcPort === portId || e.tgtPort === portId);
+  // The amendment's Decision 4: pointing at a line's label highlights the line. An end label is the label of its port's one
+  // line; a port of several lines' label names none of them (without this, pointing at any end label ended the highlight).
+  const portLineIndex = useMemo(() => {
+    const lines = new Map<string, number[]>();
+    for (const e of layout.edges) for (const id of [e.srcPort, e.tgtPort]) if (id !== undefined) lines.set(id, [...(lines.get(id) ?? []), e.index]);
+    return (portId: string): number | undefined => {
+      const on = lines.get(portId);
+      return on?.length === 1 ? on[0] : undefined;
+    };
+  }, [layout]);
   // A poll that leaves the port with fewer than two lines closes its list for good, rather than hiding it to come back.
   if (portListId !== null && portLines(portListId).length < 2) setPortListId(null);
   const closePortList = () => {
@@ -1050,8 +1058,10 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       revealFrame.current = card.bubbleKey;
     } else if (card.kind === "fold") setUnfolded(toggled(unfolded, card.key));
     else {
-      // The group panel takes the "+k" list's place over the canvas.
+      // The group panel takes the "+k" list's or the port line list's place over the canvas (both closed for good, or the
+      // port's list came back when the panel closed and its label's next click only closed the hidden list).
       setListKey(null);
+      setPortListId(null);
       setOpenKey(card.key);
       setOpenMachine(null);
     }
@@ -1064,6 +1074,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
       return;
     }
     setListKey(null);
+    setPortListId(null);
     setOpenKey(card.key);
     setOpenMachine(machine.key);
   };
@@ -1162,6 +1173,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     if (card.kind === "factory") onOpenFactory?.(card.key);
     else if (card.kind === "group") {
       setListKey(null);
+      setPortListId(null);
       setOpenKey(card.key);
       setOpenMachine(null);
     } else if (card.kind === "bubble" && card.bubbleKey !== undefined) {
@@ -1204,11 +1216,11 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   // first card does not bring it back.
   if (feedsKey !== null && feedsKey !== openKey) setFeedsKey(null);
   const cardReach = useMemo(
-    () => (portsOn && feedsKey !== null && feedsKey === openKey && laidByKey.has(feedsKey) ? reachFromCard(feedsKey, layout.flows, flowReturns) : null),
-    [portsOn, feedsKey, openKey, laidByKey, layout, flowReturns],
+    () => (feedsKey !== null && feedsKey === openKey && laidByKey.has(feedsKey) ? reachFromCard(feedsKey, layout.flows, flowReturns) : null),
+    [feedsKey, openKey, laidByKey, layout, flowReturns],
   );
   const selectedCard = useMemo(() => {
-    if (!portsOn || scene.level === "overview" || openKey === null || !laidByKey.has(openKey)) return null;
+    if (scene.level === "overview" || openKey === null || !laidByKey.has(openKey)) return null;
     const neighbours = new Set<string>();
     for (const f of layout.flows) {
       if (f.from === openKey) neighbours.add(f.to);
@@ -1216,8 +1228,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
     }
     neighbours.delete(openKey);
     return { key: openKey, neighbours };
-  }, [portsOn, scene.level, openKey, laidByKey, layout]);
-  const factoryContext = useMemo(() => (portsOn && target.kind === "factory" ? factoryContextOf(graph, target.model, layout.nodes) : null), [portsOn, target, graph, layout]);
+  }, [scene.level, openKey, laidByKey, layout]);
+  const factoryContext = useMemo(() => (target.kind === "factory" ? factoryContextOf(graph, target.model, layout.nodes) : null), [target, graph, layout]);
 
   // What is lit, what dims and what is emphasised (ADR-0063 Decision 3), in its states' order: item focus (hop-1, owner
   // answer 1), what a card feeds and needs, the item filter, a selected card, an opened factory's context.
@@ -1461,20 +1473,18 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         {/* Shown whenever something can move: a transport's glyph, a marching line (ADR-0062 amendment build PR 3) or a
             destination cap (Decision 1). */}
         {(transports.length > 0 || marchable.length > 0 || capMarchable.length > 0) && <MotionSelect value={motionPref} onChange={setMotionPref} />}
-        {/* With item focus on, the status line stays mounted (a live region added with its words is often not read) and
-            also says what focus did; the item filter's words show, focus's are for screen readers. */}
-        {(reach !== null || itemFocusOn || portsOn) && (
-          <span role="status" className={reach === null && dimWords === null ? "sr-only" : "w-full text-sm text-muted sm:w-auto"}>
-            {reach !== null && (
-              <>
-                {reach.nodes.size} of {layout.nodes.length} {scene.level === "overview" ? "factories" : scene.level === "site" ? "groups" : "cards"} carry or feed this item.
-              </>
-            )}
-            {/* ADR-0063 Decision 4: what a card feeds and needs, or a selected card and its neighbours (with the ports flag). */}
-            {reach === null && dimWords !== null && <>{dimWords}</>}
-            {itemFocusOn && announced !== "" && <span className="sr-only">{` ${announced}`}</span>}
-          </span>
-        )}
+        {/* The status line stays mounted (a live region added with its words is often not read): the item filter's words and
+            the focus states' show, item focus's are for screen readers. */}
+        <span role="status" className={reach === null && dimWords === null ? "sr-only" : "w-full text-sm text-muted sm:w-auto"}>
+          {reach !== null && (
+            <>
+              {reach.nodes.size} of {layout.nodes.length} {scene.level === "overview" ? "factories" : scene.level === "site" ? "groups" : "cards"} carry or feed this item.
+            </>
+          )}
+          {/* ADR-0063 Decision 4: what a card feeds and needs, or a selected card and its neighbours. */}
+          {reach === null && dimWords !== null && <>{dimWords}</>}
+          {itemFocusOn && announced !== "" && <span className="sr-only">{` ${announced}`}</span>}
+        </span>
       </div>
 
 
@@ -1596,7 +1606,6 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                           to={to?.title ?? ""}
                           detail={detail}
                           focusable={focusable}
-                          portArrows={portArrows}
                         />
                       );
                     })}
@@ -1626,7 +1635,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   emphasised={lights.emphasised(n.key)}
                 />
               ))}
-              <EndLabels nodes={layout.nodes} lit={lit} detail={detail} onLabel={itemFocusOn ? onPortLabel : undefined} />
+              <EndLabels nodes={layout.nodes} lit={lit} detail={detail} lineOf={portLineIndex} onLabel={itemFocusOn ? onPortLabel : undefined} />
               {/* Over the cards: the focused item's detail card, and one that is closing (shrinking back to its bubble). */}
               {closingCard !== null && card(closingCard, true)}
               {focus !== null && card(focus, false)}
@@ -1865,9 +1874,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
               machineId={openMachine === null ? undefined : (machineWords.get(openNode.key)?.find((m) => m.key === openMachine)?.id ?? undefined)}
               onClose={close}
               onPopOut={onPopOut === undefined || canPopOut?.(openNode.key) === false ? undefined : () => onPopOut(openNode.key)}
-              feedsAndNeeds={
-                portsOn ? { on: feedsKey === openNode.key, onToggle: () => setFeedsKey((k) => (k === openNode.key ? null : openNode.key)) } : undefined
-              }
+              feedsAndNeeds={{ on: feedsKey === openNode.key, onToggle: () => setFeedsKey((k) => (k === openNode.key ? null : openNode.key)) }}
             />
           </CanvasOverlay>
         )}
@@ -1910,9 +1917,9 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         modes={modes}
         transport={transports.length > 0}
         stalled={marks && layout.edges.some((e) => e.flow.stalled !== undefined)}
-        ports={portsOn && layout.nodes.some((n) => (n.ports?.length ?? 0) > 0)}
-        dimmed={portsOn && lights.dims}
-        emphasis={portsOn && layout.nodes.some((n) => lights.emphasised(n.key))}
+        ports={layout.nodes.some((n) => (n.ports?.length ?? 0) > 0)}
+        dimmed={lights.dims}
+        emphasis={layout.nodes.some((n) => lights.emphasised(n.key))}
       />
     </div>
   );
@@ -1967,8 +1974,6 @@ type EdgeProps = {
   to: string;
   detail: BubbleDetail;
   focusable?: Focusable | undefined;
-  /** Open question 5 (ADR-0063): a line into a left input port keeps its arrowhead only when this is on. */
-  portArrows?: boolean | undefined;
 };
 
 /** A flow's line (one link, or a bundle's): drawn in the lines layer, under every label. A stalled line in marks mode ends
@@ -1976,15 +1981,13 @@ type EdgeProps = {
  *  and a mixed line draws a thin inner stroke in the canvas colour over it, never extra width. A transport draws a double
  *  line (amendment Decision 6): its wide stroke with a gap in the canvas colour down its middle, two rails, dashed alike. It
  *  is always still: a marching line's motion and a transport's moving glyph are drawn over it by `MarchLayer`. */
-function EdgeLine({ edge: e, markerId, marks, dim, from, to, portArrows }: EdgeProps) {
+function EdgeLine({ edge: e, markerId, marks, dim, from, to }: EdgeProps) {
   const stalled = marks ? e.flow.stalled : undefined;
   const stroke = lineStroke(e.flow);
   const dash = edgeDash(e.flow.rate);
-  // ADR-0063 Decision 1: a line into a left input port drops its arrowhead (the port's side says the direction), unless the
-  // owner's answer to open question 5 keeps it; a return line, into a right port, always keeps it. Its path already ends at
-  // the disc's edge, so the trims below are measured from there.
-  const arrow = e.tgtPort === undefined || e.returning === true || portArrows === true;
-  const underArrow = !arrow ? 0 : stroke.double ? DOUBLE_UNDER_ARROW : LINE_UNDER_ARROW;
+  // ADR-0063 Decision 1, open question 5 (the owner kept it, 2026-11-05): every line keeps its arrowhead, into a port too.
+  // Its path already ends at the disc's edge, so the trims below are measured from there.
+  const underArrow = stroke.double ? DOUBLE_UNDER_ARROW : LINE_UNDER_ARROW;
   return (
     <g data-edge={e.index} data-hl-edge={e.index} data-stalled={stalled} data-double={stroke.double ? "" : undefined} data-returning={e.returning === true ? "" : undefined} data-dim-kind="line" data-dim={dim ? "" : undefined}>
       <title>{flowTitle(e.flow, from, to)}</title>
@@ -1993,7 +1996,7 @@ function EdgeLine({ edge: e, markerId, marks, dim, from, to, portArrows }: EdgeP
         fill="none"
         strokeWidth={stroke.width}
         strokeDasharray={dash}
-        markerEnd={stalled === undefined && !arrow ? undefined : `url(#${stalled !== undefined ? `${markerId}-${stalled}` : stroke.double ? `${markerId}-double` : markerId})`}
+        markerEnd={`url(#${stalled !== undefined ? `${markerId}-${stalled}` : stroke.double ? `${markerId}-double` : markerId})`}
         className={edgeClass(e.flow)}
       />
       {stroke.inner !== null && stroke.double && (
@@ -2372,7 +2375,20 @@ function ItemBubble({
  * a click on a port of one line focuses that line's item, and on a port of several opens their list (`onLabel`): its target
  * is the label's box grown to a pitch tall, at least 24 by 24. Below the detail zoom, nothing.
  */
-function EndLabels({ nodes, lit, detail, onLabel }: { nodes: readonly LaidNode[]; lit: (key: string) => boolean; detail: BubbleDetail; onLabel?: ((port: LaidPort) => void) | undefined }) {
+function EndLabels({
+  nodes,
+  lit,
+  detail,
+  lineOf,
+  onLabel,
+}: {
+  nodes: readonly LaidNode[];
+  lit: (key: string) => boolean;
+  detail: BubbleDetail;
+  /** The port's one line, the label's highlight target (`data-hl-edge`); none for a port of several lines. */
+  lineOf?: ((portId: string) => number | undefined) | undefined;
+  onLabel?: ((port: LaidPort) => void) | undefined;
+}) {
   if (!detail.full) return null;
   return (
     <g data-end-labels="" aria-hidden="true">
@@ -2388,6 +2404,7 @@ function EndLabels({ nodes, lit, detail, onLabel }: { nodes: readonly LaidNode[]
               key={p.id}
               data-end-label={p.item}
               data-lines={p.lines}
+              data-hl-edge={lineOf?.(p.id)}
               data-dim-kind="card"
               data-dim={lit(n.key) ? undefined : ""}
               onClick={onLabel === undefined ? undefined : () => onLabel(p)}

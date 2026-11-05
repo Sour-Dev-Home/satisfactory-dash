@@ -123,7 +123,7 @@ type PortsInput = PortModel & { insets?: ReadonlyMap<string, { l: number; r: num
 
 /** What the layout is asked to draw beyond the scene. */
 export interface LayoutOptions {
-  /** ADR-0063 ports (the `planner.ports` flag): a line per item, attached to an item port on each card's edge. */
+  /** ADR-0063 ports (always on in the canvas since build PR 7; off only in pure tests until PR 7b): a line per item, attached to an item port on each card's edge. */
   ports?: boolean | undefined;
 }
 

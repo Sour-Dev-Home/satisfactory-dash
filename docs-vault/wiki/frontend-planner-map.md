@@ -168,18 +168,21 @@ short; its hard rules (tokens only, the lazy chunks, the CSP gates, operator-onl
   The layer fades by its own opacity (`transition-opacity`); reduced motion zeroes both. Off during a make-room glide; a pan, a pinch or a new layout ends the pointer's target. A
   finger or pen highlights only where `ratesHideAtRest()` (`RATES_HIDE_QUERY`, the `hover-pointer` variant in
   `index.css`): a hybrid device; on a touch screen it ends a mouse's highlight instead.
-- Ports (ADR-0063 build PR 2, behind `planner.ports`; on in the demo unless "off"): `ports.ts` (pure) gives each card a
+- Ports (ADR-0063 build PR 2; always on since build PR 7, 2026-11-05, after the owner's demo review: `SiteGraph`'s
+  `LAYOUT_OPTIONS`; the `planner.ports` and `planner.portArrows` flags are gone): `ports.ts` (pure) gives each card a
   port per side, direction and item, folding past `PORTS_MAX` into "+N"; `bundleFlows(flows, true)` draws a line per item
   (`CanvasFlow.portItem`, part of `edgeKeyOf`). `layoutScene(scene, hash, focus, { ports })` grows cards to hold their
   ports, passes sides and ports to the router (`RouteEdge.srcPort`..., `RouteOutput.portAt`), ends a line at its target
   disc's edge and hangs `LaidPort`s on each `LaidNode`. `SiteGraph` draws them (`PortDiscs`, inside the card's group, no
-  focusable element) and drops the arrowhead into a left input port unless `planner.portArrows` is "keep" (open question 5).
-- End labels (ADR-0063 build PR 3, same flag): `endLabels.ts` (pure) gives each port's words, its band and `endLabelFit`.
+  focusable element). Every line keeps its arrowhead, into a port too (open question 5: the owner kept it). Until build
+  PR 7b, `layoutScene`'s `ports: false` path, `bundleFlows`' several-items-per-line form and the "+k" chip are still in
+  the code, unused by the canvas.
+- End labels (ADR-0063 build PR 3): `endLabels.ts` (pure) gives each port's words, its band and `endLabelFit`.
   dagre gets each card widened by its two bands; the router's `RouteCard.insetL`/`insetR` attach ends at the drawn edge.
   A line whose two labels fit gets `LaidEdge.endLabels` and draws no middle bubble (the box stays reserved); otherwise its
   bubble. `SiteGraph`'s `EndLabels` draws them (rate row `data-rate`), `HighlightLayer` draws a lit line's rate there, and
   with item focus a label opens its line's focus or `PortLineList` (`ItemFocusLayer.tsx`).
-- Focus states (ADR-0063 build PR 5, the ports flag): `focusSet(focused, reach, { cardReach, selected, context })` adds
+- Focus states (ADR-0063 build PR 5): `focusSet(focused, reach, { cardReach, selected, context })` adds
   state 2 (`reachFromCard`, the group panel's "Show what … feeds and needs"), state 4 (an open group and its neighbours)
   and state 5 (`factoryContextOf`: an opened factory's groups outside its home site dim, its product groups get a heavier
   border). The status line says states 2 and 4; state 5 is in the canvas's name. The legend's port, dimmed and emphasis rows.

@@ -10,13 +10,14 @@ import { server } from "../../test/server";
 import { plannerTransportsLarge } from "../../test/scenarios";
 import { PlannerView } from "../PlannerView";
 import { LINE_W_FAST, TRANSPORT_GAP, TRANSPORT_W } from "./lineWidth";
-import { GLYPH_MOVE_MAX } from "./marching";
+import { GLYPH_MOVE_MAX, MARCH_SETTLE_MS } from "./marching";
 import { ITEM_FOCUS_KEY, MOTION_KEY, STATE_STYLE_KEY } from "./plannerPrefs";
 
 // ADR-0062 amendment build PR 4: a transport draws a double line and does not march; its glyph moves along the line in the
 // march layer, never in the canvas, and leaps its own label box.
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   window.localStorage.clear();
   return act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
 });
@@ -65,6 +66,25 @@ function wideScreen(reducedMotion = false) {
     removeEventListener: () => {},
   }));
 }
+
+/**
+ * A stage wide enough for the whole factory at its fitted zoom. With ports the picture is wider (the end-label bands), and
+ * on the 1000-wide fallback stage the drone runs past the right edge, where no glyph moves (`movingGlyphs`).
+ */
+function wideStage() {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  vi.spyOn(Element.prototype, "clientWidth", "get").mockReturnValue(2400);
+  vi.spyOn(Element.prototype, "clientHeight", "get").mockReturnValue(900);
+}
+
+/** Glyphs move in the settled view, which follows the measured stage after `MARCH_SETTLE_MS`. */
+const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, MARCH_SETTLE_MS + 50)));
 
 async function openGraph(body: object = withTransports()) {
   server.use(http.get(endpoints.productionGraph.route, () => HttpResponse.json(body)));
@@ -166,20 +186,52 @@ describe("a transport's moving glyph", () => {
     expect(layerOf(svg)!.querySelector("[style]")).toBeNull();
   });
 
-  it("leaps its own label box: no point of its path lies inside the label pill", async () => {
+  // ADR-0063 Decision 2: an end-labelled line draws no middle pill (its box stays reserved and the glyph still leaps it,
+  // glyphMotion.hunt.test.ts), and its words stand beside the ports over the line's first legs, so the glyph leaps those too.
+  it("leaps its labels: no stretch of its path runs through a label pill or an end label's words", async () => {
     wideScreen(false);
+    wideStage();
+    // With item focus on, each end label draws its hit box, which spans the label's width beside its disc.
+    window.localStorage.setItem(ITEM_FOCUS_KEY, "on");
     const svg = await openGraph();
+    await settle();
     const glyphs = movingGlyphs(svg);
-    expect(glyphs.length).toBeGreaterThan(0);
+    expect(glyphs.length).toBeGreaterThan(1);
+    type Box = { x: number; y: number; w: number; h: number };
+    const num = (el: Element, k: string) => Number(el.getAttribute(k));
+    const boxes: Box[] = [...svg.querySelectorAll("[data-edge-label] [data-label-pill]")].map((p) => ({ x: num(p, "x"), y: num(p, "y"), w: num(p, "width"), h: num(p, "height") }));
+    const ends = [...svg.querySelectorAll("[data-end-label]")];
+    expect(ends.length).toBeGreaterThan(0);
+    for (const l of ends) {
+      const hit = l.querySelector("rect")!;
+      const [nameY, rateY] = [...l.querySelectorAll("text")].map((t) => num(t, "y"));
+      boxes.push({ x: num(hit, "x"), y: nameY, w: num(hit, "width"), h: (rateY ?? nameY) - nameY });
+    }
     for (const g of glyphs) {
-      const index = g.getAttribute("data-glyph-edge")!;
-      const pill = svg.querySelector(`[data-edge-label="${index}"] [data-label-pill]`)!;
-      const [x, y, w, h] = ["x", "y", "width", "height"].map((k) => Number(pill.getAttribute(k)));
-      const numbers = (g.querySelector("animateMotion")!.getAttribute("path") ?? "").match(/-?\d+(\.\d+)?/g)!.map(Number);
-      for (let i = 0; i + 1 < numbers.length; i += 2) {
-        const [px, py] = [numbers[i], numbers[i + 1]];
-        const inside = px > x && px < x + w && py > y && py < y + h;
-        expect(inside, `${px},${py} in ${x},${y} ${w}x${h}`).toBe(false);
+      // Each subpath's points (a moveto starts one; an arc's end point is its last two numbers), then every stretch between
+      // two of them sampled: none lies inside a box.
+      const tokens = (g.querySelector("animateMotion")!.getAttribute("path") ?? "").match(/[MLA]|-?\d+(?:\.\d+)?/g)!;
+      const subpaths: { x: number; y: number }[][] = [];
+      for (let i = 0; i < tokens.length; ) {
+        const cmd = tokens[i++];
+        if (cmd === "A") i += 5;
+        const p = { x: Number(tokens[i]), y: Number(tokens[i + 1]) };
+        i += 2;
+        if (cmd === "M") subpaths.push([p]);
+        else subpaths.at(-1)!.push(p);
+      }
+      expect(subpaths.length).toBeGreaterThan(0);
+      for (const sub of subpaths) {
+        for (let s = 1; s < sub.length; s++) {
+          for (let t = 0; t <= 20; t++) {
+            const px = sub[s - 1].x + ((sub[s].x - sub[s - 1].x) * t) / 20;
+            const py = sub[s - 1].y + ((sub[s].y - sub[s - 1].y) * t) / 20;
+            for (const b of boxes) {
+              const inside = px > b.x && px < b.x + b.w && py > b.y && py < b.y + b.h;
+              expect(inside, `${px},${py} in ${b.x},${b.y} ${b.w}x${b.h}`).toBe(false);
+            }
+          }
+        }
       }
     }
   });
@@ -221,13 +273,16 @@ describe("a transport's moving glyph", () => {
   // ADR-0063 build PR 4: a dimmed transport line's glyph is drawn at rest in the canvas (never neither), a lit one moves.
   it("leaves a dimmed transport's glyph at rest in the canvas while the focused line's glyph moves", async () => {
     wideScreen(false);
+    wideStage();
     window.localStorage.setItem(ITEM_FOCUS_KEY, "on");
     const svg = await openGraph();
+    await settle();
     const drone = lineFor(svg, /^Drone/);
     const truck = lineFor(svg, /^Truck/);
     const index = (g: Element) => g.getAttribute("data-edge");
     expect(movingGlyphs(svg).map((g) => g.getAttribute("data-glyph-edge"))).toEqual(expect.arrayContaining([index(drone), index(truck)]));
-    fireEvent.click(svg.querySelector(`[data-edge-layer="labels"] [data-edge-label="${index(drone)}"] [data-bubble]`)!);
+    // The drone's line draws end labels, not a bubble: focus it from its line's button (the drone's ingot, 30 a minute).
+    fireEvent.click(screen.getByRole("button", { name: /^Iron Ingot, (about )?30 items\/min, from / }));
     expect(truck.hasAttribute("data-dim")).toBe(true);
     expect(drone.hasAttribute("data-dim")).toBe(false);
     const moved = movingGlyphs(svg).map((g) => g.getAttribute("data-glyph-edge"));
@@ -240,7 +295,9 @@ describe("a transport's moving glyph", () => {
 
   it("keeps a stalled transport's glyph still in marks mode and moves it in words mode", async () => {
     wideScreen(false);
+    wideStage();
     const svg = await openGraph(withTransports(true));
+    await settle();
     const drone = lineFor(svg, /^Drone/);
     expect(drone.getAttribute("data-stalled")).toBe("backedUp");
     const droneIndex = drone.getAttribute("data-edge");

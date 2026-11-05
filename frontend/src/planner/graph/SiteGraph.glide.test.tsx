@@ -38,13 +38,17 @@ async function openGraph() {
 }
 
 const cards = (svg: HTMLElement) => Object.fromEntries([...svg.querySelectorAll("[data-node]")].map((g) => [g.getAttribute("data-node"), g.getAttribute("transform")]));
+// Every line here draws end labels and no middle bubble (ADR-0063 Decision 2): the miner's port label focuses the ore line,
+// and a line's button (the keyboard's path, the same focus) the plate line, whose labels a make-room layout may move.
+const ore = '[data-end-label="c:Desc_OreIron_C"]';
+const focusPlate = () => fireEvent.click(screen.getByRole("button", { name: /^Iron Plate, 4 items\/min, from / }));
 
 describe("the make-room glide", () => {
   it("slides the cards and cross-fades the lines, then lands exactly on the new layout with nothing left over", async () => {
     const svg = await openGraph();
     const before = cards(svg);
     vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
-    fireEvent.click(svg.querySelector('[data-bubble="Desc_OreIron_C"]')!);
+    fireEvent.click(svg.querySelector(ore)!);
     // At the start: the old lines over the new, the new faded out, the cards still where they were on screen.
     const ghost = svg.querySelector("[data-ghost]");
     expect(ghost).not.toBeNull();
@@ -68,14 +72,12 @@ describe("the make-room glide", () => {
   });
 
   it("lands where an uninterrupted glide would when a second focus change cuts the first short, with nothing left over", async () => {
-    const plate = '[data-edge-layer="labels"] [data-bubble="Desc_IronPlate_C"]';
-    const ore = '[data-bubble="Desc_OreIron_C"]';
     // Reference: let the first glide finish, then focus the second line.
     let svg = await openGraph();
     vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
     fireEvent.click(svg.querySelector(ore)!);
     act(() => vi.advanceTimersByTime(300));
-    fireEvent.click(svg.querySelector(plate)!);
+    focusPlate();
     act(() => vi.advanceTimersByTime(300));
     const expected = cards(svg);
     cleanup();
@@ -85,7 +87,7 @@ describe("the make-room glide", () => {
     vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
     fireEvent.click(svg.querySelector(ore)!);
     act(() => vi.advanceTimersByTime(100));
-    fireEvent.click(svg.querySelector(plate)!);
+    focusPlate();
     act(() => vi.advanceTimersByTime(300));
     expect(cards(svg)).toEqual(expected);
     expect(svg.querySelector("[data-ghost]")).toBeNull();
@@ -93,7 +95,6 @@ describe("the make-room glide", () => {
   });
 
   it("ends where the picture now is when a poll changes the cards mid-glide, not where the glide was heading", async () => {
-    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
     // The poll turns the plate line round: the same cards and the same number of lines (so nothing remounts), but a new
     // topology, so dagre places the cards again and React rewrites their transforms while the glide still runs.
     const polled = {
@@ -120,14 +121,13 @@ describe("the make-room glide", () => {
     // React Query tells its subscribers on a later tick.
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
     act(() => vi.advanceTimersByTime(300));
-    expect(svg.querySelector("[data-focused]")).not.toBeNull();
+    expect(svg.querySelector("[data-item-card]:not([data-closing])")).toHaveAttribute("data-item-card", "Desc_OreIron_C");
     expect(cards(svg)).toEqual(expected);
     expect(svg.querySelector("[data-ghost]")).toBeNull();
   });
 
   it("morphs the bubble into the card: one rect from a circle to the card, the words fading in at the end; closing runs it back", async () => {
     const svg = await openGraph();
-    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
     vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
     fireEvent.click(svg.querySelector(ore)!);
     const card = svg.querySelector("[data-item-card]")!;
@@ -161,7 +161,6 @@ describe("the make-room glide", () => {
 
   it("drops a closing card whose line a poll took away, so it does not reappear when the line comes back", async () => {
     const svg = await openGraph();
-    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
     const data = productionGraphTwoSites.data;
     vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
     fireEvent.click(svg.querySelector(ore)!);
@@ -180,7 +179,6 @@ describe("the make-room glide", () => {
 
   it("re-focusing the item while its card closes leaves one open card, and no closing one", async () => {
     const svg = await openGraph();
-    const ore = '[data-edge-layer="labels"] [data-bubble="Desc_OreIron_C"]';
     vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
     fireEvent.click(svg.querySelector(ore)!);
     act(() => vi.advanceTimersByTime(300));
@@ -197,7 +195,7 @@ describe("the make-room glide", () => {
     window.localStorage.setItem("planner.motion", "off");
     const svg = await openGraph();
     vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame", "performance"] });
-    fireEvent.click(svg.querySelector('[data-bubble="Desc_OreIron_C"]')!);
+    fireEvent.click(svg.querySelector(ore)!);
     expect(svg.querySelector("[data-ghost]")).toBeNull();
     expect(svg.querySelector('[data-edge-layer="lines"]')!.parentElement).not.toHaveAttribute("opacity");
     const now = cards(svg);

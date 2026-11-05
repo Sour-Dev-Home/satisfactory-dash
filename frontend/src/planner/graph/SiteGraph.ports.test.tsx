@@ -6,9 +6,8 @@ import { ServerContext } from "../../servers/ServerContext";
 import { renderWithClient } from "../../test/render";
 import { PlannerView } from "../PlannerView";
 import { clearLayoutMemo } from "./layoutSite";
-import { PORT_ARROWS_KEY, PORTS_KEY } from "./plannerPrefs";
 
-// ADR-0063 build PR 2: item ports on the card edges, behind the `planner.ports` flag (off by default).
+// ADR-0063: item ports on the card edges (build PR 2; the flag removed in build PR 7).
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -32,18 +31,9 @@ async function openGraph(prefs: Record<string, string> = {}) {
 
 const lines = (svg: HTMLElement) => [...svg.querySelectorAll<SVGPathElement>('[data-edge-layer="lines"] [data-edge] > path:first-of-type')];
 
-describe("ports, flag off (the default)", () => {
-  it("draws no port and keeps every arrowhead", async () => {
-    const svg = await openGraph();
-    expect(svg.querySelector("[data-port]")).toBeNull();
-    expect(lines(svg).length).toBeGreaterThan(0);
-    for (const l of lines(svg)) expect(l).toHaveAttribute("marker-end");
-  });
-});
-
-describe("ports, flag on", () => {
+describe("ports", () => {
   it("draws a disc per port inside its card, an input on the left and an output on the right, each with its words", async () => {
-    const svg = await openGraph({ [PORTS_KEY]: "on" });
+    const svg = await openGraph();
     const ports = [...svg.querySelectorAll("[data-port]")];
     expect(ports.length).toBeGreaterThan(0);    for (const p of ports) {
       // Part of the card: inside its group, so a click on it is the card's.
@@ -59,27 +49,20 @@ describe("ports, flag on", () => {
     for (const p of ports) expect(p.querySelector("[tabindex]")).toBeNull();
   });
 
-  it("drops the arrowhead on a line into an input port (open question 5's recommended form), and keeps it on a return line", async () => {
-    const svg = await openGraph({ [PORTS_KEY]: "on" });
-    const pathOf = (g: Element) => g.querySelector("path")!;
-    const forward = [...svg.querySelectorAll('[data-edge-layer="lines"] [data-edge]:not([data-stalled]):not([data-returning])')].map(pathOf);
-    expect(forward.length).toBeGreaterThan(0);
-    for (const l of forward) expect(l).not.toHaveAttribute("marker-end");
-    for (const l of [...svg.querySelectorAll('[data-edge-layer="lines"] [data-edge][data-returning]')].map(pathOf)) expect(l).toHaveAttribute("marker-end");
-  });
-
-  it("keeps the arrowhead when the owner's answer is 'keep'", async () => {
-    const svg = await openGraph({ [PORTS_KEY]: "on", [PORT_ARROWS_KEY]: "keep" });
+  it("keeps every line's arrowhead, into an input port too (open question 5: the owner kept it, 2026-11-05)", async () => {
+    const svg = await openGraph();
+    expect(svg.querySelector("[data-port]")).not.toBeNull();
+    expect(lines(svg).length).toBeGreaterThan(0);
     for (const l of lines(svg)) expect(l).toHaveAttribute("marker-end");
   });
 });
 
 // ADR-0063 build PR 5: a selected card dims to its neighbours (state 4), and "Show what … feeds and needs" (state 2).
-describe("focus states, flag on", () => {
+describe("focus states", () => {
   const dimmedCards = (svg: Element) => svg.querySelectorAll("[data-card][data-dim]").length;
 
   it("dims to the open card's neighbours, says so, and the panel's button shows what it feeds and needs; Escape steps back", async () => {
-    const svg = await openGraph({ [PORTS_KEY]: "on" });
+    const svg = await openGraph();
     expect(dimmedCards(svg)).toBe(0);
     // A click on a card opens its panel.
     const cards = [...svg.querySelectorAll("[data-card]")];
@@ -104,7 +87,7 @@ describe("focus states, flag on", () => {
   });
 
   it("does not bring 'feeds and needs' back when the first card is reopened after another", async () => {
-    const svg = await openGraph({ [PORTS_KEY]: "on" });
+    const svg = await openGraph();
     const cards = [...svg.querySelectorAll("[data-card]")];
     expect(cards.length).toBeGreaterThan(1);
     fireEvent.click(cards[cards.length - 1]);
@@ -116,21 +99,12 @@ describe("focus states, flag on", () => {
     expect(again).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("status")).not.toHaveTextContent(/^Showing what /);
   });
-
-  it("dims nothing on opening a card with the flag off", async () => {
-    const svg = await openGraph();
-    const cards = [...svg.querySelectorAll("[data-card]")];
-    fireEvent.click(cards[cards.length - 1]);
-    await screen.findByRole("complementary");
-    expect(dimmedCards(svg)).toBe(0);
-    expect(screen.queryByRole("button", { name: /feeds and needs$/ })).toBeNull();
-  });
 });
 
 // ADR-0063 build PR 3: end labels, and the middle bubble as the fallback.
-describe("end labels, flag on", () => {
+describe("end labels", () => {
   it("draws a name and a rate beside each port whose label fits, and leaves those lines' middles empty", async () => {
-    const svg = await openGraph({ [PORTS_KEY]: "on" });
+    const svg = await openGraph();
     const labels = [...svg.querySelectorAll("[data-end-label]")];
     expect(labels.length).toBeGreaterThan(0);
     for (const l of labels) {
@@ -146,7 +120,7 @@ describe("end labels, flag on", () => {
   });
 
   it("is a picture with item focus off: a click on a label does nothing", async () => {
-    const svg = await openGraph({ [PORTS_KEY]: "on" });
+    const svg = await openGraph();
     const label = svg.querySelector("[data-end-label]")!;
     expect(label).not.toHaveClass("cursor-pointer");
     fireEvent.click(label);
@@ -155,7 +129,7 @@ describe("end labels, flag on", () => {
   });
 
   it("with item focus on, a port of one line focuses its item; a port of several opens their list", async () => {
-    const svg = await openGraph({ [PORTS_KEY]: "on", "planner.itemFocus": "on" });
+    const svg = await openGraph({ "planner.itemFocus": "on" });
     const single = svg.querySelector('[data-end-label][data-lines="1"]');
     expect(single).not.toBeNull();
     fireEvent.click(single!);

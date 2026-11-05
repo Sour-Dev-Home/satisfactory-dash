@@ -264,10 +264,30 @@ describe("drill-down into a bubble", () => {
   });
 });
 
+/**
+ * The fixture with its miner in the factory's home site. The fixture's train comes from a miner at a remote site, and an
+ * opened factory dims what stands outside its home site (ADR-0063 state 5), so its train's glyph rests: only what is lit
+ * moves. Here nothing is outside, so the train is lit.
+ */
+const homeMiner = () => {
+  const home = DATA.nodes.find((n) => n.className === "Build_TrainStation_C")!.siteKey;
+  return withData({ nodes: DATA.nodes.map((n) => (n.className === "Build_MinerMk2_C" ? { ...n, siteKey: home } : n)) });
+};
+
 describe("the transport motion", () => {
-  beforeEach(() => answer(productionGraphFactories));
+  beforeEach(() => answer(homeMiner()));
   // A moving glyph rides its line in the march layer over the canvas (ADR-0062 amendment build PR 4), never in the canvas.
   const moving = (svg: HTMLElement) => svg.parentElement!.querySelectorAll("[data-march-layer] animateMotion");
+
+  it("leaves the train from a remote site at rest: the factory dims what is outside its home site (ADR-0063 state 5)", async () => {
+    answer(productionGraphFactories);
+    wideScreen(false);
+    const svg = await openPlate();
+    const train = svg.querySelector('[data-edge-layer="lines"] [data-edge][data-double]')!;
+    expect(train).toHaveAttribute("data-dim");
+    expect(moving(svg)).toHaveLength(0);
+    expect(svg.querySelectorAll('[data-glyph="train"]')).toHaveLength(1);
+  });
 
   it("moves the glyph along its edge under System when the operator has not asked for reduced motion", async () => {
     wideScreen(false);

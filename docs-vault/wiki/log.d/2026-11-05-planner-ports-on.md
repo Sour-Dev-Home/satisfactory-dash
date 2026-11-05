@@ -1,0 +1,4 @@
+- 2026-11-05 — The planner's item ports, end labels and focus states are on for everyone (ADR-0063 build PR 7a, after the owner's demo review the same day): the `planner.ports` and `planner.portArrows` flags are gone, and every line keeps its arrowhead (open question 5, the owner's answer).
+  - Moving the tests to the ports picture found three regressions, each fixed with a test: a transport's moving glyph rode through a line's end labels; a port's line list came back under the group panel; pointing at an end label ended the line's highlight.
+  - The dead flag-off code (`layoutScene`'s `ports: false`, several items per line, the "+k" chip) goes in build PR 7b.
+  - Tests: 44 planner component tests rewritten for the ports picture (one, the "+k" chip's, deleted for 7b); planner and demo suites 137 files, 1418 tests. e2e: the dim states drop the flag; the ports frame-time test records the ports canvas only. Every planner baseline regenerated.

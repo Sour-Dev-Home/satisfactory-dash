@@ -171,10 +171,15 @@ export function piecesOutside(points: readonly Point[], box: Rect): Point[][] {
 /**
  * The path a transport's moving glyph rides (`animateMotion`): the edge's route with the stretch through its own label box
  * (grown by `clearance`, the glyph's radius) left out, so the glyph never passes over the item bubbles. Each piece starts
- * with a moveto, and a moveto is a jump in a motion path, so the glyph leaps the gap. Null when nothing is left outside.
+ * with a moveto, and a moveto is a jump in a motion path, so the glyph leaps the gap. Several boxes (a line's end labels
+ * beside its ports, ADR-0063 Decision 2) are each left out the same way. Null when nothing is left outside.
  */
-export function motionPathAround(points: readonly Point[], box: Rect, clearance: number): string | null {
-  const grown = { x: box.x - clearance, y: box.y - clearance, width: box.width + 2 * clearance, height: box.height + 2 * clearance };
-  const pieces = piecesOutside(points, grown);
+export function motionPathAround(points: readonly Point[], box: Rect | readonly Rect[], clearance: number): string | null {
+  const boxes: readonly Rect[] = Array.isArray(box) ? box : [box as Rect];
+  let pieces: Point[][] = [[...points]];
+  for (const b of boxes) {
+    const grown = { x: b.x - clearance, y: b.y - clearance, width: b.width + 2 * clearance, height: b.height + 2 * clearance };
+    pieces = pieces.flatMap((piece) => piecesOutside(piece, grown));
+  }
   return pieces.length === 0 ? null : pieces.map((piece) => roundedOrthogonalPath(piece)).join(" ");
 }
