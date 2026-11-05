@@ -39,7 +39,6 @@ export function OverviewView() {
       ? { rate: snapshot.tickRate, health: snapshot.tickHealth }
       : null
     : undefined;
-  const age = status.data ? { observedAt: status.data.observedAt, late: status.data.stale } : undefined;
   // Names are extra: loading, failing, or a backend without the endpoint all leave the counts.
   const roster = useQuery(queries.players(server.id)).data;
   // The Server tile links to the Servers page only for whom the shell shows it (ADR-0030); same cache.
@@ -82,7 +81,6 @@ export function OverviewView() {
         sections={sections}
         players={players}
         tick={tick}
-        age={age}
         unreachable={status.data?.unreachableSince !== undefined}
         power={basic ? undefined : powerState}
         basicData={basic}

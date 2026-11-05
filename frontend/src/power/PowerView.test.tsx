@@ -47,7 +47,9 @@ describe("PowerView's data-age warning", () => {
     vi.setSystemTime(Date.parse(powerOk.observedAt) + 86_400_000);
     server.use(http.get(endpoints.power.route, () => HttpResponse.json(powerOk)));
     renderView();
-    expect(await screen.findByText(/^Updated 1 d /)).toBeInTheDocument();
+    expect(await screen.findByText(/ MW capacity$/)).toBeInTheDocument();
+    // ADR-0064 Decision 6: a panel says its age only when late; the page's age is the header's.
+    expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument();
     expect(screen.queryByText(/newer data is overdue/)).not.toBeInTheDocument();
   });
 

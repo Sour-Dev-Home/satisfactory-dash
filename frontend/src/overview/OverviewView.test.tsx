@@ -11,7 +11,6 @@ import {
   powerOk,
   serversSingle,
   statusNoGame,
-  statusRunning,
   statusSlow,
 } from "@satisfactory-dash/shared/fixtures";
 import { ServerContext } from "../servers/ServerContext";
@@ -114,10 +113,10 @@ describe("OverviewView: the Health card's tick", () => {
     expect(screen.getByRole("region", { name: "Power" })).toBeInTheDocument();
   });
 
-  it("shows how old the status is in the Health header", async () => {
+  it("leaves the status's age to the header, beside the server picker (ADR-0064 Decision 6)", async () => {
     renderOverview();
     expect(await screen.findByText(STATUS_LOADED)).toBeInTheDocument();
-    expect(healthCard().querySelector("[data-age] time")).toHaveAttribute("dateTime", statusRunning.observedAt);
+    expect(healthCard().querySelector("[data-age]")).toBeNull();
   });
 
   it("keeps showing the last tick when a background refetch fails (data wins over error)", async () => {

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ServerPlayersResponse } from "@satisfactory-dash/shared";
 import { BasicDataNotice } from "../components/BasicData";
 import { CardGrid } from "./cards/CardGrid";
-import { HealthCard, type Age, type Tick } from "./cards/HealthCard";
+import { HealthCard, type Tick } from "./cards/HealthCard";
 import { PlayersCard, type PlayersState } from "./cards/PlayersCard";
 import type { PowerState } from "./cards/power";
 import { PowerCard } from "./cards/PowerCard";
@@ -20,7 +20,6 @@ export function OverviewPanel({
   sections,
   players,
   tick,
-  age,
   power,
   basicData = false,
   roster,
@@ -37,8 +36,6 @@ export function OverviewPanel({
   players: PlayersState;
   /** The server tick for the Health card; left out while the status loads or fails. */
   tick?: Tick;
-  /** The status snapshot's age, beside the tick. */
-  age?: Age;
   /** The grid's totals for the Power card; left out, the card isn't shown. */
   power?: PowerState;
   /** Who is online, when the server can say (ADR-0029). */
@@ -76,7 +73,6 @@ export function OverviewPanel({
         <HealthCard
           overall={overall}
           tick={tick}
-          age={age}
           sections={sections}
           hidden={bannerHidden}
           onDismiss={dismiss}
