@@ -89,6 +89,9 @@
   /* A Planner line outside the focus (ADR-0063 Decision 3): grey whatever its carrier, 3:1 or more on the canvas and the
      surface (WCAG 1.4.11: it still says a flow exists) and well under a lit belt's --color-muted (lineWidth.test.ts). */
   --color-graph-dim-line: #6e757c;
+  /* A Planner card's own outlines (a machines frame, its rows, the pills): muted, and the dim grey when the card dims. Its
+     own token so a dimmed card can grey them without greying its muted words (which must stay at 4.5:1). */
+  --color-graph-card-edge: var(--color-muted);
   /* Borders and text on the soft status backgrounds (banners, the error notice). */
   --color-bad-edge: rgb(239 83 80 / 0.35);
   --color-bad-on-soft: #ff8a80;
@@ -485,10 +488,13 @@
     --color-info: var(--color-graph-dim-line);
     --color-warn: var(--color-graph-dim-line);
     --color-fg-strong: var(--color-graph-dim-line);
+    /* The moving transport glyph's strokes (`stroke-fg`) sit in a line group too. */
+    --color-fg: var(--color-graph-dim-line);
   }
   [data-dim-kind="card"][data-dim] {
     --color-fg: var(--color-muted);
     --color-fg-strong: var(--color-muted);
+    --color-graph-card-edge: var(--color-graph-dim-line);
   }
   [data-dim-kind="card"][data-dim] image {
     filter: grayscale(1);

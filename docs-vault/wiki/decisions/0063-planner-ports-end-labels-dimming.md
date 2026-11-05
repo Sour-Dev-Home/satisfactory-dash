@@ -587,3 +587,6 @@ entry fall away); whether the highlight should dim in PR 1's colours is a new qu
   card's edge brighter than a lit one's), and a line of unknown rate, drawn in `stroke-line`, stays as it is. A machines
   frame's `stroke-muted` border keeps muted, as its words do.
 - `--opacity-graph-dim` is gone; nothing uses opacity to dim.
+- A card's own outlines (a machines frame, its machine rows, the Expand, blow-up and upstream pills) read
+  `--color-graph-card-edge` (muted when lit, the dim grey when dimmed), so they grey with the card while its muted words
+  keep 4.5:1. The moving transport glyph's `stroke-fg` greys with its line.

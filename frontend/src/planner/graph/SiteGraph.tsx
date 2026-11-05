@@ -2391,7 +2391,7 @@ function CardView({
         >
           <title>{machinesToggleName(card)}</title>
           <rect y={(PILL_H - PILL_HIT) / 2} width={EXPAND_W} height={PILL_HIT} className="fill-transparent" />
-          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-graph-card-edge" />
           <text x={EXPAND_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
             Expand
           </text>
@@ -2411,7 +2411,7 @@ function CardView({
         >
           <title>{blowUpName(card)}</title>
           <rect y={(PILL_H - PILL_HIT) / 2} width={EXPAND_W} height={PILL_HIT} className="fill-transparent" />
-          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} strokeDasharray={card.blowUp.fits ? undefined : "4 3"} className={card.blowUp.fits ? "fill-surface-2 stroke-muted" : "fill-surface stroke-line"} />
+          <rect width={EXPAND_W} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} strokeDasharray={card.blowUp.fits ? undefined : "4 3"} className={card.blowUp.fits ? "fill-surface-2 stroke-graph-card-edge" : "fill-surface stroke-line"} />
           <text x={EXPAND_W / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className={cn("text-sm font-semibold", card.blowUp.fits ? "fill-fg" : "fill-muted")}>
             Expand
           </text>
@@ -2448,7 +2448,7 @@ function UpstreamPill({ node: n, onToggle }: { node: LaidNode; onToggle: () => v
     >
       <title>{upstreamName(n.card)}</title>
       <rect x={-8} y={(PILL_H - PILL_HIT) / 2} width={Math.max(pillW + 16, PILL_HIT)} height={PILL_HIT} className="fill-transparent" />
-      <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+      <rect width={pillW} height={PILL_H} rx={PILL_H / 2} strokeWidth={1} className="fill-surface-2 stroke-graph-card-edge" />
       <text x={pillW / 2} y={PILL_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
         {pillText}
       </text>
@@ -2513,7 +2513,7 @@ function MachinesFrame({
         strokeWidth={ringed || picked ? 3 : 1}
         strokeDasharray="6 4"
         // A stronger edge than a bubble frame's (stroke-line), so an opened group reads apart from an opened bubble.
-        className={cn("fill-surface", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-muted")}
+        className={cn("fill-surface", ringed ? "stroke-accent" : picked ? "stroke-info" : "stroke-graph-card-edge")}
       />
       {picked && <rect width={n.width} height={n.height} rx={10} className="pointer-events-none fill-info-soft" />}
       {picked && (
@@ -2545,7 +2545,7 @@ function MachinesFrame({
         <title>{machinesToggleName(card)}</title>
         <rect y={(FRAME_HEADER_H - PILL_HIT) / 2} width={COLLAPSE_W} height={PILL_HIT} className="fill-transparent" />
         {/* Styled as its Expand pill (and the upstream pill): one control in two states. */}
-        <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-muted" />
+        <rect width={COLLAPSE_W} height={FRAME_HEADER_H} rx={FRAME_HEADER_H / 2} strokeWidth={1} className="fill-surface-2 stroke-graph-card-edge" />
         <text x={COLLAPSE_W / 2} y={FRAME_HEADER_H / 2} textAnchor="middle" dominantBaseline="central" className="fill-fg text-sm font-semibold">
           Collapse
         </text>
@@ -2572,7 +2572,7 @@ function MachinesFrame({
               rx={6}
               strokeWidth={on ? 3 : 1}
               strokeDasharray={m.id === null ? "6 4" : undefined}
-              className={cn(m.id === null ? "fill-surface" : "fill-surface-2", on ? "stroke-accent" : "stroke-muted")}
+              className={cn(m.id === null ? "fill-surface" : "fill-surface-2", on ? "stroke-accent" : "stroke-graph-card-edge")}
             />
             {m.lines.map((line, k) =>
               line === "" ? null : (
