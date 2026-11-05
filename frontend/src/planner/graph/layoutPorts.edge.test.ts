@@ -51,6 +51,34 @@ describe("ports edge cases", () => {
     for (let i = 1; i < e.points.length; i++) expect(segmentHitsRect(e.points[i - 1], e.points[i], a)).toBe(false);
   });
 
+  it("keeps a self-loop's forward sides beside real return flows on the same card, and out of the card", () => {
+    const flows = [link("A", "B", "Iron Plate"), link("B", "A", "Screw"), link("A", "A", "Wire"), link("B", "B", "Cable")];
+    const l = layoutScene(scene(["A", "B"], flows));
+    sane(l);
+    for (const e of l.edges) {
+      const loop = e.flow.from === e.flow.to;
+      const src = l.nodes.find((n) => n.key === e.flow.from)!;
+      const tgt = l.nodes.find((n) => n.key === e.flow.to)!;
+      if (loop) {
+        expect(e.returning).toBe(false);
+        expect(src.ports?.find((p) => p.id === e.srcPort)?.side).toBe("r");
+        expect(tgt.ports?.find((p) => p.id === e.tgtPort)?.side).toBe("l");
+        for (let i = 1; i < e.points.length; i++) expect(segmentHitsRect(e.points[i - 1], e.points[i], src)).toBe(false);
+      }
+    }
+    expect(l.edges.some((e) => e.returning)).toBe(true);
+  });
+
+  it("holds a self-loop's ports beside a card's '+N' fold", () => {
+    const items = Array.from({ length: 8 }, (_, i) => `Item ${i}`);
+    const flows = [...items.map((n, i) => link("A", "B", n, 100 - i)), link("A", "A", "Loop", 1)];
+    const l = layoutScene(scene(["A", "B"], flows));
+    sane(l);
+    expect(l.edges).toHaveLength(9);
+    const loop = l.edges.find((e) => e.flow.from === e.flow.to)!;
+    expect(loop.returning).toBe(false);
+  });
+
   it("lays out a card with an item in and out on one side (a return) without losing a port", () => {
     const l = layoutScene(scene(["A", "B"], [link("A", "B", "Iron Plate"), link("B", "A", "Iron Plate"), link("B", "A", "Screw")]));
     sane(l);
