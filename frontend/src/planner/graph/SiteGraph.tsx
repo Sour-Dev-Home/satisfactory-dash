@@ -2238,7 +2238,7 @@ function PortDisc({ port: p, detail }: { port: LaidPort; detail: BubbleDetail })
         <image href={url} x={p.x - PORT_ICON / 2} y={p.y - PORT_ICON / 2} width={PORT_ICON} height={PORT_ICON} onError={() => setFailedUrl(url)} />
       ) : (
         detail.full && (
-          <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central" className="fill-surface text-xs">
+          <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central" className="fill-surface text-port font-semibold">
             {text}
           </text>
         )
