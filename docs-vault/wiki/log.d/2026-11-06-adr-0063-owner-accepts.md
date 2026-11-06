@@ -1,0 +1,1 @@
+- 2026-11-06 — ADR-0063: the owner's review of the live planner recorded. The wider picture is fine on a phone, and both known gaps of build PR 7a (a stalled end-labelled line's labels say nothing; a shared port label highlights nothing) are accepted as they are. Docs only.
