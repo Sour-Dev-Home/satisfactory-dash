@@ -87,22 +87,24 @@ describe("the demo's tour", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("moves focus to each step's heading, and says the step in a polite live region", () => {
+  it("moves focus to each step's heading, and says only the step's place in a polite live region (the heading says its title)", () => {
     renderApp();
     expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[0].title }));
-    expect(screen.getByRole("status")).toHaveTextContent(`Step 1 of 3: ${TOUR_STEPS[0].title}`);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Step 1 of 3$/);
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(dialog()).toHaveAccessibleName(TOUR_STEPS[1].title);
     expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[1].title }));
-    expect(screen.getByRole("status")).toHaveTextContent(`Step 2 of 3: ${TOUR_STEPS[1].title}`);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Step 2 of 3$/);
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(dialog()).toHaveAccessibleName(TOUR_STEPS[0].title);
   });
 
-  it("highlights the target: the hole and the ring sit on its box, padded", () => {
+  it("shows the welcome centred with no highlight, then highlights the next step's target: the hole and the ring sit on its box, padded", () => {
     renderApp();
+    expect(document.querySelector("[data-tour-ring]")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
     const ring = document.querySelector("[data-tour-ring]");
     expect(ring).toHaveAttribute("x", "12");
     expect(ring).toHaveAttribute("y", "192");
@@ -212,6 +214,8 @@ describe("the demo's tour", () => {
     Object.defineProperty(root, "clientHeight", { configurable: true, value: 900 });
     try {
       renderApp();
+      // The welcome has no target; the health step does.
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
       const fo = dialog().closest("foreignObject");
       expect(fo).not.toBeNull();
       // Below the health card (its box ends at 500, padded to 508), past the arrow.

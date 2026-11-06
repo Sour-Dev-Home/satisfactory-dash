@@ -10,7 +10,8 @@ export interface TourStep {
   id: string;
   path: string;
   search?: string;
-  target: string;
+  /** None for a step about the whole page (the welcome): it shows centred with no highlight at once. */
+  target?: string;
   title: string;
   body: string;
   kind: "next" | "try";
@@ -23,7 +24,6 @@ export const TOUR_STEPS: readonly TourStep[] = [
   {
     id: "welcome",
     path: "/app",
-    target: "overview-health",
     title: "Welcome to the demo.",
     body: "This is a made-up factory from Satisfactory, a game about building factories. This tool watches a factory from outside the game. Nothing here is live.",
     kind: "next",
@@ -41,7 +41,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     path: "/app",
     target: "overview-alerts",
     title: "Problems come first.",
-    body: "Anything that needs attention, such as a stalled machine or a power dip, shows up here.",
+    body: "Anything that needs attention, such as a machine that has stopped working or power running short, shows up here.",
     kind: "next",
   },
 ];

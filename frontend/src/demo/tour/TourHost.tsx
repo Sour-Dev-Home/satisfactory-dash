@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router";
-import { INITIAL_TOUR_STATE, isLastStep, tourReducer } from "./controller";
+import { initialTourState, isLastStep, tourReducer } from "./controller";
 import { markTourSeen, shouldAutoStart } from "./persistence";
 import { padBox, type Box, type Size } from "./placePopover";
 import { AttachedPopover, SheetPopover } from "./Popover";
@@ -98,8 +98,9 @@ function useTargetBox(target: Element | null, onLost: () => void): Box | null {
 
 function TourRun({ steps }: { steps: readonly TourStep[] }) {
   const count = steps.length;
-  const reducer = useMemo(() => tourReducer(count), [count]);
-  const [state, dispatch] = useReducer(reducer, INITIAL_TOUR_STATE);
+  const centred = useCallback((i: number) => steps[i]?.target === undefined, [steps]);
+  const reducer = useMemo(() => tourReducer(count, centred), [count, centred]);
+  const [state, dispatch] = useReducer(reducer, centred, initialTourState);
   const step = steps[state.index];
   const navigate = useNavigate();
   const location = useLocation();
@@ -117,6 +118,8 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
   useEffect(() => {
     const want = step.path + (step.search ?? "");
     if (here.current !== want) void go.current(want);
+    // A step about the whole page has no target: the reducer shows it centred at once, so nothing is awaited.
+    if (step.target === undefined) return undefined;
     return waitForTarget(step.target, {
       onFound: (el) => {
         if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "instant" });
@@ -165,7 +168,7 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
       </Spotlight>
       {!wide && panel !== null && <SheetPopover {...panel} />}
       <p role="status" className="sr-only">
-        {shown === null || state.phase === "waiting" ? "" : `Step ${(state.shown ?? 0) + 1} of ${count}: ${shown.title}`}
+        {shown === null || state.phase === "waiting" ? "" : `Step ${(state.shown ?? 0) + 1} of ${count}`}
       </p>
     </div>
   );

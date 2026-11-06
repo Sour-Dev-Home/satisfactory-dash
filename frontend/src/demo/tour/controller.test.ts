@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_TOUR_STATE, isLastStep, tourReducer, type TourAction, type TourState } from "./controller";
+import { INITIAL_TOUR_STATE, initialTourState, isLastStep, tourReducer, type TourAction, type TourState } from "./controller";
 
 const reduce = tourReducer(3);
 const run = (...actions: TourAction[]): TourState => actions.reduce(reduce, INITIAL_TOUR_STATE);
@@ -42,5 +42,19 @@ describe("the tour's controller", () => {
   it("a repeated found on the shown step changes nothing", () => {
     const shown = run({ type: "found" });
     expect(reduce(shown, { type: "found" })).toBe(shown);
+  });
+
+  it("shows a step with no target centred at once, on arriving by Next, by Back or as the first", () => {
+    const centred = (i: number) => i !== 1;
+    const reduceC = tourReducer(3, centred);
+    const first = initialTourState(centred);
+    expect(first).toEqual({ index: 0, phase: "fallback", shown: 0 });
+    const second = reduceC(first, { type: "next" });
+    expect(second).toEqual({ index: 1, phase: "waiting", shown: 0 });
+    expect(reduceC(second, { type: "back" })).toEqual({ index: 0, phase: "fallback", shown: 0 });
+    expect(reduceC(reduceC(second, { type: "found" }), { type: "next" })).toEqual({ index: 2, phase: "fallback", shown: 2 });
+    // Nothing is awaited there: a late found or timeout changes nothing.
+    expect(reduceC(first, { type: "timeout" })).toBe(first);
+    expect(initialTourState()).toEqual(INITIAL_TOUR_STATE);
   });
 });
