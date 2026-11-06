@@ -71,6 +71,14 @@ describe("placePopover", () => {
     const tiny = placePopover(box(10, 10), size, { width: 300, height: 150 });
     expect(tiny).toMatchObject({ x: POPOVER_MARGIN, y: POPOVER_MARGIN, side: "center" });
   });
+
+  it("is centred, on screen, when the target is wholly outside the viewport", () => {
+    for (const off of [box(600, -400), box(600, 1200), box(-500, 300), box(1700, 300)]) {
+      const p = placePopover(off, size, viewport);
+      expect(p.side).toBe("center");
+      inside(p);
+    }
+  });
 });
 
 describe("the hole and the phone sheet", () => {

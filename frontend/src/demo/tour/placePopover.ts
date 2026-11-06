@@ -45,6 +45,15 @@ export function placePopover(target: Box | null, size: Size, viewport: Size): Po
     arrow: null,
   };
   if (target === null) return centred;
+  // A target wholly off screen (not yet scrolled to) has no side to sit beside: centre rather than place off screen.
+  if (
+    target.x + target.width <= 0 ||
+    target.y + target.height <= 0 ||
+    target.x >= viewport.width ||
+    target.y >= viewport.height
+  ) {
+    return centred;
+  }
 
   const gap = ARROW_SIZE;
   const right = target.x + target.width;
