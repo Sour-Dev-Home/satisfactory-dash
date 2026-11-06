@@ -121,17 +121,23 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     // A step about the whole page has no target: the reducer shows it centred at once, so nothing is awaited.
     if (step.target === undefined) return undefined;
     const own = step.target;
-    // A target only a click shows (the planner's group panel, which the address does not keep): once the element that
-    // opens it is ready, click it (a bubbling click, as "Do it for me" does), unless the target is already there.
-    const opener =
-      step.openedBy === undefined
-        ? undefined
-        : waitForTarget(step.openedBy, {
-            onFound: (el) => {
-              if (findReadyTarget(own) === null) el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-            },
-            onTimeout: () => undefined,
-          });
+    // A target only clicks show (the planner's Graph view, then its group panel; the address keeps neither): each opener
+    // in turn, once ready, gets a bubbling click (as "Do it for me" does), unless the target or a later opener is there.
+    const openers = step.openedBy === undefined ? [] : typeof step.openedBy === "string" ? [step.openedBy] : step.openedBy;
+    let opening: (() => void) | undefined;
+    const open = (i: number) => {
+      const id = openers.at(i);
+      if (id === undefined) return;
+      opening = waitForTarget(id, {
+        onFound: (el) => {
+          const later = [own, ...openers.slice(i + 1)];
+          if (later.every((t) => findReadyTarget(t) === null)) el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+          open(i + 1);
+        },
+        onTimeout: () => open(i + 1),
+      });
+    };
+    open(0);
     const cancel = waitForTarget(own, {
       onFound: (el) => {
         if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "instant" });
@@ -144,7 +150,7 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
       },
     });
     return () => {
-      opener?.();
+      opening?.();
       cancel();
     };
   }, [step]);

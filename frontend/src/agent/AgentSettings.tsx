@@ -69,7 +69,7 @@ export function AgentSettings() {
   };
 
   return (
-    <section id="agent" aria-labelledby="agent-settings-heading" className="panel grid gap-4" {...tour("settings-connection")}>
+    <section id="agent" aria-labelledby="agent-settings-heading" className="panel grid gap-4">
       <h3 id="agent-settings-heading">{words.heading}</h3>
       <Loadable pending={status.isPending} skeleton={<AgentSkeleton noun={words.noun} />} className="grid gap-4">
       {!status.data ? (
@@ -225,7 +225,8 @@ export function AgentPanel({
   const words = senderWords(devAgent);
   return (
     <>
-      <dl className="mb-0">
+      {/* The demo tour's "Connecting a game" step (ADR-0065): the status rows, not the whole section (taller than a phone). */}
+      <dl className="mb-0" {...tour("settings-connection")}>
         <dt>Reached</dt>
         <dd>{connectionText(agent.connectionKind, devAgent)}</dd>
         <dt>{words.label}</dt>

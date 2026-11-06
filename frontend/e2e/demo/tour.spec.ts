@@ -9,11 +9,6 @@ import { expect, expectNoAxeViolations, test } from "../fixtures";
 
 /** Steps with no target: the welcome, about the whole page. */
 const CENTRED = new Set(TOUR_STEPS.filter((s) => s.target === undefined).map((s) => s.id));
-/**
- * Below `sm` the planner opens on its Outline, not the graph (ADR-0050 Decision 4), so its canvas, cards and panel are not
- * on a phone: those steps wait out TOUR_TARGET_WAIT_MS and show centred, in words that stand alone.
- */
-const PLANNER_STEPS = new Set(["planner-canvas", "planner-group-card", "planner-group-panel"]);
 /** Axe-checked with the tour on screen: one per kind of page. */
 const AXE_STEPS = new Set(["health", "factory-machines", "planner-group-panel", "settings-alerts", "finish"]);
 /** Screenshotted (in CI's Linux image only, PLAYWRIGHT_SNAPSHOTS=1). */
@@ -47,7 +42,6 @@ async function expectRingRound(page: Page, target: Locator): Promise<void> {
 
 test("walks every step of the tour with Next, each ringing its target", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
-  const phone = (page.viewportSize()?.width ?? 0) < 640;
   await page.goto("/?clock=fixed");
   await page.getByRole("button", { name: "Enter demo" }).click();
 
@@ -56,7 +50,8 @@ test("walks every step of the tour with Next, each ringing its target", async ({
   for (const [i, step] of TOUR_STEPS.entries()) {
     await expect(dialog, `step ${i + 1}`).toHaveAccessibleName(step.title, { timeout: STEP_TIMEOUT });
     await expect(dialog.getByText(`Step ${i + 1} of ${TOUR_STEPS.length}`)).toBeVisible();
-    const centred = CENTRED.has(step.id) || (phone && PLANNER_STEPS.has(step.id));
+    // On a phone too: step 8 presses the planner's Graph button first (its Outline is the phone's default).
+    const centred = CENTRED.has(step.id);
     if (centred) {
       await expect(root).toHaveAttribute("data-tour-phase", "fallback");
       await expect(page.locator("[data-tour-ring]")).toHaveCount(0);
@@ -78,7 +73,6 @@ test("walks every step of the tour with Next, each ringing its target", async ({
 });
 
 test("the planner's details step opens the group panel itself when Next skipped the click", async ({ page }) => {
-  test.skip((page.viewportSize()?.width ?? 0) < 640, "a phone's planner opens on the Outline, with no group panel");
   test.setTimeout(60_000);
   await page.goto("/?clock=fixed");
   await page.getByRole("button", { name: "Enter demo" }).click();
@@ -94,7 +88,8 @@ test("the planner's details step opens the group panel itself when Next skipped 
   const panel = page.locator('[data-tour="planner-group-panel"]');
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("button", { name: /^Show what .+ feeds and needs$/ })).toBeVisible();
-  // Back on the map step and back again: the panel was closed by leaving the page, and is opened again.
+  // Back on the map step and back again: the panel was closed by leaving the page, and is opened again (on a phone, after
+  // the Graph view is pressed again: the planner remounts on its Outline).
   await dialog.getByRole("button", { name: "Next" }).click();
   await expect(dialog).toHaveAccessibleName(map, { timeout: STEP_TIMEOUT });
   await dialog.getByRole("button", { name: "Back" }).click();

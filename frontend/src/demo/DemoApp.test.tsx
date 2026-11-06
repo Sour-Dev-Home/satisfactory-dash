@@ -86,8 +86,15 @@ describe("the demo app", () => {
     expect(await screen.findByRole("region", { name: "Bottlenecks" })).toBe(target("factory-bottlenecks"));
 
     fireEvent.click(within(nav).getByRole("link", { name: "Settings" }));
-    expect(await screen.findByRole("group", { name: "Rules" })).toBe(target("settings-alerts"));
-    expect(screen.getByRole("region", { name: "Game PC agent" })).toBe(target("settings-connection"));
+    // The first rule (the power outage's) and the agent's status rows: the whole parts are taller than a phone.
+    const rules = await screen.findByRole("group", { name: "Rules" });
+    const [firstRule] = await within(rules).findAllByRole("article");
+    expect(firstRule).toBe(target("settings-alerts"));
+    expect(firstRule).toHaveAccessibleName(/Power outage/);
+    expect(document.querySelectorAll('[data-tour="settings-alerts"]')).toHaveLength(1);
+    const agent = screen.getByRole("region", { name: "Game PC agent" });
+    expect(target("settings-connection")?.tagName).toBe("DL");
+    expect(agent).toContainElement(target("settings-connection") as HTMLElement);
   });
 
   it("signs out to 'Enter demo' again", async () => {

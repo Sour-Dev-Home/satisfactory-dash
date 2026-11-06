@@ -34,7 +34,7 @@ describe("the tour's steps", () => {
     expect(TOUR_STEPS.filter((s) => s.target === undefined).map((s) => s.id)).toEqual(["welcome"]);
     for (const step of TOUR_STEPS) {
       if (step.target !== undefined) expect(marked(step.target), `${step.id}: ${step.target}`).toBe(true);
-      if (step.openedBy !== undefined) expect(TOUR_STEPS.map((s) => s.target), step.id).toContain(step.openedBy);
+      for (const opener of [step.openedBy ?? []].flat()) expect(marked(opener), `${step.id} opened by ${opener}`).toBe(true);
     }
   });
 

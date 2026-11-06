@@ -283,6 +283,44 @@ describe("the demo's tour", () => {
     }
   });
 
+  it("clicks a chain of openers in turn (a view, then a card), each once", async () => {
+    window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+    const onView = vi.fn();
+    const onOpen = vi.fn();
+    const box = (el: HTMLElement | null) => {
+      if (el) el.getBoundingClientRect = rect(20, 20, 100, 44);
+    };
+    function Chained() {
+      const [graph, setGraph] = useState(false);
+      return (
+        <div data-page-reveal="revealed">
+          <button type="button" data-tour="view" ref={box} onClick={() => (onView(), setGraph(true))}>
+            Graph
+          </button>
+          {graph && <Openable onOpen={onOpen} />}
+        </div>
+      );
+    }
+    const step: TourStep = { id: "panel", path: "/app", target: "panel", openedBy: ["view", "opener"], title: "Inside.", body: "Words.", kind: "next" };
+    const other: TourStep = { id: "other", path: "/app", target: "view", title: "Elsewhere.", body: "More words.", kind: "next" };
+    render(
+      <MemoryRouter initialEntries={["/app"]}>
+        <DemoBanner />
+        <Routes>
+          <Route path="/app" element={<Chained />} />
+        </Routes>
+        <TourHost steps={[other, step]} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Elsewhere."));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Inside."));
+    expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
+    expect(onView).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
   it("opens a target only a click shows by clicking its opener once, and not when it is already open", async () => {
     window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
     const onOpen = vi.fn();

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Bottleneck, PlannerNode, PlannerSite, ProductionGraphResponse } from "@satisfactory-dash/shared";
 import { PanelAge } from "../components/DataAge";
+import { tour } from "../demo/tour/target";
 import { formatTime } from "../format";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { BottleneckBadge, BottleneckLine } from "./BottleneckBadge";
@@ -274,7 +275,15 @@ function ViewToggle({ view, onPick }: { view: ViewMode; onPick: (mode: ViewMode)
   return (
     <div role="group" aria-label="View" className="flex gap-2">
       {(["graph", "outline"] as const).map((m) => (
-        <button key={m} type="button" aria-pressed={view === m} onClick={() => onPick(m)} className="min-h-touch">
+        <button
+          key={m}
+          type="button"
+          aria-pressed={view === m}
+          onClick={() => onPick(m)}
+          className="min-h-touch"
+          // The demo tour presses Graph on a phone, where the planner opens on its Outline (ADR-0065).
+          {...(m === "graph" ? tour("planner-view-graph") : {})}
+        >
           {m === "graph" ? "Graph" : "Outline"}
         </button>
       ))}

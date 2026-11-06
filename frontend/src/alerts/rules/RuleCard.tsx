@@ -3,6 +3,7 @@ import type { AlertRule, UpdateAlertRuleRequest } from "@satisfactory-dash/share
 import { KNOWN_SEVERITIES } from "@satisfactory-dash/shared";
 import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../../components/dangerButton";
 import { ErrorNotice } from "../../components/ErrorNotice";
+import { tour } from "../../demo/tour/target";
 import { kindLabel, severityLabel } from "../alertText";
 import { labelFor, type ItemLabel } from "../../factory/itemLabels";
 import { formatAmount, unitLabel } from "../../format";
@@ -30,12 +31,15 @@ export function RuleCard({
   canEdit,
   onUpdate,
   onDelete,
+  tourTarget,
 }: {
   rule: AlertRule;
   items: Map<string, ItemLabel>;
   canEdit: boolean;
   onUpdate: (id: string, request: UpdateAlertRuleRequest) => Promise<unknown>;
   onDelete: (id: string) => Promise<unknown>;
+  /** The demo tour's step that points here (ADR-0065), if any. */
+  tourTarget?: string | undefined;
 }) {
   const uid = useId();
   const [draft, setDraft] = useState<Draft>(() => draftFrom(rule));
@@ -111,7 +115,11 @@ export function RuleCard({
   );
 
   return (
-    <article aria-labelledby={headingId} className="grid gap-3 rounded-card border border-line bg-surface p-4">
+    <article
+      aria-labelledby={headingId}
+      className="grid gap-3 rounded-card border border-line bg-surface p-4"
+      {...(tourTarget === undefined ? {} : tour(tourTarget))}
+    >
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         {/* h5: under Settings → Alerts → Rules (h3, h4); styled like the h4s. */}
         <h5 id={headingId} className="mb-0 text-sm font-semibold text-fg-strong">
