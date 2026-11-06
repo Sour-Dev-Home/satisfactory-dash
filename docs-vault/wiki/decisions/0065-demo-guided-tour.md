@@ -1,6 +1,6 @@
 # ADR-0065: A guided first-time tour of the demo (demo build only)
 
-Status: **Proposed** (2026-11-06). The owner asked for "a walkthrough/first time user explanation of each part and how to
+Status: **Accepted** (owner, 2026-11-06; see "Owner's answers" below: the popover is attached with an arrow). The owner asked for "a walkthrough/first time user explanation of each part and how to
 navigate (like how many sites do with a popup, dimming, and blurring for emphasis) ... doable in the demo so a hiring
 manager without experience with satisfactory can get a gist of the tool and all the functionality". Owner answers,
 2026-11-06 (each the recommended option): demo only; starts automatically on the first visit, with Skip, and a banner
@@ -42,9 +42,14 @@ patching that out leaves little of the library. The tour is ours, in `demo/tour/
   a try-it step's click lands on the real element with its real handlers. A click anywhere else lands on the scrim and
   does nothing.
 - **Ring:** a 2 px `accent` SVG `<rect>` round the hole, placed by attributes.
-- **Popover:** an HTML panel docked by token classes, never by coordinates: the screen corner opposite the target's centre
-  (`top-4`/`bottom-4` with `left-4`/`right-4`), so it never covers what it explains. Below `sm` it is a bottom sheet (at
-  most about 40% of the height), moving to the top when the target is in the bottom 40%. No arrow in v1 (open question 3).
+- **Popover, attached with an arrow** (owner's answer 3): from `sm` up, the HTML panel sits in an SVG `<foreignObject>`
+  in the overlay's full-viewport `<svg>`, placed by its `x`, `y`, `width` and `height` attributes, as
+  `CanvasOverlay.tsx:45` places the planner's panel. Its width is a token; its height is measured from its content (a
+  `ResizeObserver` on the inner panel) and written to the attribute. A pure `placePopover(target, size, viewport)` picks
+  the first side with room, in the order below, above, right, left, keeps it inside the viewport with a margin, and
+  falls back to centred when none fits. An SVG `<path>` arrow (accent, placed by attributes) points from the panel's edge
+  at the target's nearest side. Below `sm` it is a bottom sheet with no arrow (at most about 40% of the height), moving to
+  the top when the target is in the bottom 40%: a phone has no room beside the target.
 - **Unverified, so build PR 1 starts with it:** `clip-path: url(#...)` together with `backdrop-filter` on an HTML element in
   Chromium, WebKit and Firefox. If a browser drops the blur, an `@supports` guard falls back to dimming only; the hole and
   everything else still work, and no step depends on the blur.
@@ -154,7 +159,7 @@ why step 12 toggles a layer instead.
 
 | # | PR | Files | Proof |
 |---|---|---|---|
-| 1 | The engine | `demo/tour/` (`TourHost`, `Spotlight`, `Popover`, `controller`, `steps` with steps 1-3, `target`, `tourStore`, `persistence`), the tokens and `.tour-scrim` in `index.css`, "Take the tour" in `DemoBanner`, the host in `Shell.tsx` | First: the clip-path with backdrop-filter in Chromium, WebKit and Firefox, screenshotted (and the fallback if one fails). Unit tests: the controller, persistence with storage throwing, the wait and its timeout. RTL: the dialog's names, focus wrap, Escape, the live region. Design-token check. `build-output.spec.ts`: no `data-tour` or tour words in production, a tour chunk in the demo. |
+| 1 | The engine | `demo/tour/` (`TourHost`, `Spotlight`, `Popover`, `placePopover`, `controller`, `steps` with steps 1-3, `target`, `tourStore`, `persistence`), the tokens and `.tour-scrim` in `index.css`, "Take the tour" in `DemoBanner`, the host in `Shell.tsx` | First: the clip-path with backdrop-filter in Chromium, WebKit and Firefox, screenshotted (and the fallback if one fails). Unit tests: the controller, persistence with storage throwing, the wait and its timeout, `placePopover` (each side, the viewport edges, nothing fits). RTL: the dialog's names, focus wrap, Escape, the live region. Design-token check. `build-output.spec.ts`: no `data-tour` or tour words in production, a tour chunk in the demo. |
 | 2 | Targets and all 15 steps | `tour(...)` on the pages' elements, the planner panel's one attribute, the words | An e2e state per tab at 1440 and 390, with axe and screenshots (`npm run baselines`), `[style]` count 0 on the overlay, no CSP violation; the demo's e2e and `demo:video` set `demo.tour` first. |
 | 3 | Try-it steps | The `appears` and `changes` detectors and Do it for me | e2e: a real click on the card, and Do it for me, each move the tour on. |
 
@@ -183,8 +188,9 @@ check fails, this ADR is amended before PR 2.
 - **A tour library:** inline styles (Decision 1).
 - **A modal `<dialog>`:** it makes the page inert, so a try-it step could not be done.
 - **Popovers placed by coordinates through `element.style`:** allowed by the CSP but writes a `style` attribute, which the
-  repo's rule and the `[style]` guards forbid.
-- **CSS anchor positioning:** browser support not verified, and docking needs no placement.
+  repo's rule and the `[style]` guards forbid. The `foreignObject`'s attributes do the same job within the rules.
+- **CSS anchor positioning:** browser support not verified, and it would still need a fallback.
+- **A popover docked in a screen corner** (the first proposal): simpler, but the owner chose one attached with an arrow.
 - **Blurring the app and showing a copy of the target:** the copy is dead, so a try-it step could not work.
 - **A "seen" flag on a server:** the demo has none.
 
@@ -196,6 +202,13 @@ check fails, this ADR is amended before PR 2.
 3. **The popover docked in a corner (v1), not attached to the target with an arrow?** Recommended: docked.
 4. **Dimming without blur acceptable in a browser where the blur-with-hole does not work?** Recommended: yes.
 5. **Keep all 15 steps, or cut to about 12?** Recommended: keep 15, each readable in under 15 seconds.
+
+### Owner's answers, 2026-11-06
+
+1. "Overview only". 2. "When it starts". 3. **"Attached with an arrow"** (not the recommendation): Decision 2's popover
+is placed beside the target by a `foreignObject` with an SVG arrow from `sm` up, and stays a bottom sheet on phones.
+4. "Yes, dim only there". 5. Not asked; the recommendation stands (all 15 steps) until the owner cuts any after seeing the
+tour.
 
 ## Revisit when
 
