@@ -4,6 +4,7 @@ import { queries } from "../api/queries";
 import { cn } from "../lib/cn";
 import { useSelectedServer } from "../servers/ServerContext";
 import { chipButton } from "../ui/chip";
+import { tour } from "../demo/tour/target";
 import { AlertsMenu } from "./AlertsMenu";
 
 /**
@@ -50,6 +51,8 @@ export function AlertsBell() {
       <button
         ref={toggle}
         type="button"
+        // The demo tour's "Problems come first" step (ADR-0065): the Overview has no alerts list of its own, the bell is it.
+        {...tour("overview-alerts")}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((o) => !o)}

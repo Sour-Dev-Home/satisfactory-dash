@@ -179,7 +179,21 @@ const DIST_DEMO = join(import.meta.dirname, "..", "dist-demo");
 const API_ORIGIN = "api.satis-manager.com";
 const NETWORK_TRANSPORT_MARKER = "satisManagerNetworkTransport";
 /** Text only the demo build has. The prod check above fails if any of it leaks there. */
-const DEMO_MARKERS = ["Demo data: nothing here is live", "Enter demo", "[demo] no demo data", "Demo World", "Sample data: made-up numbers", "sample-srv-a"];
+const DEMO_MARKERS = [
+  "Demo data: nothing here is live",
+  "Enter demo",
+  "[demo] no demo data",
+  "Demo World",
+  "Sample data: made-up numbers",
+  "sample-srv-a",
+  // The guided tour (ADR-0065 Decision 5): its targets' attribute, the banner's button and the tour's own words.
+  "data-tour",
+  "Take the tour",
+  "Skip tour",
+  "Problems come first.",
+];
+/** The guided tour's host is a lazy chunk of the demo build (ADR-0065 Decision 8), never in production. */
+const TOUR_CHUNK = /^TourHost-.*\.js$/;
 /** Text only the landing page (src/landing/) has; main site only. */
 const LANDING_MARKER = "Sign-in is invite-only during the beta.";
 
@@ -203,6 +217,16 @@ test.describe("demo build", () => {
 
   test("holds dagre in the graph's lazy chunk alone, under its gzip budget", () => {
     checkGraphChunk(DIST_DEMO);
+  });
+
+  test("carries the guided tour as its own lazy chunk, which production has none of (ADR-0065)", () => {
+    const chunks = (dist: string) => readdirSync(join(dist, "assets")).filter((f) => TOUR_CHUNK.test(f));
+    const demo = chunks(DIST_DEMO);
+    expect(demo).toHaveLength(1);
+    expect(readFileSync(join(DIST_DEMO, "assets", demo[0]), "utf8")).toContain("Problems come first.");
+    // Lazy: the page doesn't load it up front.
+    expect(readFileSync(join(DIST_DEMO, "index.html"), "utf8")).not.toContain(demo[0]);
+    expect(chunks(DIST)).toEqual([]);
   });
 
   test("has no landing page: the demo's / is 'Enter demo'", () => {
