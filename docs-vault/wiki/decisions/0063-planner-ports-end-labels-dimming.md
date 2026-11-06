@@ -754,3 +754,10 @@ entry fall away); whether the highlight should dim in PR 1's colours is a new qu
 - **Tests that measured the two forms** now measure ports only: the dense scene's crossings bound is against the ports-off
   numbers recorded in PR 2 (36 over 65 lines), and the fixture iron site's width bound is 1800 (1798 with the end-label
   bands, PR 3) where its fit at 0.75 still holds.
+
+## Owner's review of the live planner (2026-11-06)
+
+After build PR 7a shipped, the owner checked it on a phone ("looks fine on mobile": the wider picture stands there too)
+and accepted both known gaps of PR 7a's note as they are ("yes and yes is fine"): an end-labelled line says nothing at
+its labels when it is stalled (the stop bar and the card's mark do), and pointing at a port label shared by several lines
+highlights nothing. Neither is a bug to fix.
