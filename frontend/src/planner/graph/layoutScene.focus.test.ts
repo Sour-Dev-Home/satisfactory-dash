@@ -80,23 +80,13 @@ describe("make room (ADR-0060 build PR 4)", () => {
     expect(again.placeMs).toBe(overview.placeMs);
   });
 
-  it("measures the focused layout of the measured-size site (the number recorded in ADR-0060 Decision 3)", () => {
+  it("measures the focused layout of the measured-size site (recorded in ADR-0060 Decision 3, with ports in ADR-0063's build notes)", () => {
     const overview = layoutScene(scene, graph.topologyHash);
     const target = middle(overview);
     const focused = layoutScene(scene, graph.topologyHash, focusOn(target));
     // Logged for the ADR; the budget check is the guard's job, so this only fails on a gross regression.
-    console.info(`[ADR-0060 benchmark] overview ${overview.placeMs.toFixed(1)} ms, focused ${focused.placeMs.toFixed(1)} ms (160 groups, 204 edges)`);
-    expect(focused.placeMs).toBeGreaterThan(0);
-    expect(focused.placeMs).toBeLessThan(5_000);
-    expect(layoutStats().routerFailures).toBe(0);
-  });
-
-  it("measures the same site with ports on (ADR-0063 Decision 5, recorded in its build note)", () => {
-    const ports = { ports: true };
-    const overview = layoutScene(scene, graph.topologyHash, undefined, ports);
-    const target = middle(overview);
-    const focused = layoutScene(scene, graph.topologyHash, focusOn(target), ports);
     console.info(`[ADR-0063 ports benchmark] overview ${overview.placeMs.toFixed(1)} ms, focused ${focused.placeMs.toFixed(1)} ms (160 groups, ${overview.edges.length} lines)`);
+    expect(focused.placeMs).toBeGreaterThan(0);
     expect(focused.placeMs).toBeLessThan(5_000);
     expect(layoutStats().routerFailures).toBe(0);
   });

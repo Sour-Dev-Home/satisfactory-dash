@@ -220,8 +220,8 @@ export interface CanvasFlow {
    */
   stalled?: StalledKind | undefined;
   /**
-   * With ports on (ADR-0063 Decision 1): the one item this line carries, as its `BubbleItem` key (`itemKeyOf`), set by
-   * `bundleFlows`. Part of the line's key (`edgeKeyOf`) and its port. Absent with ports off.
+   * The one item this line carries (ADR-0063 Decision 1), as its `BubbleItem` key (`itemKeyOf`), set by `bundleFlows`.
+   * Part of the line's key (`edgeKeyOf`) and its port. Absent on a scene's flow before `bundleFlows`.
    */
   portItem?: string | undefined;
 }
@@ -313,36 +313,31 @@ function edgeFlow(edge: PlannerEdge): CanvasFlow {
   };
 }
 
-/** A bundle's label names this many items; the rest are "+k more" (the tooltip and the outline list them all). */
-export const BUNDLE_NAMES = 2;
-
 /** Whether a link's rate counts in a sum: a finite number the backend did not call unknown. */
 const known = (f: Pick<CanvasFlow, "quality" | "ratePerMinute">): boolean => f.quality !== "unknown" && f.ratePerMinute !== null && Number.isFinite(f.ratePerMinute);
 
 /**
- * One drawn line per ordered pair of cards and carrier (2026-10-27, ADR-0059 amendment): links between the same two cards
- * in the same direction, on the same carrier (which sets the line's colour and a transport's glyph) and of the same kind
- * (supply or excess), become one line with one label, so they no longer run as near-parallel lines with stacked labels.
- * The label names the items (up to `BUNDLE_NAMES`, then "+k more"), folds links of no known item into "+u unknown", and
- * sums the rate by ADR-0053 Decision 3's rule (weakest quality wins, "at least" when a part has no number). Nothing is
- * dropped: `parts` keeps every link, the tooltip (`flowTitle`) lists each with its own rate, and the outline lists
- * every link. Returns the drawn flows in first-seen order, each with the indexes of the links it stands for.
- *
- * `byItem` (ports on, ADR-0063 Decision 1, amending the above): the item joins the key, so a line carries one item (links
- * of no known item still share one "?" line), and each drawn flow says which in `portItem`.
+ * One drawn line per ordered pair of cards, carrier and item (2026-10-27, ADR-0059 amendment; the item since ADR-0063
+ * Decision 1): links between the same two cards in the same direction, on the same carrier (which sets the line's colour
+ * and a transport's glyph), of the same kind (supply or excess) and carrying the same item (links of no known item share
+ * one "?" line) become one line with one label, so they no longer run as near-parallel lines with stacked labels. The
+ * label sums the rate by ADR-0053 Decision 3's rule (weakest quality wins, "at least" when a part has no number). Nothing
+ * is dropped: `parts` keeps every link, the tooltip (`flowTitle`) lists each with its own rate, and the outline lists
+ * every link. Returns the drawn flows in first-seen order, each saying its item in `portItem`, with the indexes of the
+ * links it stands for.
  */
-export function bundleFlows(flows: readonly CanvasFlow[], byItem = false): { flow: CanvasFlow; members: number[] }[] {
+export function bundleFlows(flows: readonly CanvasFlow[]): { flow: CanvasFlow; members: number[] }[] {
   const groups = new Map<string, number[]>();
   flows.forEach((f, i) => {
     // The unit too: a carrier can move items and fluid, and those never sum (hierarchy.ts keys on it as well).
-    const key = [f.from, f.to, f.carrier, f.flow, f.unit, ...(byItem ? [itemKeyOf(f)] : [])].join("\u0001");
+    const key = [f.from, f.to, f.carrier, f.flow, f.unit, itemKeyOf(f)].join("\u0001");
     const list = groups.get(key);
     if (list === undefined) groups.set(key, [i]);
     else list.push(i);
   });
   return [...groups.values()].map((members) => {
     const flow = members.length === 1 ? flows[members[0]] : bundledFlow(members.map((i) => flows[i]));
-    return { flow: byItem ? { ...flow, portItem: itemKeyOf(flows[members[0]]) } : flow, members };
+    return { flow: { ...flow, portItem: itemKeyOf(flows[members[0]]) }, members };
   });
 }
 
@@ -366,11 +361,11 @@ function bundledFlow(parts: readonly CanvasFlow[]): CanvasFlow {
   const ratePerMinute = sure.length === 0 ? null : sure.reduce((sum, p) => sum + p.ratePerMinute!, 0);
   const unit = head.unit;
   const rateLine = quality === "unknown" ? null : aggregateRateText({ quality, ratePerMinute, unit });
-  const shown = names.slice(0, BUNDLE_NAMES);
-  const more = names.length - shown.length;
   const mixed = parts.some((p) => p.mixed);
-  const head1 = shown.length > 0 ? shown.join(", ") : `${unknownItems} items unknown`;
-  const extras = [...(more > 0 ? [`+${more} more`] : []), ...(shown.length > 0 && unknownItems > 0 ? [`+${unknownItems} unknown`] : []), ...(mixed ? ["mixed"] : [])];
+  // Every part carries the line's one item (`bundleFlows` keys by it), so the head is its name, or the count of links
+  // of no known item.
+  const head1 = names[0] ?? `${unknownItems} items unknown`;
+  const extras = mixed ? ["mixed"] : [];
   const routes = new Set(parts.map((p) => p.routeName));
   return {
     from: head.from,

@@ -92,10 +92,12 @@ describe("a bundle's stalled state", () => {
   });
 
   it("is stalled when every part is, and not when one part was measured moving", () => {
-    const both = bundleFlows([link({ stalled: "backedUp" }), link({ itemName: "Iron Plate", itemClassName: "Desc_IronPlate_C", stalled: "backedUp" })]);
+    // Two links of one item between one pair: one line (ADR-0063 Decision 1 draws a line per item).
+    const both = bundleFlows([link({ stalled: "backedUp" }), link({ stalled: "backedUp" })]);
     expect(both).toHaveLength(1);
     expect(both[0].flow.stalled).toBe("backedUp");
-    const one = bundleFlows([link({ stalled: "backedUp" }), link({ itemName: "Iron Plate", itemClassName: "Desc_IronPlate_C", rate: "measured", quality: "measured" })]);
+    const one = bundleFlows([link({ stalled: "backedUp" }), link({ rate: "measured", quality: "measured" })]);
+    expect(one).toHaveLength(1);
     expect(one[0].flow.stalled).toBeUndefined();
   });
 });

@@ -3,7 +3,7 @@ import { cn } from "../../lib/cn";
 import type { OverlayPlace } from "./overlayPlacement";
 
 /**
- * The canvas's floating card (the group panel, a line's "+k" list), non-modal, over the canvas. The CSP forbids inline
+ * The canvas's floating card (the group panel, a port's line list), non-modal, over the canvas. The CSP forbids inline
  * styles, so it is placed by SVG attributes: an overlay `<svg>` the canvas's size (1 unit = 1 CSS px, like the stage), and
  * a `<foreignObject>` at `place`'s x, y, width and height holding the HTML. The overlay lets the pointer through to the
  * canvas; only the card takes it.

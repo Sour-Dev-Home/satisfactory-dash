@@ -42,10 +42,11 @@ describe("layoutSite hunt", () => {
       const { site, graph } = build(["a", "b", "c", "d"], edges);
       const l = layoutSite(site, graph);
       allFinite(l);
-      // Links between the same two cards on one carrier are one line (2026-10-27); every link is still in `flows`.
+      // Links between the same two cards on one carrier, of one item, are one line (2026-10-27, ADR-0063 Decision 1);
+      // every link is still in `flows`.
       expect(l.flows).toHaveLength(edges.length);
       expect(l.edges.flatMap((e) => e.parts).sort()).toEqual(edges.map((_, i) => i));
-      expect(l.edges).toHaveLength(new Set(edges.map((e) => `${e.from}>${e.to}`)).size);
+      expect(l.edges).toHaveLength(new Set(edges.map((e) => `${e.from}>${e.to}>${e.itemClassName}`)).size);
       expect(l.nodes).toHaveLength(4);
     }
   });

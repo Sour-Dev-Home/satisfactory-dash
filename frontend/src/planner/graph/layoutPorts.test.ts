@@ -9,7 +9,7 @@ import { PORT_D, PORT_INSET, PORT_PITCH, PORTS_MAX } from "./ports";
 
 beforeEach(clearLayoutMemo);
 
-// ADR-0063 build PR 2: the layout with ports on. A small scene with a fan-out, two items between one pair and a loop, and
+// ADR-0063 build PR 2: the layout with ports. A small scene with a fan-out, two items between one pair and a loop, and
 // ADR-0059's dense synthetic factory.
 
 const card = (key: string): Card => ({
@@ -79,9 +79,9 @@ function crossings(l: SiteLayout): number {
   return n;
 }
 
-describe("the layout with ports on (ADR-0063 Decision 1)", () => {
+describe("the layout with ports (ADR-0063 Decision 1)", () => {
   it("draws a line per item, each leaving at its source port and ending at its target port's disc edge", () => {
-    for (const l of [layoutScene(small, undefined, undefined, { ports: true }), layoutScene(denseScene(), "dense", undefined, { ports: true })]) {
+    for (const l of [layoutScene(small), layoutScene(denseScene(), "dense")]) {
       const at = portCentres(l);
       for (const e of l.edges) {
         const src = at.get(e.srcPort!)!;
@@ -94,12 +94,12 @@ describe("the layout with ports on (ADR-0063 Decision 1)", () => {
         expect(Math.abs(last.x - tgt.x)).toBeCloseTo(PORT_D / 2, 6);
       }
     }
-    const pair = layoutScene(small, undefined, undefined, { ports: true }).edges.filter((e) => e.flow.from === "A" && e.flow.to === "B");
+    const pair = layoutScene(small).edges.filter((e) => e.flow.from === "A" && e.flow.to === "B");
     expect(pair.map((e) => e.flow.itemName).sort()).toEqual(["Iron Plate", "Screw"]);
   });
 
   it("spaces each edge's ports a pitch apart, inset from the card's top and bottom, the card tall enough to hold them", () => {
-    for (const l of [layoutScene(small, undefined, undefined, { ports: true }), layoutScene(denseScene(), "dense", undefined, { ports: true })]) {
+    for (const l of [layoutScene(small), layoutScene(denseScene(), "dense")]) {
       for (const n of l.nodes) {
         for (const side of ["l", "r"] as const) {
           const ys = (n.ports ?? []).filter((p) => p.side === side).map((p) => p.y).sort((a, b) => a - b);
@@ -114,7 +114,7 @@ describe("the layout with ports on (ADR-0063 Decision 1)", () => {
   });
 
   it("fans one item out of one port, and gathers two sources of one item into one", () => {
-    const l = layoutScene(small, undefined, undefined, { ports: true });
+    const l = layoutScene(small);
     const plate = l.edges.filter((e) => e.flow.from === "A" && e.flow.itemName === "Iron Plate");
     expect(plate).toHaveLength(2);
     expect(plate[0].srcPort).toBe(plate[1].srcPort);
@@ -123,7 +123,7 @@ describe("the layout with ports on (ADR-0063 Decision 1)", () => {
   });
 
   it("sends a return flow out of its source's left and into its target's right", () => {
-    const l = layoutScene(small, undefined, undefined, { ports: true });
+    const l = layoutScene(small);
     const back = l.edges.find((e) => e.flow.from === "D" && e.flow.to === "A")!;
     expect(back.returning).toBe(true);
     const d = l.nodes.find((n) => n.key === "D")!;
@@ -133,7 +133,7 @@ describe("the layout with ports on (ADR-0063 Decision 1)", () => {
   });
 
   it("runs every line in horizontal and vertical legs, never through a card other than its own two", () => {
-    const l = layoutScene(denseScene(), "dense", undefined, { ports: true });
+    const l = layoutScene(denseScene(), "dense");
     for (const e of l.edges) {
       for (let i = 1; i < e.points.length; i++) {
         const [a, b] = [e.points[i - 1], e.points[i]];
@@ -147,33 +147,23 @@ describe("the layout with ports on (ADR-0063 Decision 1)", () => {
   });
 
   // The bound judges the port order (Decision 1's "Crossings"), so it is per line drawn: ports also draw more lines (a pair
-  // exchanging two items draws two), a cost the ADR measures apart ("Consequences"). Both numbers are logged; the raw ones
-  // went in the ADR's build note (36 to 41 crossings, 65 to 69 lines).
+  // exchanging two items draws two), a cost the ADR measures apart ("Consequences"). The layout without ports is gone (build
+  // PR 7b), so the bound is against its numbers as the ADR's build note PR 2 recorded them: 36 crossings over 65 lines.
   it("adds no more than 10% crossings per line on the dense scene (ADR-0059's metrics, ADR-0063 build PR 2)", () => {
-    const offL = layoutScene(denseScene(), "dense");
-    const off = crossings(offL);
-    clearLayoutMemo();
-    const onL = layoutScene(denseScene(), "dense", undefined, { ports: true });
-    const on = crossings(onL);
-    console.info(`[ADR-0063 ports] dense 40-group scene crossings: ports off ${off} (${offL.edges.length} lines), on ${on} (${onL.edges.length} lines)`);
-    expect(on / onL.edges.length).toBeLessThanOrEqual((off / offL.edges.length) * 1.1);
+    const WITHOUT_PORTS = { crossings: 36, lines: 65 };
+    const l = layoutScene(denseScene(), "dense");
+    const on = crossings(l);
+    console.info(`[ADR-0063 ports] dense 40-group scene crossings: ${on} (${l.edges.length} lines); without ports ${WITHOUT_PORTS.crossings} (${WITHOUT_PORTS.lines})`);
+    expect(on / l.edges.length).toBeLessThanOrEqual((WITHOUT_PORTS.crossings / WITHOUT_PORTS.lines) * 1.1);
   });
 
   it("folds the demo depot's seven inputs into five ports and a '+2' (the demo data build PR 2 asks for)", () => {
     const g = demoWorld.productionGraph(demoWorld.DEMO_EPOCH).data;
     const iron = g.sites.find((s) => s.name === "Iron works")!;
-    const l = layoutScene(siteScene(iron, g), g.topologyHash, undefined, { ports: true });
+    const l = layoutScene(siteScene(iron, g), g.topologyHash);
     const depot = l.nodes.find((n) => n.card.title.startsWith("Storage Container"))!;
     const inputs = (depot.ports ?? []).filter((p) => p.side === "l");
     expect(inputs).toHaveLength(PORTS_MAX);
     expect(inputs.find((p) => p.item === "+")?.items).toHaveLength(2);
-  });
-
-  it("with ports off, draws exactly what it drew before: no ports, no port ends, one line per pair", () => {
-    const off = layoutScene(small);
-    expect(off.nodes.every((n) => n.ports === undefined)).toBe(true);
-    expect(off.edges.every((e) => e.srcPort === undefined && e.returning === undefined)).toBe(true);
-    expect(off.edges.filter((e) => e.flow.from === "A" && e.flow.to === "B")).toHaveLength(1);
-    expect(off).toEqual(layoutScene(small, undefined, undefined, { ports: false }));
   });
 });

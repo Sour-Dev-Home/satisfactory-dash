@@ -128,13 +128,22 @@ describe("layoutScene adversarial scenes", () => {
   });
 
   it("many flows between two cards (huge count) still lay out", () => {
+    // One class under 300 names: one item, so one bundled line named as its first link names it (as its bubble is); every
+    // link is still one of its parts (2026-10-27, ADR-0063 Decision 1).
     const flows = Array.from({ length: 300 }, (_, i) => flow("a", "b", { itemName: `item ${i}`, labelLines: [`item ${i}`] }));
     const l = layoutScene(sceneOf([card("a"), card("b")], flows));
-    // One bundled line with a short label; every link is still one of its parts (2026-10-27).
     expect(l.edges).toHaveLength(1);
     expect(l.edges[0].parts).toHaveLength(300);
-    expect(l.edges[0].labelLines).toEqual(["item 0, item 1", "+298 more", "300 items/min"]);
+    expect(l.edges[0].labelLines).toEqual(["item 0", "300 items/min"]);
     expect(l.edges.every((e) => finite(e.labelX) && finite(e.labelY))).toBe(true);
+  });
+
+  it("many items between two cards (a line each, past the port cap) still lay out", () => {
+    const flows = Array.from({ length: 60 }, (_, i) => flow("a", "b", { itemClassName: `Desc_${i}_C`, itemName: `item ${i}`, labelLines: [`item ${i}`] }));
+    const l = layoutScene(sceneOf([card("a"), card("b")], flows));
+    expect(l.edges).toHaveLength(60);
+    expect(l.edges.every((e) => e.parts.length === 1)).toBe(true);
+    expect(l.edges.every((e) => finite(e.labelX) && finite(e.labelY) && e.points.every((p) => finite(p.x) && finite(p.y)))).toBe(true);
   });
 
   it("a very long title and many lines still give finite sizes", () => {

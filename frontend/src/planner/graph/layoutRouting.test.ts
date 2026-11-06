@@ -4,6 +4,7 @@ import { EMPTY_VIEW, factoryScene, type CanvasFlow, type Card, type Scene } from
 import { segmentHitsRect } from "./edgeShapes";
 import { factoryModels } from "./hierarchy";
 import { TRACK_GAP, clearLayoutMemo, layoutScene, layoutStats, returnFlows, type LaidEdge } from "./layoutSite";
+import { PORT_D } from "./ports";
 
 beforeEach(clearLayoutMemo);
 
@@ -122,13 +123,13 @@ describe("orthogonal routing on dagre (ADR-0059)", () => {
     }
   });
 
-  it("starts and ends each edge on its cards' sides", () => {
+  it("starts and ends each edge on its cards' sides (the target end at its port disc's edge, ADR-0063)", () => {
     const { edges, nodes } = layout();
     const byKey = new Map(nodes.map((n) => [n.key, n]));
     for (const e of edges) {
       const [first, last] = [e.points[0], e.points[e.points.length - 1]];
-      for (const [p, n] of [[first, byKey.get(e.flow.from)!], [last, byKey.get(e.flow.to)!]] as const) {
-        const onSide = Math.abs(p.x - n.x) < 0.5 || Math.abs(p.x - (n.x + n.width)) < 0.5;
+      for (const [p, n, out] of [[first, byKey.get(e.flow.from)!, 0], [last, byKey.get(e.flow.to)!, PORT_D / 2]] as const) {
+        const onSide = Math.abs(p.x - (n.x - out)) < 0.5 || Math.abs(p.x - (n.x + n.width + out)) < 0.5;
         expect(onSide && p.y >= n.y - 0.5 && p.y <= n.y + n.height + 0.5).toBe(true);
       }
     }
@@ -187,15 +188,15 @@ describe("parallel links between one pair of cards (owner's report, 2026-10-27)"
     return closest;
   };
 
-  it("draws the links from one card to the next as one line with one label, keeping every link", () => {
+  // ADR-0063 Decision 1 replaced the one bundled line of this report with a line per item, each on its own ports.
+  it("draws the links from one card to the next as a line per item, keeping every link", () => {
     const l = layoutScene(owner);
     const pair = l.edges.filter((e) => e.flow.from === "Automated Wiring factory" && e.flow.to === "Encased Industrial Beam factory");
-    expect(pair).toHaveLength(1);
-    expect(pair[0].labelLines).toEqual(["Iron Ingot, Steel Pipe", "+1 unknown", "at least 0 items/min"]);
-    expect(pair[0].parts.map((i) => l.flows[i].label)).toEqual(["Item unknown", "Iron Ingot · 0 items/min", "Steel Pipe · 0 items/min"]);
+    expect(pair.map((e) => e.parts.map((i) => l.flows[i].label))).toEqual([["Item unknown"], ["Iron Ingot · 0 items/min"], ["Steel Pipe · 0 items/min"]]);
+    expect(new Set(pair.map((e) => e.srcPort)).size).toBe(3);
     // The layout still hands every link on, for the item filter.
     expect(l.flows).toHaveLength(5);
-    expect(l.edges).toHaveLength(3);
+    expect(l.edges).toHaveLength(5);
   });
 
   it("runs no line through another edge's label, here and on the dense scene", () => {
@@ -212,7 +213,7 @@ describe("parallel links between one pair of cards (owner's report, 2026-10-27)"
     const scene: Scene = { ...owner, flows: [...owner.flows, link("Automated Wiring factory", "Encased Industrial Beam factory", "Water", 30, "pipe")] };
     const l = layoutScene(scene);
     const pair = l.edges.filter((e) => e.flow.from === "Automated Wiring factory" && e.flow.to === "Encased Industrial Beam factory");
-    expect(pair.map((e) => e.flow.carrier).sort()).toEqual(["belt", "pipe"]);
+    expect(pair.map((e) => e.flow.carrier).sort()).toEqual(["belt", "belt", "belt", "pipe"]);
     expect(linesThroughLabels(l.edges)).toEqual([]);
   });
 });

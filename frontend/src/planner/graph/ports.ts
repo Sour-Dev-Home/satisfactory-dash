@@ -73,7 +73,7 @@ const byRateThenName = (a: { rate: number; name: string | null }, b: { rate: num
 
 /**
  * The ports of a scene's drawn lines. A forward line leaves its source's right edge and enters its target's left; a return
- * flow (`returns`, from `returnFlows`) leaves its source's left and enters its target's right. Past `PORTS_MAX` ports on
+ * flow (`returns`, from `returnFlows`; not a self-loop) leaves its source's left and enters its target's right. Past `PORTS_MAX` ports on
  * one edge, the `PORTS_MAX - 1` items of highest summed rate (then name) keep theirs and the rest fold into one "+N" port.
  */
 export function portModel(drawn: readonly CanvasFlow[], returns: ReadonlySet<number>): PortModel {
@@ -102,9 +102,12 @@ export function portModel(drawn: readonly CanvasFlow[], returns: ReadonlySet<num
       seen.flows.push(i);
     }
   };
-  const sides = drawn.map((_, i): { srcSide: Side; tgtSide: Side } => (returns.has(i) ? { srcSide: "l", tgtSide: "r" } : { srcSide: "r", tgtSide: "l" }));
+  // A self-loop is a return flow to `returnFlows`, but dagre routes it out of the card's right and round into its left, so
+  // its ports are a forward line's: on the return sides its two ends crossed the card (found moving the tests to ports).
+  const returning = (i: number) => returns.has(i) && drawn[i].from !== drawn[i].to;
+  const sides = drawn.map((_, i): { srcSide: Side; tgtSide: Side } => (returning(i) ? { srcSide: "l", tgtSide: "r" } : { srcSide: "r", tgtSide: "l" }));
   drawn.forEach((f, i) => {
-    const back = returns.has(i);
+    const back = returning(i);
     add(slotOf(f.from, sides[i].srcSide, "out", back), f, i);
     add(slotOf(f.to, sides[i].tgtSide, "in", back), f, i);
   });

@@ -18,7 +18,7 @@ import type { LaidEdge } from "./layoutSite";
  * 6. Otherwise everything is lit.
  *
  * A line is lit only when both its cards are, except in item focus (the focused line alone) and under a walk (2, 3), where
- * a line is lit when the walk lit it. States 2, 4 and 5 come with the ports flag (build PR 5); the highlight (3a) dims
+ * a line is lit when the walk lit it. States 2, 4 and 5 came with ports (build PR 5); the highlight (3a) dims
  * nothing since the owner dropped that (2026-11-03), so it is not a state here.
  */
 export interface FocusSet {
@@ -39,7 +39,7 @@ export interface FocusedLine {
   readonly to: string;
 }
 
-/** The states that come with the ports flag (2, 4 and 5). */
+/** The states that came with ports (2, 4 and 5). */
 export interface MoreFocus {
   /** State 2: `reachFromCard` of the card whose "Show what … feeds and needs" is on. */
   cardReach?: Reach | null | undefined;

@@ -7,8 +7,7 @@ import { nextStop } from "./rovingStop";
 
 
 /**
- * The keyboard's way into the item bubbles (ADR-0060 Decision 5): a visually hidden button per bubble and per "+k" chip,
- * one tab stop for all of them (a roving tabindex), arrow keys, Home and End to move. Enter or Space activates; Escape goes
+ * The keyboard's way into the item bubbles (ADR-0060 Decision 5): a visually hidden button per bubble, one tab stop for all of them (a roving tabindex), arrow keys, Home and End to move. Enter or Space activates; Escape goes
  * on to the viewport, which leaves focus mode. The canvas is `role="img"`, so these are its only exposed controls.
  */
 export function BubbleButtons({
@@ -16,7 +15,6 @@ export function BubbleButtons({
   names,
   active,
   focus,
-  listOpen,
   buttons,
   onActivate,
   onFocusStop,
@@ -26,8 +24,6 @@ export function BubbleButtons({
   /** The stop that holds the tab stop: the last one focused, else the first. */
   active: string | null;
   focus: ItemFocus | null;
-  /** The line whose "+k" list is open. */
-  listOpen: string | null;
   buttons: MutableRefObject<Map<string, HTMLButtonElement>>;
   onActivate: (stop: BubbleStop) => void;
   onFocusStop: (stop: BubbleStop | null) => void;
@@ -54,7 +50,7 @@ export function BubbleButtons({
               else buttons.current.delete(s.id);
             }}
             tabIndex={s.id === tabStop ? 0 : -1}
-            aria-expanded={s.item === null ? listOpen === s.edgeKey : focus !== null && focus.edgeKey === s.edgeKey && focus.item === s.item}
+            aria-expanded={focus !== null && focus.edgeKey === s.edgeKey && focus.item === s.item}
             onClick={() => onActivate(s)}
             onKeyDown={(e) => onKeyDown(e, i)}
             onFocus={() => onFocusStop(s)}
@@ -69,7 +65,7 @@ export function BubbleButtons({
   );
 }
 
-/** One row's icon in the list: the 32 px file, or the initials on the same chip when there is none or it fails. */
+/** One row's icon in the port line list: the 32 px file, or the initials on the same chip when there is none or it fails. */
 function ListIcon({ item }: { item: BubbleItem }) {
   const url = item.className === null ? undefined : itemIconUrl(item.className, 32);
   const [failed, setFailed] = useState(false);
@@ -77,79 +73,6 @@ function ListIcon({ item }: { item: BubbleItem }) {
     <span aria-hidden="true" className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-icon-chip text-xs text-surface">
       {url !== undefined && !failed ? <img src={url} alt="" width={24} height={24} onError={() => setFailed(true)} /> : item.text}
     </span>
-  );
-}
-
-/**
- * A line's full item list, opened from its "+k" chip (owner answer 5): every item, each focusable like a bubble. A
- * non-modal panel beside the canvas, in the group panel's place; Escape or Close closes it and returns to the chip.
- */
-export function ItemList({
-  id,
-  flow,
-  items,
-  from,
-  to,
-  focus,
-  onFocusItem,
-  onClose,
-}: {
-  id: string;
-  flow: CanvasFlow;
-  items: readonly BubbleItem[];
-  from: string;
-  to: string;
-  focus: ItemFocus | null;
-  onFocusItem: (item: BubbleItem) => void;
-  onClose: () => void;
-}) {
-  const headingId = `${id}-heading`;
-  // Opened from the chip, the list takes the keyboard to its first item; Escape anywhere in it closes it.
-  const first = useRef<HTMLButtonElement>(null);
-  useEffect(() => first.current?.focus(), []);
-  return (
-    <section
-      id={id}
-      aria-labelledby={headingId}
-      onKeyDown={(e) => {
-        if (e.key !== "Escape") return;
-        e.preventDefault();
-        onClose();
-      }}
-      className="flex h-full flex-col"
-    >
-      {/* The header stays put while the list scrolls under it (CanvasOverlay), so Close is always in reach. */}
-      <div data-overlay-header="" className="flex shrink-0 items-start justify-between gap-2 border-b border-transparent px-4 pt-4 pb-3 group-data-scrolled:border-line">
-        <h3 id={headingId} className="m-0 text-base font-semibold">{`${items.length} items from ${from} to ${to}`}</h3>
-        <button type="button" onClick={onClose} className="min-h-touch">
-          Close
-        </button>
-      </div>
-      {/* Focusable, so a keyboard can scroll it (axe scrollable-region-focusable). */}
-      <div data-overlay-body="" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <ul className="m-0 flex list-none flex-col gap-1 px-4 pt-0 pb-4">
-          {items.map((item, i) => {
-            const on = focus !== null && focus.item === item.key;
-            return (
-              <li key={item.key}>
-                <button
-                  ref={i === 0 ? first : undefined}
-                  type="button"
-                  aria-label={bubbleName(item, flow.unit, from, to)}
-                  aria-pressed={on}
-                  onClick={() => onFocusItem(item)}
-                  className={cn("flex min-h-touch w-full items-center gap-2 rounded-md px-2 text-left", on && "bg-surface-2")}
-                >
-                  <ListIcon item={item} />
-                  <span className="min-w-0 flex-1">{item.name ?? "Item unknown"}</span>
-                  <span className="text-sm text-muted">{itemRateText(item, flow.unit)}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </section>
   );
 }
 
@@ -164,8 +87,8 @@ export interface PortLine {
 
 /**
  * The lines at one port (ADR-0063 Decision 2), opened from the end label of a port with several: one item fanning out to
- * several groups, or several sources into one. Each focusable as its bubble is, named as its bubble button is. The same
- * non-modal panel as `ItemList`; Escape or Close closes it.
+ * several groups, or several sources into one. Each focusable as its bubble is, named as its bubble button is. A
+ * non-modal panel beside the canvas, in the group panel's place; Escape or Close closes it.
  */
 export function PortLineList({
   id,
@@ -198,12 +121,14 @@ export function PortLineList({
       }}
       className="flex h-full flex-col"
     >
+      {/* The header stays put while the list scrolls under it (CanvasOverlay), so Close is always in reach. */}
       <div data-overlay-header="" className="flex shrink-0 items-start justify-between gap-2 border-b border-transparent px-4 pt-4 pb-3 group-data-scrolled:border-line">
         <h3 id={headingId} className="m-0 text-base font-semibold">{`${shown.length} ${shown.length === 1 ? "line" : "lines"} of ${name}`}</h3>
         <button ref={close} type="button" onClick={onClose} className="min-h-touch">
           Close
         </button>
       </div>
+      {/* Focusable, so a keyboard can scroll it (axe scrollable-region-focusable). */}
       <div data-overlay-body="" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <ul className="m-0 flex list-none flex-col gap-1 px-4 pt-0 pb-4">
           {shown.map((l, i) => {

@@ -1,7 +1,7 @@
 import type { Stage, View } from "./viewport";
 
 /**
- * Where the canvas's floating card (the group panel, or a line's "+k" list) sits, in stage pixels (the canvas's own CSS
+ * Where the canvas's floating card (the group panel, or a port's line list) sits, in stage pixels (the canvas's own CSS
  * pixels). Pure: SiteGraph feeds it the clicked card's place on screen and the card's measured height.
  */
 
