@@ -177,6 +177,11 @@
   /* The command bar (#351): its width, and its result list's height before it scrolls. */
   --spacing-palette: 36rem;
   --spacing-palette-list: 24rem;
+  /* The demo's guided tour (ADR-0065): the space kept round the highlighted element, the popover's width (never wider
+     than the screen less the page gutters) and the phone sheet's tallest (about 40% of the screen, Decision 2). */
+  --spacing-tour-pad: 8px;
+  --spacing-tour-popover: min(22rem, calc(100vw - 2rem));
+  --spacing-tour-sheet: 40svh;
   /* "Since yesterday" on the Factory page keeps one height while it loads, fails or fills, so its
      content arriving can't push the table below it (ADR-0032). From 640 px it fits the fullest
      content (3 drops, 3 rises) at each width; on a phone it fits the common states and a longer
@@ -200,6 +205,10 @@
 
   /* Overlays: the header's dropdowns sit above the page, fit any screen and scroll when long. */
   --z-popover: 10;
+  /* The demo's guided tour (ADR-0065): its scrim and popover cover the header's dropdowns too. The scrim's colour is
+     --color-scrim, the command bar's; --blur-tour is how far the page behind it is blurred. */
+  --z-tour: 20;
+  --blur-tour: 4px;
   /* A bar that sticks to the top while its section scrolls under it (the Factory page's filters, ADR-0062 F.4): above
      the content, below the header's dropdowns. */
   --z-sticky: 5;
@@ -965,4 +974,18 @@
 }
 .node-icon-free {
   opacity: var(--opacity-node-free);
+}
+
+/* The demo's guided tour (ADR-0065 Decision 2, demo/tour/Spotlight.tsx): the scrim dims the page and is cut by the
+   `#tour-hole` clipPath, so the highlighted element shows through, undimmed and clickable (the clip cuts hit-testing too).
+   The blur is added only where backdrop-filter exists; elsewhere the scrim only dims (the owner's answer 4). */
+.tour-scrim {
+  clip-path: url(#tour-hole);
+  background-color: var(--color-scrim);
+}
+@supports (backdrop-filter: none) or (-webkit-backdrop-filter: none) {
+  .tour-scrim {
+    -webkit-backdrop-filter: blur(var(--blur-tour));
+    backdrop-filter: blur(var(--blur-tour));
+  }
 }

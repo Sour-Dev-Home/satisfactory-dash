@@ -24,6 +24,11 @@ async function recordRequests(page: Page, baseURL: string): Promise<{ offOrigin:
   return { offOrigin, toApi };
 }
 
+// The guided tour (ADR-0065) starts on the first visit to /app and its scrim would cover these screens: mark it seen.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => window.localStorage.setItem("demo.tour", "seen"));
+});
+
 test("every screen works offline: enter, overview, power, factory, settings, log out", async ({ page, baseURL }, testInfo) => {
   const requests = await recordRequests(page, baseURL!);
   await page.goto("/?clock=fixed");

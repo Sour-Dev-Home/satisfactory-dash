@@ -1,4 +1,5 @@
 import type { Ref } from "react";
+import { tour } from "../../demo/tour/target";
 import { cn } from "../../lib/cn";
 import { headlineSaysMore } from "../health";
 import { Rivets } from "./Rivets";
@@ -80,6 +81,7 @@ export function HealthCard({
   return (
     <section
       aria-labelledby="health-heading"
+      {...tour("overview-health")}
       // Square between md and lg (its grid column is the narrow rail). On a phone, and from lg up where
       // it takes half the row (#329, option A), just as tall as its content: a half-width square would
       // make the whole row about 500 px tall.

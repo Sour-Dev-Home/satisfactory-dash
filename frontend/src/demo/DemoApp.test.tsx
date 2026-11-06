@@ -5,6 +5,8 @@ import App from "../App";
 import { PREVIEW } from "../landing/preview";
 import { renderWithClient } from "../test/render";
 import { resetDemoState } from "./handlers";
+import { resetTourLoadForTests, TOUR_SEEN, TOUR_STORAGE_KEY } from "./tour/persistence";
+import { resetTourStoreForTests } from "./tour/tourStore";
 
 // The whole app as the demo build runs it (ADR-0026): what vite.config.ts does at build time
 // (IS_DEMO true, the demo transport in place of the network one), done here with mocks.
@@ -21,6 +23,9 @@ beforeEach(() => {
   resetDemoState();
   fetchSpy.mockClear();
   vi.stubGlobal("fetch", fetchSpy);
+  // The guided tour (ADR-0065) would start on the first visit to /app; these tests are about the pages under it.
+  window.localStorage.setItem(TOUR_STORAGE_KEY, TOUR_SEEN);
+  resetTourStoreForTests();
 });
 
 describe("the demo app", () => {
@@ -70,5 +75,26 @@ describe("the demo app", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Enter demo" }));
     await signOutFromMenu();
     expect(await screen.findByRole("button", { name: "Enter demo" })).toBeInTheDocument();
+  });
+
+  it("starts the guided tour on the first visit to the Overview, on its Health card (ADR-0065)", async () => {
+    window.localStorage.removeItem(TOUR_STORAGE_KEY);
+    resetTourLoadForTests();
+    // jsdom lays nothing out; the tour highlights only an element with a box.
+    const box = { x: 0, y: 0, width: 100, height: 100, top: 0, left: 0, right: 100, bottom: 100, toJSON: () => ({}) } as DOMRect;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(box);
+    try {
+      renderWithClient(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: "Enter demo" }, FIRST_RENDER));
+      const tour = await screen.findByRole("dialog", { name: "Welcome to the demo." }, FIRST_RENDER);
+      expect(window.localStorage.getItem(TOUR_STORAGE_KEY)).toBe(TOUR_SEEN);
+      expect(document.querySelector('[data-tour="overview-health"]')).toHaveAccessibleName("Health");
+      expect(document.querySelector('[data-tour="overview-alerts"]')).not.toBeNull();
+      fireEvent.click(within(tour).getByRole("button", { name: "Skip tour" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Take the tour" }));
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

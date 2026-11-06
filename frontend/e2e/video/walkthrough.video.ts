@@ -119,6 +119,8 @@ async function offlinePage(browser: Browser, baseURL: string, options: Parameter
     });
   });
   await page.route("**/api/**", (route) => { problems.push(`/api ${route.request().url()}`); return route.abort(); });
+  // The guided tour (ADR-0065) would start on the first visit to /app and cover the take: mark it seen.
+  await page.addInitScript(() => window.localStorage.setItem("demo.tour", "seen"));
   await page.clock.setFixedTime(DEMO_EPOCH);
   return { context, page, problems };
 }

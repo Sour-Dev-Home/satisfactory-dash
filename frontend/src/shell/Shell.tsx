@@ -49,6 +49,13 @@ import { whenIdle } from "../lib/idle";
 import { pageQueries, paletteQueries, prefetchFresh } from "./pageQueries";
 import { visibleTabs } from "./tabs";
 import { offersDevAgent, senderWords } from "../agent/agentText";
+import { IS_DEMO } from "../demo/mode";
+
+// The demo's guided tour (ADR-0065 Decision 8): its own chunk, in the demo build only. The bundler drops a dead dynamic
+// import only when its condition folds in this module: with the imported IS_DEMO alone it still wrote the (never
+// loaded) chunk into production. The MODE test folds here; IS_DEMO keeps it the demo's (and tests can mock it).
+// build-output.spec.ts checks both builds.
+const LazyTourHost = import.meta.env.MODE !== "production" && IS_DEMO ? lazy(() => import("../demo/tour/TourHost")) : null;
 
 type PaletteModule = { default: ComponentType<{ onDone: () => void }> };
 
@@ -553,6 +560,11 @@ export function Shell() {
         <Route path="*" element={<ToApp />} />
       </Routes>
       </div>
+      {IS_DEMO && LazyTourHost !== null && (
+        <Suspense fallback={null}>
+          <LazyTourHost />
+        </Suspense>
+      )}
     </div>
   );
 }
