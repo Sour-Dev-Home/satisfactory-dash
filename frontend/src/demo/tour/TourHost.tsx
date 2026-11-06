@@ -8,7 +8,7 @@ import { AttachedPopover, SheetPopover } from "./Popover";
 import { Spotlight } from "./Spotlight";
 import { TOUR_STEPS, type TourStep } from "./steps";
 import { registerTourHost, startTour, stopTour, useTour } from "./tourStore";
-import { targetSelector, waitForTarget } from "./waitForTarget";
+import { findReadyTarget, targetSelector, waitForTarget } from "./waitForTarget";
 
 /** The banner's "Take the tour" button: where focus goes when the tour ends and where it was is gone. */
 export const BANNER_TOUR_TARGET = "demo-banner-tour";
@@ -120,7 +120,19 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     if (here.current !== want) void go.current(want);
     // A step about the whole page has no target: the reducer shows it centred at once, so nothing is awaited.
     if (step.target === undefined) return undefined;
-    return waitForTarget(step.target, {
+    const own = step.target;
+    // A target only a click shows (the planner's group panel, which the address does not keep): once the element that
+    // opens it is ready, click it (a bubbling click, as "Do it for me" does), unless the target is already there.
+    const opener =
+      step.openedBy === undefined
+        ? undefined
+        : waitForTarget(step.openedBy, {
+            onFound: (el) => {
+              if (findReadyTarget(own) === null) el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+            },
+            onTimeout: () => undefined,
+          });
+    const cancel = waitForTarget(own, {
       onFound: (el) => {
         if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "instant" });
         setTarget(el);
@@ -131,6 +143,10 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
         dispatch({ type: "timeout" });
       },
     });
+    return () => {
+      opener?.();
+      cancel();
+    };
   }, [step]);
 
   const onLost = useCallback(() => {

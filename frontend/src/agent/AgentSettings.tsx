@@ -8,6 +8,7 @@ import { useAgentWrites, type EnrollmentCode } from "../api/agentWrites";
 import { apiHref } from "../api/client";
 import { queries } from "../api/queries";
 import { CopyButton } from "../components/CopyButton";
+import { tour } from "../demo/tour/target";
 import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { formatTime } from "../format";
@@ -68,7 +69,7 @@ export function AgentSettings() {
   };
 
   return (
-    <section id="agent" aria-labelledby="agent-settings-heading" className="panel grid gap-4">
+    <section id="agent" aria-labelledby="agent-settings-heading" className="panel grid gap-4" {...tour("settings-connection")}>
       <h3 id="agent-settings-heading">{words.heading}</h3>
       <Loadable pending={status.isPending} skeleton={<AgentSkeleton noun={words.noun} />} className="grid gap-4">
       {!status.data ? (

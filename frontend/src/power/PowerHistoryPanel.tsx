@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import type { PausedRange, PowerHistory } from "@satisfactory-dash/shared";
 import type uPlot from "uplot";
+import { tour } from "../demo/tour/target";
 import { formatMW, formatTime } from "../format";
 import { fuseTrips, seriesStats, toChartData, type LivePart, type Range } from "./history";
 
@@ -88,13 +89,15 @@ export function PowerHistoryPanel({ history, live }: { history: PowerHistory; li
       {history.series.length === 0 ? (
         <p>No readings yet. The chart fills in as the server is polled.</p>
       ) : (
-        history.series.map((series) => {
+        history.series.map((series, i) => {
           const stats = seriesStats(series.points);
           return (
             <article
               key={series.circuitGroupId}
               aria-label={`Circuit ${series.circuitGroupId} history`}
               className="grid gap-3"
+              // The demo tour's "Power over time" step (ADR-0065): the first circuit's chart and its summary.
+              {...(i === 0 ? tour("power-chart") : {})}
             >
               <h4>Circuit {series.circuitGroupId}</h4>
               {stats && (

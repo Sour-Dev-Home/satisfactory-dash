@@ -6,6 +6,7 @@ import { useAlertWrites } from "../../api/alertWrites";
 import { queries } from "../../api/queries";
 import { ErrorNotice } from "../../components/ErrorNotice";
 import { IS_DEMO } from "../../demo/mode";
+import { tour } from "../../demo/tour/target";
 import { itemLabels } from "../../factory/itemLabels";
 import { formatTime } from "../../format";
 import { cn } from "../../lib/cn";
@@ -75,7 +76,7 @@ export function AlertSettings() {
       {/* Web push (ADR-0044): not in the demo, which has no service worker and no push backend. */}
       {!IS_DEMO && <PushSettings />}
 
-      <Part heading="Rules" query={rules} loading="Loading the alert rules…" blocks={4}>
+      <Part heading="Rules" query={rules} loading="Loading the alert rules…" blocks={4} tourTarget="settings-alerts">
         {(data) => (
           <Rules
             serverId={server.id}
@@ -97,6 +98,7 @@ function Part<T>({
   query,
   loading,
   blocks = 0,
+  tourTarget,
   children,
 }: {
   heading: string;
@@ -104,11 +106,13 @@ function Part<T>({
   loading: string;
   /** Cards its skeleton stands in for, under its first line. */
   blocks?: number;
+  /** The demo tour's step that points here (ADR-0065), if any. */
+  tourTarget?: string;
   children: (data: T) => ReactNode;
 }) {
   const id = `alert-settings-${heading.toLowerCase()}`;
   return (
-    <div role="group" aria-labelledby={id} className="grid gap-3">
+    <div role="group" aria-labelledby={id} className="grid gap-3" {...(tourTarget === undefined ? {} : tour(tourTarget))}>
       <h4 id={id} className="mb-0">
         {heading}
       </h4>

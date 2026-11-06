@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DemoBanner } from "../DemoBanner";
 import { resetTourLoadForTests, TOUR_STORAGE_KEY } from "./persistence";
-import { TOUR_STEPS } from "./steps";
+import { TOUR_STEPS, type TourStep } from "./steps";
 import TourHost from "./TourHost";
 import { resetTourStoreForTests } from "./tourStore";
 
@@ -43,7 +44,39 @@ function Where() {
   return <p data-testid="where">{pathname}</p>;
 }
 
-function renderApp(path = "/app") {
+/** A panel only a click opens (as the planner's group panel): `onOpen` is told of each click on its opener. */
+function Openable({ onOpen }: { onOpen: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div data-page-reveal="revealed">
+      <button
+        type="button"
+        data-tour="opener"
+        onClick={() => {
+          onOpen();
+          setOpen(true);
+        }}
+        ref={(el) => {
+          if (el) el.getBoundingClientRect = rect(20, 20, 100, 44);
+        }}
+      >
+        Open
+      </button>
+      {open && (
+        <aside
+          data-tour="panel"
+          ref={(el) => {
+            if (el) el.getBoundingClientRect = rect(600, 100, 300, 400);
+          }}
+        >
+          Panel
+        </aside>
+      )}
+    </div>
+  );
+}
+
+function renderApp(path = "/app", steps: readonly TourStep[] = TOUR_STEPS) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <DemoBanner />
@@ -52,7 +85,7 @@ function renderApp(path = "/app") {
         <Route path="/app/power" element={<p>Power page</p>} />
       </Routes>
       <Where />
-      <TourHost />
+      <TourHost steps={steps} />
     </MemoryRouter>,
   );
 }
@@ -73,7 +106,7 @@ describe("the demo's tour", () => {
     expect(d).toHaveAccessibleName(TOUR_STEPS[0].title);
     expect(d).toHaveAccessibleDescription(TOUR_STEPS[0].body);
     expect(d).not.toHaveAttribute("aria-modal");
-    expect(within(d).getByText("Step 1 of 3")).toBeInTheDocument();
+    expect(within(d).getByText(`Step 1 of ${TOUR_STEPS.length}`)).toBeInTheDocument();
   });
 
   it("does not start by itself on a deep link, or once seen", () => {
@@ -90,12 +123,12 @@ describe("the demo's tour", () => {
   it("moves focus to each step's heading, and says only the step's place in a polite live region (the heading says its title)", () => {
     renderApp();
     expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[0].title }));
-    expect(screen.getByRole("status")).toHaveTextContent(/^Step 1 of 3$/);
+    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Step 1 of ${TOUR_STEPS.length}$`));
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(dialog()).toHaveAccessibleName(TOUR_STEPS[1].title);
     expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[1].title }));
-    expect(screen.getByRole("status")).toHaveTextContent(/^Step 2 of 3$/);
+    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Step 2 of ${TOUR_STEPS.length}$`));
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(dialog()).toHaveAccessibleName(TOUR_STEPS[0].title);
@@ -151,7 +184,7 @@ describe("the demo's tour", () => {
   });
 
   it("Skip, or Finish on the last step, ends it and writes nothing more", () => {
-    renderApp();
+    renderApp("/app", TOUR_STEPS.slice(0, 3));
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     fireEvent.click(screen.getByRole("button", { name: "Skip tour" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -227,6 +260,33 @@ describe("the demo's tour", () => {
       Reflect.deleteProperty(root, "clientWidth");
       Reflect.deleteProperty(root, "clientHeight");
     }
+  });
+
+  it("opens a target only a click shows by clicking its opener once, and not when it is already open", async () => {
+    window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+    const onOpen = vi.fn();
+    const step: TourStep = { id: "panel", path: "/app", target: "panel", openedBy: "opener", title: "The details.", body: "Words.", kind: "next" };
+    const other: TourStep = { id: "other", path: "/app", target: "opener", title: "Elsewhere.", body: "More words.", kind: "next" };
+    render(
+      <MemoryRouter initialEntries={["/app"]}>
+        <DemoBanner />
+        <Routes>
+          <Route path="/app" element={<Openable onOpen={onOpen} />} />
+        </Routes>
+        <TourHost steps={[step, other]} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+    expect(await screen.findByRole("dialog")).toHaveAccessibleName("The details.");
+    expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
+    expect(screen.getByText("Panel")).toBeInTheDocument();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    // Back to it with the panel still open: no second click.
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Elsewhere."));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("The details."));
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("below sm, is a sheet with no arrow", () => {

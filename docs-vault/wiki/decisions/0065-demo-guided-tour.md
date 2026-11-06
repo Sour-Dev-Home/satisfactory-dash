@@ -238,3 +238,43 @@ tour.
 - **Reviews.** `test-hunter`: the popover could be placed off screen when the target was wholly outside the viewport;
   it now centres (regression test). `ui-reviewer` (diff only): nothing blocking; for PR 3, an Escape that works with
   focus on the page, and Tab reaching the target, on try-it steps.
+
+## Build note, PR 2 (2026-11-06): targets and steps 4-15
+
+- **Targets** (each `{...tour(id)}`, `{}` outside the demo; `e2e/build-output.spec.ts` still fails on any `data-tour` in
+  production): `power-chart` on the first circuit's history article (`power/PowerHistoryPanel.tsx`: the chart and its
+  production and consumption summary); `power-circuits` on the circuit cards' list (`power/PowerPanel.tsx`);
+  `factory-machines` on the machines section (`factory/FactoryPanel.tsx`); `factory-bottlenecks` on the bottleneck card
+  (`factory/BottleneckSummary.tsx`); `planner-canvas` on the graph's viewport, `planner-group-card` on one card's `<g>`
+  (the first card of a group of machines, picked in `planner/graph/SiteGraph.tsx` in the demo build only) and
+  `planner-group-panel` on the panel's `<aside>` (`planner/graph/GroupPanel.tsx`); `map-canvas` on the Leaflet host
+  (`map/MapCanvas.tsx`); `map-filters` on the layer checkboxes' fieldset (`map/MapPanel.tsx`); `settings-alerts` on the
+  alert settings' Rules part (`alerts/settings/AlertSettings.tsx`; the whole section is taller than a screen);
+  `settings-connection` on the section that links the game (`agent/AgentSettings.tsx`).
+- **Corrections to Context and "To check in build PR 2".** The planner's address keeps the opened factory path
+  (`?open=`), not the group panel, which is the canvas's own state, so no link reaches step 10. A step may now name
+  `openedBy` (a target): when its own target is not there, the tour clicks that one once it is ready, a bubbling click as
+  "Do it for me" will (TourHost, RTL test). Step 10 has `openedBy: "planner-group-card"`. And the Reinforced Iron Plate
+  group is a bubble of two assemblers that opens in place, with no panel. The planner steps open the Plastic line
+  instead, whose one group of machines is the oil refinery: steps 8-10 go to
+  `/app/planner?open=factory%7Cdesignation%7C6f1c2a4e-3b5d-4c7a-9e1f-0a2b3c4d5e6f` (`designatedKeyOf(DEMO_DESIGNATION_ID)`;
+  `steps.test.ts` checks it against `OPEN_PARAM` and the demo world).
+- **Phones.** Below `sm` the planner opens on its Outline (ADR-0050 Decision 4), with no canvas, card or panel, so steps
+  8-10 wait out `TOUR_TARGET_WAIT_MS` and show centred there, in words that stand alone. Open for the owner: accept the
+  three waits, or give those steps phone targets in the Outline.
+- **Words changed from the table.** 4: the chart shows power made against power used, not capacity. 5: "power plants"
+  for generators; "how much of its capacity is in use" is what each card says. 6: the machines are grouped by factory and
+  the filters are Backed up, Paused and No recipe (none for underfed), so the words say that. 7: "worst first, one line
+  each: underfed or backed up". 8: names the Plastic line. 9 (a Next step until PR 3): "Clicking a box opens its
+  details", naming the refinery. 10: "Escape closes it" dropped (with focus in the popover, Escape leaves the tour);
+  "Close puts it away". 11: the layers that are on at first. 12 (a Next step until PR 3): belts, pipes and power lines
+  start hidden. 13: "can send it to a Discord chat". 14, now "Connecting a game": the demo user is the server's owner
+  with no account methods, so the account part is one line ("You own Demo factory"); the target is the section that
+  links the game's add-on, renamed from `settings-account`. 15: "Restart it from this button".
+- **Tests.** `steps.test.ts` (15 steps, unique ids, at most 50 words each, every path a tab, every target marked in the
+  source, the planner link); `TourHost.test.tsx` (`openedBy` clicks once, and not again while open);
+  `SiteGraph.tour.test.tsx` (one marked card, a group of machines, whose click opens the marked panel);
+  `DemoApp.test.tsx` (the Power, Factory and Settings targets in the demo app). `e2e/demo/tour.spec.ts` walks all 15 with
+  Next at 1440 and 390: each heading, the ring round its target (or centred where expected), `[style]` 0 on the overlay,
+  axe on five steps, screenshots of four (new baselines, `npm run baselines`), and step 10 opening its panel by itself,
+  again after Back.

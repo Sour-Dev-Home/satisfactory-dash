@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { useQuery } from "@tanstack/react-query";
 import type { Bottleneck, FactoryBuilding, PlannerSite, ProductionGraph } from "@satisfactory-dash/shared";
 import { queries } from "../../api/queries";
+import { IS_DEMO } from "../../demo/mode";
+import { tour } from "../../demo/tour/target";
 import { cn } from "../../lib/cn";
 import { useSelectedServer } from "../../servers/ServerContext";
 import { useReducedMotion } from "../../overview/reducedMotion";
@@ -610,6 +612,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
   }, [layout, animate, runTween, cancelTween, settle]);
   // An open group that left the graph (a poll) shows no panel.
   const openNode = openKey === null || !laidByKey.has(openKey) ? undefined : nodeByKey.get(openKey);
+  // The demo tour's "Open a group" step (ADR-0065) points at the first card of a group of machines that opens a panel.
+  const tourCardKey = IS_DEMO ? layout.nodes.find((n) => n.card.kind === "group" && nodeByKey.get(n.key)?.kind === "machines")?.key : undefined;
   const clipped = clippedEdges(viewport, layout, stage);
   const overflowing = isClipped(clipped);
   // The floating card (the group panel, or a port's line list): from lg beside what was clicked, below lg across the
@@ -1482,6 +1486,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
           aria-keyshortcuts="+ - 0 ArrowUp ArrowDown ArrowLeft ArrowRight"
           onKeyDown={onKeyDown}
           className="relative min-w-0"
+          {...tour("planner-canvas")}
         >
           <svg
             ref={svgRef}
@@ -1586,6 +1591,7 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                   onCap={() => showCapDetail(n.card)}
                   detail={detail}
                   emphasised={lights.emphasised(n.key)}
+                  tourTarget={n.key === tourCardKey ? "planner-group-card" : undefined}
                 />
               ))}
               <EndLabels nodes={layout.nodes} lit={lit} detail={detail} lineOf={portLineIndex} onLabel={itemFocusOn ? onPortLabel : undefined} />
@@ -2461,6 +2467,7 @@ function CardView({
   onCap,
   detail,
   emphasised = false,
+  tourTarget,
 }: {
   node: LaidNode;
   finding: number;
@@ -2491,6 +2498,8 @@ function CardView({
   detail: BubbleDetail;
   /** ADR-0063 Decision 3, state 5: it makes the opened factory's product, so a heavier border (and its output ports' rings). */
   emphasised?: boolean | undefined;
+  /** The demo tour's step that points at this card (ADR-0065), if any. */
+  tourTarget?: string | undefined;
 }) {
   const card = n.card;
   if (card.machines?.open === true && machines !== undefined) {
@@ -2526,6 +2535,7 @@ function CardView({
       data-dim-kind="card"
       data-dim={dim ? "" : undefined}
       className="cursor-pointer"
+      {...(tourTarget === undefined ? {} : tour(tourTarget))}
     >
       <title>{card.description}</title>
       {/* A pile of cards behind a bubble or a fold: more than one thing is in it. */}
