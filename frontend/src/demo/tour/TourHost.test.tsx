@@ -239,6 +239,27 @@ describe("the demo's tour", () => {
     expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
   });
 
+  it("with the opener missing, falls back centred without clicking anything", async () => {
+    vi.useFakeTimers();
+    window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+    const onOpen = vi.fn();
+    const step: TourStep = { id: "panel", path: "/app", target: "panel", openedBy: "absent", title: "The details.", body: "Words.", kind: "next" };
+    render(
+      <MemoryRouter initialEntries={["/app"]}>
+        <DemoBanner />
+        <Routes>
+          <Route path="/app" element={<Openable onOpen={onOpen} />} />
+        </Routes>
+        <TourHost steps={[step, { ...step, id: "b", title: "Second." }]} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+    await act(() => vi.advanceTimersByTimeAsync(6000));
+    expect(dialog()).toHaveAccessibleName("The details.");
+    expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "fallback");
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
   it("from sm up, attaches the popover beside the target in a foreignObject, with an arrow", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} }));
     // jsdom has no layout: a 1440 x 900 viewport.
