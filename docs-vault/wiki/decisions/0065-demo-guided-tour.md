@@ -215,3 +215,26 @@ tour.
 - A real browser shows the blur with a hole does not work where it matters.
 - The tour's words have gone stale more than twice.
 - The tour is wanted in the production app (a new decision: real data, real first-time users).
+
+## Build note, PR 1 (2026-11-06): the engine and steps 1-3
+
+- **Browser check (Decision 2).** Playwright on a standalone page: Chromium dims and blurs everything but the hole, and
+  clicks in the hole reach the element; moving the path's `d` moves the hole. WebKit and Firefox: the hole, the dimming
+  and the clicks through it work; their blur could not be judged, since those Windows Playwright builds draw no
+  `backdrop-filter` at all, even with no clip, and `@supports` says yes. Whether a real Mac's Safari and a real
+  Firefox blur round the hole needs a look on a real device; if not, they are dim-only (the owner's answer 4).
+- **Decision 8 corrected.** `IS_DEMO ? lazy(import(...)) : null` still wrote the tour's chunk, with its words, into the
+  production build: the bundler does not fold the imported constant there. `Shell.tsx` also checks
+  `import.meta.env.MODE !== "production"`, and `build-output.spec.ts` fails if the chunk or its words reach production
+  (and checks the chunk is in the demo). The `data-tour` attribute never reaches production; the step ids passed to
+  `tour("...")` (such as `overview-health`) do, as plain strings with no effect.
+- **Decision 12.** `--color-scrim` already existed (the command bar's), so the tour reuses it. New: `--z-tour`,
+  `--blur-tour`, `--spacing-tour-pad`, `--spacing-tour-popover`, `--spacing-tour-sheet`.
+- **Steps.** Step 1, the welcome, has no target and shows centred at once (a step may now have none; `ui-reviewer`).
+  Step 3's target is the header's alerts bell, since the Overview has no alerts list. Its words now say "a machine that
+  has stopped working or power running short". The live region says only "Step N of M" (the focused heading says the
+  title). While the next step's target is awaited, the last step stays on screen so focus is not lost; a page change
+  made through the hole is never undone.
+- **Reviews.** `test-hunter`: the popover could be placed off screen when the target was wholly outside the viewport;
+  it now centres (regression test). `ui-reviewer` (diff only): nothing blocking; for PR 3, an Escape that works with
+  focus on the page, and Tab reaching the target, on try-it steps.
