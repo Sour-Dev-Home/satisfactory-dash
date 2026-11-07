@@ -309,4 +309,11 @@ tour.
   On try-it steps Tab wraps through the popover's buttons and the target. The SVG card takes no focus, so a step can name
   `keyTarget`, its keyboard path: `planner-group-card-key` on the card's visually hidden button. The live region says
   "Done. Step N of M" once on arriving by a try-it step, not a separate "Done.".
+- **Two fixes from CI's phone run.** (1) A late "lost": the last step's element, gone with its page, could be seen gone
+  on a frame after the next step's target was found but before React rendered it, which knocked the new step to the
+  centred fallback (step 13, Settings, on phones). A loss now counts only for the target currently set (a
+  deterministic RTL test runs that frame by hand). (2) On a phone the planner's canvas had the refinery card panned off
+  the screen: the ring was round it but nothing could be tapped (Do it for me worked, a real tap could not). A step's
+  `keyTarget` is now focused for an instant on arrival, so the planner pans to the card as it does for a keyboard user,
+  and focus goes straight back. The e2e walk checks every try-it target is on screen.
 - **Not done:** the ADR's pointer in "the demo's runbook": there is no demo runbook (`docs-vault/wiki/runbooks/`).

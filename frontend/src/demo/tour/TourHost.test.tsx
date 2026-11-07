@@ -239,6 +239,59 @@ describe("the demo's tour", () => {
     expect(dialog()).toHaveAccessibleName(TOUR_STEPS[0].title);
   });
 
+  it("a page change that removes the last step's target as the next step's appears leaves the next step highlighted", async () => {
+    window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+    function PowerPage() {
+      return (
+        <div data-page-reveal="revealed">
+          <section
+            data-tour="power-chart"
+            ref={(el) => {
+              if (el) el.getBoundingClientRect = rect(20, 100, 300, 200);
+            }}
+          >
+            Chart
+          </section>
+        </div>
+      );
+    }
+    render(
+      <MemoryRouter initialEntries={["/app"]}>
+        <DemoBanner />
+        <Routes>
+          <Route path="/app" element={<Overview />} />
+          <Route path="/app/power" element={<PowerPage />} />
+        </Routes>
+        <TourHost steps={[TOUR_STEPS[1], TOUR_STEPS[3]]} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+    await waitFor(() => expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing"));
+    // Frames under the test's hand, as a browser may run one between the next target's discovery and React's render.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const runFrames = () => {
+      for (const cb of frames.splice(0)) cb(0);
+    };
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Next" }));
+      // The new page is committed (the old card gone); the observer finds the chart in a microtask, before React renders.
+      await Promise.resolve();
+      await Promise.resolve();
+      runFrames(); // the old card's frame sees it gone
+      await act(async () => {
+        await Promise.resolve();
+      });
+      runFrames();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    await waitFor(() => expect(dialog()).toHaveAccessibleName(TOUR_STEPS[3].title));
+    expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
+    expect(document.querySelector("[data-tour-ring]")).not.toBeNull();
+  });
+
   it("shows a step centred with no highlight when its target never appears, and goes on", async () => {
     vi.useFakeTimers();
     window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");

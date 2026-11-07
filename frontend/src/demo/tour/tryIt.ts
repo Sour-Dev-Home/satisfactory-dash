@@ -75,6 +75,20 @@ export function tabStopOf(target: Element, keyTarget?: string): Focusable | null
   return inside !== null && isFocusable(inside) ? inside : null;
 }
 
+/**
+ * Brings a target the page draws (the planner's SVG card, which `scrollIntoView` cannot reach inside its pannable canvas)
+ * into view the way a keyboard user does: its keyboard path is focused, and the page pans to it on focus. Focus then goes
+ * straight back to where it was. Without this a phone's planner can leave the highlighted card off the screen.
+ */
+export function revealByKeyPath(keyTarget: string): void {
+  const el = document.querySelector(targetSelector(keyTarget));
+  if (el === null || !isFocusable(el)) return;
+  const back = document.activeElement;
+  el.focus({ preventScroll: true });
+  if (back instanceof HTMLElement || back instanceof SVGElement) back.focus({ preventScroll: true });
+  else el.blur();
+}
+
 /** Whether a key press in this element is typing (Escape there belongs to the field, not the tour). */
 export function isTypingField(el: EventTarget | null): boolean {
   if (el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) return true;

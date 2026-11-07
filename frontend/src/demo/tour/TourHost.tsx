@@ -8,7 +8,7 @@ import { AttachedPopover, SheetPopover } from "./Popover";
 import { Spotlight } from "./Spotlight";
 import { TOUR_STEPS, type TourStep } from "./steps";
 import { registerTourHost, startTour, stopTour, useTour } from "./tourStore";
-import { isTypingField, pressTarget, tabStopOf, watchDone } from "./tryIt";
+import { isTypingField, pressTarget, revealByKeyPath, tabStopOf, watchDone } from "./tryIt";
 import { findReadyTarget, targetSelector, TOUR_TARGET_WAIT_MS, waitForTarget } from "./waitForTarget";
 
 /** The banner's "Take the tour" button: where focus goes when the tour ends and where it was is gone. */
@@ -72,7 +72,7 @@ const sameBox = (a: Box | null, b: Box | null) =>
   a === b || (a !== null && b !== null && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height);
 
 /** The target's box, read every frame while it shows (a page fades in, the planner's canvas pans); `onLost` once it goes. */
-function useTargetBox(target: Element | null, onLost: () => void): Box | null {
+function useTargetBox(target: Element | null, onLost: (el: Element) => void): Box | null {
   const [box, setBox] = useState<Box | null>(null);
   const lost = useRef(onLost);
   useEffect(() => {
@@ -83,7 +83,7 @@ function useTargetBox(target: Element | null, onLost: () => void): Box | null {
     let frame = 0;
     const read = () => {
       if (!target.isConnected) {
-        lost.current();
+        lost.current(target);
         return;
       }
       const r = target.getBoundingClientRect();
@@ -114,6 +114,9 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     go.current = navigate;
   });
   const [target, setTarget] = useState<Element | null>(null);
+  // The target as last set, read by `onLost`: the previous step's element can be seen gone (its page unmounted) on a frame
+  // after the next step's target was found but before React rendered it, and must not knock the new step to fallback.
+  const targetRef = useRef<Element | null>(null);
 
   // Each step goes to its page, then waits for its target (Decision 4). The last step's box stays on screen meanwhile.
   useEffect(() => {
@@ -141,11 +144,16 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     open(0);
     const cancel = waitForTarget(own, {
       onFound: (el) => {
+        // A card drawn inside the planner's canvas is panned into view through its keyboard path first (a phone's canvas
+        // can leave it off the screen; the page cannot scroll it there).
+        if (step.keyTarget !== undefined) revealByKeyPath(step.keyTarget);
         if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "instant" });
+        targetRef.current = el;
         setTarget(el);
         dispatch({ type: "found" });
       },
       onTimeout: () => {
+        targetRef.current = null;
         setTarget(null);
         dispatch({ type: "timeout" });
       },
@@ -170,7 +178,9 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
   }, [step, steps]);
 
 
-  const onLost = useCallback(() => {
+  const onLost = useCallback((el: Element) => {
+    if (targetRef.current !== el) return;
+    targetRef.current = null;
     setTarget(null);
     dispatch({ type: "lost" });
   }, []);
@@ -204,15 +214,14 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
   const onDoForMe = useCallback(() => {
     if (trying === null) return;
     const index = state.index;
-    // Already ticked: nothing to press, so the step is as good as done.
-    if (trying instanceof HTMLElement && !pressTarget(trying)) {
+    // Focus waits on the heading (the button turns disabled; a panel that opens may take focus, as a real click's would).
+    document.querySelector<HTMLElement>("[data-tour-popover] h2")?.focus({ preventScroll: true });
+    // Pressed once only. Already ticked: nothing to press, so the step is as good as done.
+    if (!pressTarget(trying)) {
       dispatch({ type: "next" });
       return;
     }
     setPressedAt(index);
-    // The button goes once pressed: focus waits on the heading (a panel that opens may take it, as a real click's would).
-    document.querySelector<HTMLElement>("[data-tour-popover] h2")?.focus({ preventScroll: true });
-    pressTarget(trying);
   }, [trying, state.index]);
   // Do it for me pressed and nothing registered (the page did not answer): the step goes on as a Next step would.
   useEffect(() => {

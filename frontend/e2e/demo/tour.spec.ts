@@ -58,6 +58,8 @@ test("walks every step of the tour with Next, each ringing its target", async ({
     } else {
       await expect(root, step.id).toHaveAttribute("data-tour-phase", "showing");
       await expectRingRound(page, page.locator(`[data-tour="${step.target}"]`).first());
+      // A try-it step's target must be on screen to be tapped: a phone's planner canvas had the card panned off it.
+      if (step.kind === "try") await expect(page.locator(`[data-tour="${step.target}"]`).first()).toBeInViewport();
     }
     // Placed by attributes only (the CSP's style-src 'self', the repo's no-`style=` rule).
     await expect(page.locator("[data-tour-root][style], [data-tour-root] [style]")).toHaveCount(0);

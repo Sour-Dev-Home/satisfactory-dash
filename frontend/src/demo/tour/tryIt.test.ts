@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isTypingField, pressTarget, tabStopOf, watchDone } from "./tryIt";
+import { isTypingField, pressTarget, revealByKeyPath, tabStopOf, watchDone } from "./tryIt";
 
 const html = (markup: string) => {
   document.body.innerHTML = markup;
@@ -109,6 +109,20 @@ describe("tabStopOf", () => {
     expect(tabStopOf(document.getElementById("l")!)).toBe(document.getElementById("i"));
     expect(tabStopOf(document.getElementById("g")!)).toBeNull();
     expect(tabStopOf(document.getElementById("g")!, "key")).toBe(document.querySelector('[data-tour="key"]'));
+  });
+});
+
+describe("revealByKeyPath", () => {
+  it("focuses the keyboard path (the page pans to it on focus) and gives focus straight back", () => {
+    html(`<button id="here">Next</button><button data-tour="key" class="sr-only">Card</button>`);
+    const key = document.querySelector<HTMLButtonElement>('[data-tour="key"]')!;
+    const onFocus = vi.fn();
+    key.addEventListener("focus", onFocus);
+    const here = document.getElementById("here")!;
+    here.focus();
+    revealByKeyPath("key");
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(here);
   });
 });
 
