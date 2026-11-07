@@ -177,6 +177,30 @@ for (const how of ["a real click", "Do it for me"] as const) {
   });
 }
 
+// The Factory's filter bar sticks too (ADR-0062 F.4): while the tour pins the tab row, the bar sticks just under the row,
+// not beneath it, on a phone (its search row) and on a desktop (the whole bar). Fixed 2026-11-07.
+test("the Factory's sticky filter bar sticks under the tour's pinned tab row", async ({ page }) => {
+  test.setTimeout(90_000);
+  await walkTo(page, "factory-machines");
+  const row = page.locator(".tour-pin");
+  // From `sm` the whole bar sticks; on a phone only its search row (FactoryPanel.tsx's FilterBar).
+  const wide = (page.viewportSize()?.width ?? 0) >= 640;
+  const bar = wide ? page.locator("[data-filter-bar]") : page.locator("[data-filter-bar] > div:last-child");
+  // Scroll the bar's resting place 40 px past the pinned row's bottom, so the bar is stuck (unstuck, it would sit 40 px
+  // higher, and with no offset, at the top under the row).
+  await bar.evaluate((el) => {
+    const pinned = document.querySelector(".tour-pin")!.getBoundingClientRect().bottom;
+    window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top - pinned + 40, behavior: "instant" });
+  });
+  await expect
+    .poll(async () => {
+      const [r, b] = await Promise.all([row.boundingBox(), bar.boundingBox()]);
+      return r !== null && b !== null && b.y >= r.y + r.height - 1 && b.y <= r.y + r.height + 1;
+    }, { timeout: STEP_TIMEOUT })
+    .toBe(true);
+  await expect(page.locator("[data-tour-tab-ring]")).toBeInViewport();
+});
+
 const MAP_STEP = TOUR_STEPS.find((s) => s.id === "map-filters")!;
 /** `conveyorsLayer.id` (map/conveyorsLayer.tsx, a JSX module kept out of the spec; MapPanel.test.tsx uses the same id). */
 const conveyorsLayerId = "conveyors";

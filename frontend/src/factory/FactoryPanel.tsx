@@ -185,10 +185,10 @@ function FilterBar({ search, filters }: { search: ReactNode; filters: ReactNode 
   return (
     <div
       data-filter-bar=""
-      className="contents sm:sticky sm:top-0 sm:z-(--z-sticky) sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:border-b sm:border-line sm:bg-surface sm:py-2"
+      className="contents sm:sticky sm:top-sticky-top sm:z-(--z-sticky) sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-6 sm:gap-y-2 sm:border-b sm:border-line sm:bg-surface sm:py-2"
     >
       {filters}
-      <div className="flex items-center max-sm:sticky max-sm:top-0 max-sm:z-(--z-sticky) max-sm:border-b max-sm:border-line max-sm:bg-surface max-sm:py-2">
+      <div className="flex items-center max-sm:sticky max-sm:top-sticky-top max-sm:z-(--z-sticky) max-sm:border-b max-sm:border-line max-sm:bg-surface max-sm:py-2">
         {search}
       </div>
     </div>

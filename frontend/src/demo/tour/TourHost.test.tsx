@@ -950,6 +950,65 @@ describe("moving to a new page, and which tab a step is on", () => {
     }
   });
 
+  it("publishes the pinned row's height in a constructed stylesheet while it runs, for a page's sticky bar, and removes it on exit", async () => {
+    // jsdom has no adoptedStyleSheets or ResizeObserver: a plain array, and an observer that measures once on observe.
+    Object.defineProperty(document, "adoptedStyleSheets", { configurable: true, writable: true, value: [] });
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        readonly callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+        }
+        observe() {
+          this.callback();
+        }
+        disconnect() {}
+      },
+    );
+    function Pinned() {
+      return (
+        <div data-page-reveal="revealed">
+          <div
+            className={TOUR_PIN_CLASS}
+            ref={(el) => {
+              if (el) el.getBoundingClientRect = rect(0, 0, 390, 109.5);
+            }}
+          >
+            <a href="/app" data-tour="tab-overview">
+              Overview
+            </a>
+          </div>
+        </div>
+      );
+    }
+    const step: TourStep = { id: "welcome", path: "/app", title: "Hello.", body: "Words.", kind: "next" };
+    const sheets = () => document.adoptedStyleSheets.flatMap((s) => [...s.cssRules].map((r) => r.cssText)).join(" ");
+    try {
+      window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+      render(
+        <MemoryRouter initialEntries={["/app"]}>
+          <DemoBanner />
+          <Routes>
+            <Route path="/app" element={<Pinned />} />
+          </Routes>
+          <Host steps={[step]} />
+        </MemoryRouter>,
+      );
+      expect(document.adoptedStyleSheets).toHaveLength(0);
+      fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Hello."));
+      expect(sheets()).toContain("--tour-pin-height: 109.5px");
+      // Nothing written as a style attribute (the CSP's style-src 'self').
+      expect(document.documentElement).not.toHaveAttribute("style");
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Skip tour" }));
+      expect(document.adoptedStyleSheets).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(document, "adoptedStyleSheets");
+    }
+  });
+
   it("warms the tour's pages once as it starts, with the app's query client and server", async () => {
     const warm = vi.fn();
     const client = new QueryClient();
