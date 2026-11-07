@@ -602,7 +602,8 @@ describe("the tour's try-it steps", () => {
       expect(dialog()).toHaveAccessibleDescription("Done: drawn on the map.");
       expect(within(dialog()).getByText("Overview tab · Step 1 of 2")).toBeInTheDocument();
       ringOnCanvas();
-      expect(within(dialog()).queryByRole("button", { name: "Do it for me" })).not.toBeInTheDocument();
+      // Still there, disabled, so the button row does not shift (ui-reviewer).
+      expect(within(dialog()).getByRole("button", { name: "Do it for me" })).toBeDisabled();
       expect(screen.getByRole("status")).toHaveTextContent(/^Done\. Overview tab · Step 1 of 2$/);
       // No moving on by itself.
       await new Promise((r) => setTimeout(r, 50));

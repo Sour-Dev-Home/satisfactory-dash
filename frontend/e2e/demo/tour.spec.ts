@@ -189,7 +189,8 @@ async function expectResult(page: Page, dialog: Locator, at: number, words: "bod
   await expect(dialog.getByText(stepLine(at + 1, TOUR_STEPS.length, tabLabel(MAP_STEP.path)))).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Belts and pipes" })).toBeChecked();
   await expectRingRound(page, page.locator(`[data-tour="${result.target}"]`).first());
-  await expect(dialog.getByRole("button", { name: "Do it for me" })).toHaveCount(0);
+  // Kept, disabled, so the button row does not shift under the pointer.
+  await expect(dialog.getByRole("button", { name: "Do it for me" })).toBeDisabled();
   await expect(page).toHaveURL(new RegExp(`${MAP_STEP.path}$`));
   const next = TOUR_STEPS.at(at + 1)!;
   await dialog.getByRole("button", { name: "Next" }).click();

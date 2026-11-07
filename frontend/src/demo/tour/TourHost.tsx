@@ -397,7 +397,8 @@ function TourRun({
     return () => clearTimeout(timer);
   }, [pressedAt, state.index, inResult]);
   // Shown, disabled, while the result settles; gone once it shows (Next is then the one thing to press).
-  const offerDoForMe = step.doForMe === true && showingThis && (trying !== null || (resultHere !== null && !resultHere.shown));
+  // It stays, disabled, through the result too, so the button row never shifts under the pointer (ui-reviewer).
+  const offerDoForMe = step.doForMe === true && showingThis && (trying !== null || resultHere !== null);
   const doForMePressed = pressedAt === state.index || inResult;
   const resultWords =
     resultHere?.shown === true && step.result !== undefined
