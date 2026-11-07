@@ -8,7 +8,7 @@ import { targetSelector } from "./waitForTarget";
  * - `appears`: an element with that `data-tour` that was not there when the watch began (so Back onto a step whose panel
  *   is still open does not finish it again at once).
  * - `changes`: a `change` event on or inside an element with that `data-tour` (seen in the capture phase, so a page
- *   handler that stops it cannot hide it).
+ *   handler that stops it cannot hide it); a checkbox's counts only when it ticks, never when it unticks.
  */
 export function watchDone(done: TourDone, onDone: () => void): () => void {
   let finished = false;
@@ -31,7 +31,10 @@ export function watchDone(done: TourDone, onDone: () => void): () => void {
   } else {
     const selector = targetSelector(done.changes);
     const onChange = (e: Event) => {
-      if (e.target instanceof Element && e.target.closest(selector) !== null) finish();
+      if (!(e.target instanceof Element) || e.target.closest(selector) === null) return;
+      // The steps ask to tick a box: unticking one (a box the map remembered ticked) is not doing it.
+      if (e.target instanceof HTMLInputElement && e.target.type === "checkbox" && !e.target.checked) return;
+      finish();
     };
     document.addEventListener("change", onChange, true);
     stop = () => document.removeEventListener("change", onChange, true);

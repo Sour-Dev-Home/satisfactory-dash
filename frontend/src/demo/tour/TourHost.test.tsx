@@ -490,6 +490,14 @@ function TryPage({ onCard }: { onCard: () => void }) {
         <input type="checkbox" />
         Belts and pipes
       </label>
+      <div
+        data-tour="canvas"
+        ref={(el) => {
+          if (el) el.getBoundingClientRect = rect(400, 300, 500, 400);
+        }}
+      >
+        Map
+      </div>
     </div>
   );
 }
@@ -569,6 +577,89 @@ describe("the tour's try-it steps", () => {
     fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
     expect(box).toBeChecked();
     await waitFor(() => expect(within(dialog()).getByText("Overview tab · Step 4 of 4")).toBeInTheDocument());
+  });
+
+  describe("with a result (the map's layer step)", () => {
+    const WITH_RESULT: TourStep = {
+      ...TOGGLE,
+      result: { target: "canvas", title: "Drawn.", body: "Done: drawn on the map.", already: "Already drawn on the map." },
+    };
+    const NEXT: TourStep = { id: "next", path: "/app", target: "card", title: "Settings next.", body: "Words.", kind: "next" };
+    const box = () => screen.getByRole("checkbox", { name: "Belts and pipes" });
+    const ring = () => document.querySelector("[data-tour-ring]");
+    // The canvas's box (400, 300, 500 x 400) padded by 8.
+    const ringOnCanvas = () => {
+      expect(ring()).toHaveAttribute("x", "392");
+      expect(ring()).toHaveAttribute("y", "292");
+      expect(ring()).toHaveAttribute("width", "516");
+    };
+
+    it("ticking the box stays on the step: the ring moves to the map, the words say it is done, Do it for me goes; Next moves on", async () => {
+      renderTry([WITH_RESULT, NEXT]);
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+      fireEvent.click(box());
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Drawn."));
+      expect(dialog()).toHaveAccessibleDescription("Done: drawn on the map.");
+      expect(within(dialog()).getByText("Overview tab · Step 1 of 2")).toBeInTheDocument();
+      ringOnCanvas();
+      expect(within(dialog()).queryByRole("button", { name: "Do it for me" })).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(/^Done\. Overview tab · Step 1 of 2$/);
+      // No moving on by itself.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(dialog()).toHaveAccessibleName("Drawn.");
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Settings next."));
+      expect(screen.getByRole("status")).toHaveTextContent(/^Overview tab · Step 2 of 2$/);
+    });
+
+    it("Do it for me ticks the box and shows the same result", async () => {
+      renderTry([WITH_RESULT, NEXT]);
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
+      expect(box()).toBeChecked();
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Drawn."));
+      expect(dialog()).toHaveAccessibleDescription("Done: drawn on the map.");
+      ringOnCanvas();
+    });
+
+    it("with the box already ticked, the step still asks; Do it for me never unticks it and says it is already drawn", async () => {
+      renderTry([WITH_RESULT, NEXT]);
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+      // Ticked before the step (the map remembers its layers): set without a change event.
+      (box() as HTMLInputElement).checked = true;
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
+      expect(box()).toBeChecked();
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Drawn."));
+      expect(dialog()).toHaveAccessibleDescription("Already drawn on the map.");
+      ringOnCanvas();
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Settings next."));
+    });
+
+    it("unticking a ticked box is not doing the step; ticking it again is", async () => {
+      renderTry([WITH_RESULT, NEXT]);
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+      (box() as HTMLInputElement).checked = true;
+      fireEvent.click(box()); // unticks
+      await new Promise((r) => setTimeout(r, 50));
+      expect(dialog()).toHaveAccessibleName("Choose what to see.");
+      fireEvent.click(box()); // ticks
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Drawn."));
+    });
+
+    it("Back from the result shows the step asking again", async () => {
+      renderTry([NEXT, WITH_RESULT]);
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Settings next."));
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+      fireEvent.click(box());
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Drawn."));
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Back" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Settings next."));
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+      expect(within(dialog()).getByRole("button", { name: "Do it for me" })).toBeEnabled();
+    });
   });
 
   it("when nothing happens, Next still moves on (and the next step's opener opens the panel)", async () => {

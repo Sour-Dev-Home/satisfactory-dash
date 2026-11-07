@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { stepLine, tabLabel, TOUR_STEPS } from "../../src/demo/tour/steps";
 import { tabTarget } from "../../src/demo/tour/tabTarget";
+import { DEFAULT_FILTERS, MAP_FILTERS_KEY, serializeFilters } from "../../src/map/mapFilters";
 import { expect, expectNoAxeViolations, test } from "../fixtures";
 
 // The guided tour of the demo (ADR-0065, build PR 2): started by itself on the first visit to /app (no "demo.tour" set
@@ -164,18 +165,48 @@ for (const how of ["a real click", "Do it for me"] as const) {
     await expect(page.getByRole("status").filter({ hasText: /Step \d+ of/ })).toHaveText(`Done. ${stepLine(at + 2, TOUR_STEPS.length, tabLabel(TOUR_STEPS.at(at + 1)!.path))}`);
   });
 
-  test(`the map's layer step moves on after ${how}`, async ({ page }) => {
+  // The map's step has a result (ADR-0065 Decision 6, amended 2026-11-07): it stays, showing the layer drawn, until Next.
+  test(`the map's layer step shows the layer drawn after ${how}, then Next goes on`, async ({ page }) => {
     test.setTimeout(120_000);
     const { dialog, at } = await walkTo(page, "map-filters");
     const box = page.getByRole("checkbox", { name: "Belts and pipes" });
     await expect(box).not.toBeChecked();
     if (how === "a real click") await box.click();
     else await dialog.getByRole("button", { name: "Do it for me" }).click();
-    const next = TOUR_STEPS.at(at + 1)!;
-    await expect(dialog).toHaveAccessibleName(next.title, { timeout: STEP_TIMEOUT });
-    await expect(page).toHaveURL(new RegExp(`${next.path}$`));
+    await expectResult(page, dialog, at, "body");
   });
 }
+
+const MAP_STEP = TOUR_STEPS.find((s) => s.id === "map-filters")!;
+/** `conveyorsLayer.id` (map/conveyorsLayer.tsx, a JSX module kept out of the spec; MapPanel.test.tsx uses the same id). */
+const conveyorsLayerId = "conveyors";
+
+/** On the map step's result: its words, the ring round the map, still on this step; then Next goes to Settings. */
+async function expectResult(page: Page, dialog: Locator, at: number, words: "body" | "already"): Promise<void> {
+  const result = MAP_STEP.result!;
+  await expect(dialog).toHaveAccessibleName(result.title ?? MAP_STEP.title, { timeout: STEP_TIMEOUT });
+  await expect(dialog).toHaveAccessibleDescription(result[words]);
+  await expect(dialog.getByText(stepLine(at + 1, TOUR_STEPS.length, tabLabel(MAP_STEP.path)))).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Belts and pipes" })).toBeChecked();
+  await expectRingRound(page, page.locator(`[data-tour="${result.target}"]`).first());
+  await expect(dialog.getByRole("button", { name: "Do it for me" })).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`${MAP_STEP.path}$`));
+  const next = TOUR_STEPS.at(at + 1)!;
+  await dialog.getByRole("button", { name: "Next" }).click();
+  await expect(dialog).toHaveAccessibleName(next.title, { timeout: STEP_TIMEOUT });
+  await expect(page).toHaveURL(new RegExp(`${next.path}$`));
+}
+
+test("the map's layer step, with the box already ticked (the map remembers it): Do it for me never unticks it, and says so", async ({ page }) => {
+  test.setTimeout(120_000);
+  // The map's remembered choices with Belts and pipes on, as an earlier visit leaves them.
+  const ticked = serializeFilters({ ...DEFAULT_FILTERS, layers: new Map([[conveyorsLayerId, true]]) });
+  await page.addInitScript(([key, value]) => window.localStorage.setItem(key, value), [MAP_FILTERS_KEY, ticked] as const);
+  const { dialog, at } = await walkTo(page, "map-filters");
+  await expect(page.getByRole("checkbox", { name: "Belts and pipes" })).toBeChecked();
+  await dialog.getByRole("button", { name: "Do it for me" }).click();
+  await expectResult(page, dialog, at, "already");
+});
 
 test("the planner's details step opens the group panel itself when Next skipped the click", async ({ page }) => {
   test.setTimeout(60_000);
