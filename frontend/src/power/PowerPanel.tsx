@@ -1,6 +1,7 @@
 import { ownValue, type PowerCircuit, type PowerCircuitStatus, type PowerResponse } from "@satisfactory-dash/shared";
 import { PanelAge } from "../components/DataAge";
 import { formatMW, formatMWh, formatPercent, formatTime, roundForDisplay } from "../format";
+import { tour } from "../demo/tour/target";
 import { circuitAnchor, isCircuitAnchor } from "../lib/deepLinks";
 import { useHashTarget } from "../lib/useHashTarget";
 
@@ -51,7 +52,7 @@ export function PowerPanel({ snapshot, refetchFailed = false }: { snapshot: Powe
       {circuits.length === 0 ? (
         <p>No power circuits yet.</p>
       ) : (
-        <ul className="circuits">
+        <ul className="circuits" {...tour("power-circuits")}>
           {ordered.map((circuit) => (
             <li key={circuit.circuitGroupId}>
               {/* ADR-0064: one healthy circuit needs no name on screen ("Circuit 0" says nothing then). */}

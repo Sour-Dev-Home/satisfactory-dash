@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { tour } from "../demo/tour/target";
 import type { MapContext } from "./layers";
 import { drawGrid } from "./grid";
 import { mapBounds, project, unproject, type BaseMapConfig } from "./projection";
@@ -143,6 +144,7 @@ export default function MapCanvas({
       role="application"
       aria-label="Factory map. Arrow keys pan, plus and minus zoom."
       className="map-canvas h-map min-h-map-min w-full rounded-card border border-line"
+      {...tour("map-canvas")}
     />
   );
 }

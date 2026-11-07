@@ -70,6 +70,33 @@ describe("the demo app", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("marks the guided tour's targets on Power, Factory and Settings (ADR-0065 build PR 2)", async () => {
+    renderWithClient(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Enter demo" }, FIRST_RENDER));
+    const nav = await screen.findByRole("navigation", { name: "Main" }, FIRST_RENDER);
+    const target = (id: string) => document.querySelector(`[data-tour="${id}"]`);
+
+    fireEvent.click(within(nav).getByRole("link", { name: "Power" }));
+    expect(await screen.findByRole("article", { name: "Circuit 0 history" })).toBe(target("power-chart"));
+    expect(document.querySelectorAll('[data-tour="power-chart"]')).toHaveLength(1);
+    expect(within(target("power-circuits") as HTMLElement).getByRole("article", { name: "Circuit 0" })).toBeInTheDocument();
+
+    fireEvent.click(within(nav).getByRole("link", { name: "Factory" }));
+    expect(await screen.findByRole("region", { name: "Factory" })).toBe(target("factory-machines"));
+    expect(await screen.findByRole("region", { name: "Bottlenecks" })).toBe(target("factory-bottlenecks"));
+
+    fireEvent.click(within(nav).getByRole("link", { name: "Settings" }));
+    // The first rule (the power outage's) and the agent's status rows: the whole parts are taller than a phone.
+    const rules = await screen.findByRole("group", { name: "Rules" });
+    const [firstRule] = await within(rules).findAllByRole("article");
+    expect(firstRule).toBe(target("settings-alerts"));
+    expect(firstRule).toHaveAccessibleName(/Power outage/);
+    expect(document.querySelectorAll('[data-tour="settings-alerts"]')).toHaveLength(1);
+    const agent = screen.getByRole("region", { name: "Game PC agent" });
+    expect(target("settings-connection")?.tagName).toBe("DL");
+    expect(agent).toContainElement(target("settings-connection") as HTMLElement);
+  });
+
   it("signs out to 'Enter demo' again", async () => {
     renderWithClient(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Enter demo" }));

@@ -4,6 +4,7 @@ import { isBackedUpState, type Factory, type FactoryResponse } from "@satisfacto
 import { queries } from "../api/queries";
 import { ApiError } from "../api/errors";
 import { describeError } from "../components/ErrorNotice";
+import { tour } from "../demo/tour/target";
 import { formatPercent } from "../format";
 import { Loadable, Skeleton, SkeletonLine, SkeletonStatus } from "../ui/Skeleton";
 import { buildingsLayer, placed } from "./buildingsLayer";
@@ -296,7 +297,7 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
         Factory map
       </h3>
       {/* Three columns on a phone, so no label wraps on its own; a row from the small breakpoint up. */}
-      <fieldset className="grid grid-cols-3 gap-x-2 gap-y-2 sm:flex sm:flex-wrap sm:items-center sm:gap-x-6">
+      <fieldset className="grid grid-cols-3 gap-x-2 gap-y-2 sm:flex sm:flex-wrap sm:items-center sm:gap-x-6" {...tour("map-filters")}>
         <legend className="sr-only">Layers</legend>
         {LAYERS.map((layer) => (
           <label key={layer.id} className="flex min-h-touch items-center gap-2">

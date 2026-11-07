@@ -33,7 +33,7 @@ export function RulesEditor({
       {rules.length === 0 ? (
         <p>No alert rules yet.</p>
       ) : (
-        rules.map((rule) => (
+        rules.map((rule, i) => (
           // Keyed by updatedAt: once a save lands, the parent's fresh rule resets the card's draft.
           <RuleCard
             key={`${rule.id}-${rule.updatedAt}`}
@@ -42,6 +42,8 @@ export function RulesEditor({
             canEdit={canEdit}
             onUpdate={onUpdate}
             onDelete={onDelete}
+            // The demo tour's "Be told, don't watch" step (ADR-0065): the first rule, not the whole list (taller than a phone).
+            tourTarget={i === 0 ? "settings-alerts" : undefined}
           />
         ))
       )}

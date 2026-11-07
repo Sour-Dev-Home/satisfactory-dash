@@ -8,7 +8,7 @@ import { AttachedPopover, SheetPopover } from "./Popover";
 import { Spotlight } from "./Spotlight";
 import { TOUR_STEPS, type TourStep } from "./steps";
 import { registerTourHost, startTour, stopTour, useTour } from "./tourStore";
-import { targetSelector, waitForTarget } from "./waitForTarget";
+import { findReadyTarget, targetSelector, waitForTarget } from "./waitForTarget";
 
 /** The banner's "Take the tour" button: where focus goes when the tour ends and where it was is gone. */
 export const BANNER_TOUR_TARGET = "demo-banner-tour";
@@ -120,7 +120,25 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     if (here.current !== want) void go.current(want);
     // A step about the whole page has no target: the reducer shows it centred at once, so nothing is awaited.
     if (step.target === undefined) return undefined;
-    return waitForTarget(step.target, {
+    const own = step.target;
+    // A target only clicks show (the planner's Graph view, then its group panel; the address keeps neither): each opener
+    // in turn, once ready, gets a bubbling click (as "Do it for me" does), unless the target or a later opener is there.
+    const openers = step.openedBy === undefined ? [] : typeof step.openedBy === "string" ? [step.openedBy] : step.openedBy;
+    let opening: (() => void) | undefined;
+    const open = (i: number) => {
+      const id = openers.at(i);
+      if (id === undefined) return;
+      opening = waitForTarget(id, {
+        onFound: (el) => {
+          const later = [own, ...openers.slice(i + 1)];
+          if (later.every((t) => findReadyTarget(t) === null)) el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+          open(i + 1);
+        },
+        onTimeout: () => open(i + 1),
+      });
+    };
+    open(0);
+    const cancel = waitForTarget(own, {
       onFound: (el) => {
         if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "instant" });
         setTarget(el);
@@ -131,6 +149,10 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
         dispatch({ type: "timeout" });
       },
     });
+    return () => {
+      opening?.();
+      cancel();
+    };
   }, [step]);
 
   const onLost = useCallback(() => {

@@ -9,6 +9,7 @@ import {
 } from "@satisfactory-dash/shared";
 import { formatPercent, formatRate, formatTime } from "../format";
 import { PanelAge } from "../components/DataAge";
+import { tour } from "../demo/tour/target";
 import { cn } from "../lib/cn";
 import { MACHINES_ANCHOR, type FactoryStateFilter } from "../lib/deepLinks";
 import { useHashTarget } from "../lib/useHashTarget";
@@ -110,6 +111,7 @@ export function FactoryPanel({
       aria-labelledby="factory-heading"
       className="panel scroll-mt-4"
       data-stale={snapshot.unreachableSince !== undefined ? "" : undefined}
+      {...tour("factory-machines")}
     >
       <h3 id="factory-heading">Factory</h3>
       {snapshot.stale && <p>Showing last known factory data from {formatTime(snapshot.observedAt)}.</p>}

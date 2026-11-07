@@ -2,6 +2,7 @@ import { BOTTLENECKS_DEFAULT_LIMIT, type Bottlenecks } from "@satisfactory-dash/
 import { useId, useState, type ComponentProps, type ReactNode } from "react";
 import { useLocation, useNavigationType } from "react-router";
 import { PanelError } from "../components/PanelError";
+import { tour } from "../demo/tour/target";
 import { cn } from "../lib/cn";
 import { hashId, useHashTarget } from "../lib/useHashTarget";
 import { Loadable, Skeleton, SkeletonStatus } from "../ui/Skeleton";
@@ -119,7 +120,7 @@ export function BottleneckSummary({ data: read }: { data: Bottlenecks }) {
   );
   return (
     // A fixed region name: the heading's count changes with every poll.
-    <Frame aria-label="Bottlenecks" data-bottleneck-summary="" head={head}>
+    <Frame aria-label="Bottlenecks" data-bottleneck-summary="" head={head} {...tour("factory-bottlenecks")}>
       <div id={`${ids}-body`} className="grid min-w-0 grid-cols-1">
         {open && full ? (
           // The `#bottlenecks` target: a link jumps here and focuses it (useHashTarget), so it is a group named by the heading.

@@ -2,6 +2,7 @@ import { useEffect, useRef, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Bottleneck, PlannerNode } from "@satisfactory-dash/shared";
 import { queries } from "../../api/queries";
+import { tour } from "../../demo/tour/target";
 import { cn } from "../../lib/cn";
 import { useSelectedServer } from "../../servers/ServerContext";
 import { BottleneckBadge } from "../BottleneckBadge";
@@ -71,7 +72,7 @@ export function GroupPanel({
   const label = groupLabel(withName(node));
 
   return (
-    <aside id={id} aria-labelledby={`${id}-heading`} onKeyDown={onKeyDown} className="flex h-full flex-col">
+    <aside id={id} aria-labelledby={`${id}-heading`} onKeyDown={onKeyDown} className="flex h-full flex-col" {...tour("planner-group-panel")}>
       <div data-overlay-header="" className="flex shrink-0 items-start justify-between gap-2 border-b border-transparent px-4 pt-4 pb-2 group-data-scrolled:border-line">
         <div className="flex min-w-0 items-center gap-2">
           {icon !== undefined && <img src={icon} alt="" width={64} height={64} className="size-building-icon shrink-0 rounded-card bg-icon-chip" />}

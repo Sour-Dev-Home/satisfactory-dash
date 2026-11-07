@@ -8,6 +8,7 @@ import { useAgentWrites, type EnrollmentCode } from "../api/agentWrites";
 import { apiHref } from "../api/client";
 import { queries } from "../api/queries";
 import { CopyButton } from "../components/CopyButton";
+import { tour } from "../demo/tour/target";
 import { DANGER_BUTTON, DANGER_BUTTON_QUIET } from "../components/dangerButton";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { formatTime } from "../format";
@@ -224,7 +225,8 @@ export function AgentPanel({
   const words = senderWords(devAgent);
   return (
     <>
-      <dl className="mb-0">
+      {/* The demo tour's "Connecting a game" step (ADR-0065): the status rows, not the whole section (taller than a phone). */}
+      <dl className="mb-0" {...tour("settings-connection")}>
         <dt>Reached</dt>
         <dd>{connectionText(agent.connectionKind, devAgent)}</dd>
         <dt>{words.label}</dt>
