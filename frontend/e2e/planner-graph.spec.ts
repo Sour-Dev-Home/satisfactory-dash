@@ -333,7 +333,12 @@ test.describe("the factory canvas", () => {
     const layerMotion = page.locator("[data-march-layer] animateMotion");
     for (const mode of ["train", "truck", "drone", "depot"]) await expect(stack.locator(`[data-glyph="${mode}"]`)).toHaveCount(1);
     await expect(svg.locator("[data-double]")).toHaveCount(4);
-    // Only the edges in view move (on a phone most of the four lie past the fitted canvas), so at least one does.
+    // Only a lit transport in the settled view moves. On a phone the fitted view (at its zoom floor, anchored left) holds just
+    // the Miner's train, which is dimmed as outside the home site, so nothing moves there: zoom out until the others are in
+    // view. (Asserting at the fitted view passed only while the first render's view, fitted to the fallback stage before the
+    // canvas was measured, was still the settled one.)
+    await page.getByRole("group", { name: /^Graph viewport/ }).focus();
+    for (let i = 0; i < 10; i++) await page.keyboard.press("Minus");
     await expect.poll(() => layerMotion.count()).toBeGreaterThanOrEqual(1);
     await expect(svg.locator("animateMotion")).toHaveCount(0);
     await expect(stack.locator("[style]")).toHaveCount(0);
