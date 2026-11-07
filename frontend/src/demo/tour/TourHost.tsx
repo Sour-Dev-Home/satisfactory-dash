@@ -6,7 +6,7 @@ import { whenIdle } from "../../lib/idle";
 import { ServerContext } from "../../servers/ServerContext";
 import { initialTourState, isLastStep, tourReducer } from "./controller";
 import { markTourSeen, shouldAutoStart } from "./persistence";
-import { padBox, SHEET_MAX_SHARE, sheetAtTop, type Box, type Size } from "./placePopover";
+import { padBox, scrollToShow, SHEET_MAX_SHARE, sheetAtTop, type Box, type Size } from "./placePopover";
 import { AttachedPopover, SheetPopover } from "./Popover";
 import { Spotlight } from "./Spotlight";
 import { stepLine, tabLabel, TOUR_STEPS, type TourStep } from "./steps";
@@ -160,6 +160,30 @@ function useTabBox(path: string | null, step: number | null): Box | null {
   return path === null || read === null || read.path !== path || read.step !== step ? null : read.box;
 }
 
+/**
+ * Scrolls a step's target into view, instantly (ADR-0065 amendment, 2026-11-07). Where the padded target and its page's
+ * tab fit on screen together (leaving a phone's bottom sheet clear), the page moves the least that shows both, so the
+ * tab's hole is seen; otherwise the target is centred as before, and the step line still names the tab.
+ */
+function bringIntoView(el: Element, path: string): void {
+  const pad = tokenPx("--spacing-tour-pad", 8);
+  const r = el.getBoundingClientRect();
+  const target = padBox({ x: r.x, y: r.y, width: r.width, height: r.height }, pad);
+  const tabEl = document.querySelector(targetSelector(tabTarget(path)));
+  const t = tabEl?.getBoundingClientRect();
+  const tab = t === undefined || t.width <= 0 || t.height <= 0 ? null : { x: t.x, y: t.y, width: t.width, height: t.height };
+  const height = document.documentElement.clientHeight;
+  const wide = typeof window.matchMedia === "function" && window.matchMedia(WIDE_QUERY).matches;
+  // A phone's sheet sits at the bottom while the target is in the top 60% of the screen, which fitting it there keeps so.
+  const reserve = { top: 0, bottom: wide ? 0 : height * SHEET_MAX_SHARE };
+  const to = scrollToShow(target, tab, height, window.scrollY, reserve);
+  if (to === null) {
+    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "instant" });
+    return;
+  }
+  if (Math.abs(to - window.scrollY) >= 1) window.scrollTo({ top: to, behavior: "instant" });
+}
+
 function TourRun({
   steps,
   settleMs,
@@ -242,7 +266,7 @@ function TourRun({
         // A card drawn inside the planner's canvas is panned into view through its keyboard path first (a phone's canvas
         // can leave it off the screen; the page cannot scroll it there).
         if (step.keyTarget !== undefined) revealByKeyPath(step.keyTarget);
-        if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "instant" });
+        bringIntoView(el, step.path);
         targetRef.current = el;
         setTarget(el);
         dispatch({ type: "found" });

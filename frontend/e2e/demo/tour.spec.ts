@@ -97,7 +97,7 @@ test("walks every step of the tour with Next, each ringing its target", async ({
   for (const [i, step] of TOUR_STEPS.entries()) {
     await expect(dialog, `step ${i + 1}`).toHaveAccessibleName(step.title, { timeout: STEP_TIMEOUT });
     // The step line names the tab its page is on.
-    await expect(dialog.getByText(`Step ${i + 1} of ${TOUR_STEPS.length} · ${tabLabel(step.path)}`)).toBeVisible();
+    await expect(dialog.getByText(stepLine(i + 1, TOUR_STEPS.length, tabLabel(step.path)))).toBeVisible();
     // On a phone too: step 8 presses the planner's Graph button first (its Outline is the phone's default).
     const centred = CENTRED.has(step.id);
     if (centred) {
@@ -113,6 +113,12 @@ test("walks every step of the tour with Next, each ringing its target", async ({
     }
     // Every step, the welcome and the finish included, shows which tab it is on: its tab in a second hole.
     await expectTabHole(page, step.path);
+    // The chart sits below the fold at 1440 x 900: the page is scrolled only as far as keeps the nav, and so the tab's hole,
+    // on screen (centring the chart had scrolled it away).
+    if (step.id === "power-chart" && (page.viewportSize()?.width ?? 0) >= 1440) {
+      await expect(page.locator("[data-tour-tab-ring]")).toBeInViewport();
+      await expect(page.locator(`[data-tour="${tabTarget(step.path)}"]`)).toBeInViewport({ ratio: 1 });
+    }
     // Placed by attributes only (the CSP's style-src 'self', the repo's no-`style=` rule).
     await expect(page.locator("[data-tour-root][style], [data-tour-root] [style]")).toHaveCount(0);
     if (AXE_STEPS.has(step.id)) await expectNoAxeViolations(page, testInfo);
@@ -154,7 +160,7 @@ for (const how of ["a real click", "Do it for me"] as const) {
     await expect(panel).toBeVisible();
     await expect(page.locator("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
     await expectRingRound(page, panel);
-    await expect(page.getByRole("status").filter({ hasText: /Step \d+ of/ })).toHaveText(`Done. ${stepLine(at + 2, TOUR_STEPS.length, tabLabel(TOUR_STEPS[at + 1].path))}`);
+    await expect(page.getByRole("status").filter({ hasText: /Step \d+ of/ })).toHaveText(`Done. ${stepLine(at + 2, TOUR_STEPS.length, tabLabel(TOUR_STEPS.at(at + 1)!.path))}`);
   });
 
   test(`the map's layer step moves on after ${how}`, async ({ page }) => {

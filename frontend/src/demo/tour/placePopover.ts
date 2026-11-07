@@ -129,6 +129,32 @@ export function sheetAtTop(target: Box | null, viewport: Size): boolean {
   return target !== null && target.y + target.height / 2 > viewport.height * 0.6;
 }
 
+/**
+ * Where to scroll the page (a new `scrollY`) so a step's padded target and its page's tab in the top nav are both in view
+ * (ADR-0065 amendment, 2026-11-07: centring a target below the fold scrolled the nav, and the tab's hole, off screen).
+ * Boxes are in viewport px at the current `scrollY`. `reserve` is what a phone's sheet covers at the bottom (or top), kept
+ * clear. The smallest move that shows both: the current scroll when they already are, else the nearest such scroll.
+ * Null when both cannot fit at once (or there is no tab): the caller centres the target instead.
+ */
+export function scrollToShow(
+  target: Box,
+  tab: Box | null,
+  viewportHeight: number,
+  scrollY: number,
+  reserve: { top: number; bottom: number } = { top: 0, bottom: 0 },
+): number | null {
+  if (tab === null) return null;
+  const top = Math.min(target.y, tab.y) + scrollY;
+  const bottom = Math.max(target.y + target.height, tab.y + tab.height) + scrollY;
+  const room = viewportHeight - reserve.top - reserve.bottom;
+  if (bottom - top > room) return null;
+  // Any scroll in [lowest, highest] shows both; keep the current one when it does, else move the least.
+  const lowest = Math.max(0, bottom - (viewportHeight - reserve.bottom));
+  const highest = top - reserve.top;
+  if (highest < lowest) return null;
+  return clamp(scrollY, lowest, highest);
+}
+
 /** The target's box grown by `pad` on every side. */
 export function padBox(box: Box, pad: number): Box {
   return { x: box.x - pad, y: box.y - pad, width: box.width + 2 * pad, height: box.height + 2 * pad };

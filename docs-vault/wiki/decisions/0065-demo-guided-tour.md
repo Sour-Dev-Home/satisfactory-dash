@@ -344,5 +344,11 @@ power graph)".
   target's (evenodd would dim the overlap again). It stays clickable: it only goes to the page already shown. The nav,
   which scrolls sideways on phones, is scrolled to show the tab (instantly, the nav only, never the page). There is no
   menu hiding the tabs on phones; a tab with no box would get no hole. The welcome and the finish get the Overview tab.
-- **Decision 9, the words.** The popover's step line and the live region name the tab: "Step 4 of 15 · Power", the
-  label read from the nav's own list (`shell/tabs.ts`).
+- **Decision 4, scrolling to the target.** Centring every target (`block: "center"`) scrolled the nav, and so the tab's
+  hole, off screen for any target below the fold (the Power chart at 1440 x 900 and on phones, in CI's screenshots).
+  Now, where the padded target and the tab fit on screen together (on a phone, above the bottom sheet's 40%), the page
+  scrolls the least that shows both (`scrollToShow` in `placePopover.ts`), instantly; only where they cannot does it
+  centre the target as before. The planner card's pan through its keyboard button runs first, as before.
+- **Decision 9, the words.** The popover's step line and the live region lead with the tab: "Power tab · Step 4 of 15"
+  ("Done. Power tab · Step 10 of 15" after a try-it step), the label read from the nav's own list (`shell/tabs.ts`); a
+  page that is no tab keeps "Step N of M".

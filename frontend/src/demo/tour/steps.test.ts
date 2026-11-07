@@ -19,7 +19,7 @@ describe("which tab a step is on", () => {
     expect(TOUR_STEPS.map((s) => tabLabel(s.path))).toEqual(TOUR_STEPS.map((s) => visibleTabs(true).find((t) => t.to === s.path)?.label));
     expect(tabLabel("/app/power")).toBe("Power");
     expect(tabLabel("/nowhere")).toBeUndefined();
-    expect(stepLine(4, 15, "Power")).toBe("Step 4 of 15 · Power");
+    expect(stepLine(4, 15, "Power")).toBe("Power tab · Step 4 of 15");
     expect(stepLine(1, 3, undefined)).toBe("Step 1 of 3");
     expect(tabTarget("/app")).toBe("tab-overview");
     expect(tabTarget("/app/planner")).toBe("tab-planner");

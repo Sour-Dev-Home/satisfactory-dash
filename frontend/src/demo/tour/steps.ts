@@ -17,9 +17,12 @@ export function tabLabel(path: string): string | undefined {
   return visibleTabs(true).find((t) => t.to === path)?.label;
 }
 
-/** "Step 4 of 15 · Power": the step's place and the tab its page is on; the popover shows it and the live region says it. */
+/**
+ * "Power tab · Step 4 of 15": the tab the step's page is on, first so it is read first, then the step's place ("Step N of
+ * M" alone for a page that is no tab). The popover shows it and the live region says it.
+ */
 export function stepLine(number: number, count: number, tab: string | undefined): string {
-  return `Step ${number} of ${count}${tab === undefined ? "" : ` · ${tab}`}`;
+  return `${tab === undefined ? "" : `${tab} tab · `}Step ${number} of ${count}`;
 }
 
 export interface TourStep {

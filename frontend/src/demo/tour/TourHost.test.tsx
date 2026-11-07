@@ -119,7 +119,7 @@ describe("the demo's tour", () => {
     expect(d).toHaveAccessibleDescription(TOUR_STEPS[0].body);
     expect(d).not.toHaveAttribute("aria-modal");
     // The step line names the tab the step's page is on.
-    expect(within(d).getByText(`Step 1 of ${TOUR_STEPS.length} · Overview`)).toBeInTheDocument();
+    expect(within(d).getByText(`Overview tab · Step 1 of ${TOUR_STEPS.length}`)).toBeInTheDocument();
   });
 
   it("does not start by itself on a deep link, or once seen", () => {
@@ -136,12 +136,12 @@ describe("the demo's tour", () => {
   it("moves focus to each step's heading, and says only the step's place in a polite live region (the heading says its title)", () => {
     renderApp();
     expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[0].title }));
-    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Step 1 of ${TOUR_STEPS.length} · Overview$`));
+    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Overview tab · Step 1 of ${TOUR_STEPS.length}$`));
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(dialog()).toHaveAccessibleName(TOUR_STEPS[1].title);
     expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[1].title }));
-    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Step 2 of ${TOUR_STEPS.length} · Overview$`));
+    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Overview tab · Step 2 of ${TOUR_STEPS.length}$`));
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(dialog()).toHaveAccessibleName(TOUR_STEPS[0].title);
@@ -544,7 +544,7 @@ describe("the tour's try-it steps", () => {
     expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
     expect(onCard).toHaveBeenCalledTimes(1);
     // One announcement: done, and where the tour now is.
-    expect(screen.getByRole("status")).toHaveTextContent(/^Done\. Step 2 of 3 · Overview$/);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Done\. Overview tab · Step 2 of 3$/);
   });
 
   it("Do it for me clicks the card (an SVG <g>) through its own handler, and the tour moves on", async () => {
@@ -567,7 +567,7 @@ describe("the tour's try-it steps", () => {
     // Already ticked: Do it for me must not untick it; the step just goes on.
     fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
     expect(box).toBeChecked();
-    await waitFor(() => expect(within(dialog()).getByText("Step 4 of 4 · Overview")).toBeInTheDocument());
+    await waitFor(() => expect(within(dialog()).getByText("Overview tab · Step 4 of 4")).toBeInTheDocument());
   });
 
   it("when nothing happens, Next still moves on (and the next step's opener opens the panel)", async () => {
@@ -577,7 +577,7 @@ describe("the tour's try-it steps", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() => expect(dialog()).toHaveAccessibleName("Inside a group."));
     expect(onCard).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("status")).toHaveTextContent(/^Step 2 of 3 · Overview$/);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Overview tab · Step 2 of 3$/);
   });
 
   it("Do it for me with no answer from the page goes on as Next after the wait", async () => {
@@ -735,8 +735,8 @@ describe("moving to a new page, and which tab a step is on", () => {
     expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
     expect(ringOf("[data-tour-ring]")).toEqual([chart.x - 8, 92, 316, 216]);
     expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[3].title }));
-    expect(within(dialog()).getByText(`Step 2 of 2 · Power`)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/^Step 2 of 2 · Power$/);
+    expect(within(dialog()).getByText("Power tab · Step 2 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/^Power tab · Step 2 of 2$/);
   });
 
   it("Escape while the next page settles (focus on the holder, no popover or Skip) still leaves the tour", async () => {
@@ -768,6 +768,72 @@ describe("moving to a new page, and which tab a step is on", () => {
     fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
     await waitFor(() => expect(dialog()).toHaveAccessibleName(TOUR_STEPS[3].title));
     await waitFor(() => expect(ringOf("[data-tour-tab-ring]")).toEqual([88, -2, 84, 48]));
+  });
+
+  it("scrolls a target below the fold only as far as keeps the step's tab on screen, instantly; centres one too tall for both", async () => {
+    // A wide 900 px high window scrolled 300 px down (a step before centred something low): the nav is off the top.
+    const root = document.documentElement;
+    Object.defineProperty(root, "clientHeight", { configurable: true, value: 900 });
+    const scrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 300 });
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} }));
+    const scrollTo = vi.fn();
+    vi.stubGlobal("scrollTo", scrollTo);
+    const centre = vi.fn();
+    let height = 100;
+    // In page px: the tab at 40, the target at 600 (padded by 8: 592 to 708 tall 100).
+    function Low() {
+      return (
+        <div data-page-reveal="revealed">
+          <a
+            href="/app"
+            data-tour="tab-overview"
+            ref={(el) => {
+              if (el) el.getBoundingClientRect = rect(0, 40 - 300, 90, 44);
+            }}
+          >
+            Overview
+          </a>
+          <section
+            data-tour="low"
+            ref={(el) => {
+              if (!el) return;
+              el.getBoundingClientRect = () => rect(20, 600 - 300, 300, height)();
+              el.scrollIntoView = centre;
+            }}
+          >
+            Low
+          </section>
+        </div>
+      );
+    }
+    const low: TourStep = { id: "low", path: "/app", target: "low", title: "Low.", body: "Words.", kind: "next" };
+    try {
+      window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+      render(
+        <MemoryRouter initialEntries={["/app"]}>
+          <DemoBanner />
+          <Routes>
+            <Route path="/app" element={<Low />} />
+          </Routes>
+          <Host steps={[low, { ...low, id: "low-2", title: "Low again." }]} />
+        </MemoryRouter>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Low."));
+      // Up to 40, the least move that shows the tab (at 40) with the target (to 708) below it, not the target centred.
+      expect(scrollTo).toHaveBeenCalledWith({ top: 40, behavior: "instant" });
+      expect(centre).not.toHaveBeenCalled();
+      height = 1000;
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Low again."));
+      expect(centre).toHaveBeenCalledWith({ block: "center", behavior: "instant" });
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(root, "clientHeight");
+      if (scrollY === undefined) Reflect.deleteProperty(window, "scrollY");
+      else Object.defineProperty(window, "scrollY", scrollY);
+    }
   });
 
   it("warms the tour's pages once as it starts, with the app's query client and server", async () => {
