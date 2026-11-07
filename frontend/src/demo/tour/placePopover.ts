@@ -121,6 +121,9 @@ export function holePath(viewport: Size, holes: Box | null | readonly Box[], rad
   return outer + list.map((h) => roundedRect(h, radius)).join("");
 }
 
+/** The phone sheet's tallest share of the screen (`--spacing-tour-sheet`, 40% of it): what a sheet at the top can cover. */
+export const SHEET_MAX_SHARE = 0.4;
+
 /** Below `sm` the popover is a sheet on the bottom edge, or on the top when the target's centre is in the bottom 40%. */
 export function sheetAtTop(target: Box | null, viewport: Size): boolean {
   return target !== null && target.y + target.height / 2 > viewport.height * 0.6;

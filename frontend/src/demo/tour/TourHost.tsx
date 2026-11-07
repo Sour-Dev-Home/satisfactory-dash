@@ -6,7 +6,7 @@ import { whenIdle } from "../../lib/idle";
 import { ServerContext } from "../../servers/ServerContext";
 import { initialTourState, isLastStep, tourReducer } from "./controller";
 import { markTourSeen, shouldAutoStart } from "./persistence";
-import { padBox, type Box, type Size } from "./placePopover";
+import { padBox, SHEET_MAX_SHARE, sheetAtTop, type Box, type Size } from "./placePopover";
 import { AttachedPopover, SheetPopover } from "./Popover";
 import { Spotlight } from "./Spotlight";
 import { stepLine, tabLabel, TOUR_STEPS, type TourStep } from "./steps";
@@ -49,9 +49,6 @@ export default function TourHost({
   if (!active || steps.length === 0) return null;
   return createPortal(<TourRun key={run} steps={steps} settleMs={settleMs} warm={warm} schedule={schedule} />, document.body);
 }
-
-/** Space kept round the tab's own box in its hole: small, so the hole stays on the tab and off the line under the nav. */
-const TAB_PAD = 2;
 
 /**
  * The step's page's tab in the top nav, scrolled into the nav's view (a phone's nav scrolls sideways; instant, and only
@@ -286,6 +283,7 @@ function TourRun({
   const viewport = useViewport();
   const wide = useWide();
   const [pad] = useState(() => tokenPx("--spacing-tour-pad", 8));
+  const [tabPad] = useState(() => tokenPx("--spacing-tour-tab-pad", 2));
   const [radius] = useState(() => tokenPx("--radius-card", 10));
   // Going to a new page: the last step's hole, ring and popover would sit over a page changing underneath, so until the new
   // step shows there is only the plain scrim, and focus waits on a holder inside the tour (below).
@@ -295,7 +293,9 @@ function TourRun({
   // The tab of the shown step's page gets its own, quieter hole (ADR-0065 amendment, 2026-11-07).
   const tabPath = changingPage || state.shown === null ? null : (steps[state.shown]?.path ?? null);
   const tabBox = useTabBox(tabPath, state.shown);
-  const tab = tabBox === null ? null : padBox(tabBox, TAB_PAD);
+  // On a phone a sheet at the top would cover the tab's hole; the sheet's step line names the tab instead (ui-reviewer).
+  const tabUnderSheet = !wide && tabBox !== null && sheetAtTop(hole, viewport) && tabBox.y < viewport.height * SHEET_MAX_SHARE;
+  const tab = tabBox === null || tabUnderSheet ? null : padBox(tabBox, tabPad);
 
   const exit = useCallback(() => {
     const to = stopTour() ?? document.querySelector<HTMLElement>(targetSelector(BANNER_TOUR_TARGET));
@@ -338,6 +338,13 @@ function TourRun({
   const offerDoForMe = trying !== null && step.doForMe === true;
   const doForMePressed = pressedAt === state.index;
 
+  // While a new page loads, focus waits on this holder, inside the tour: the popover that had it is gone, and focus left on
+  // <body> would be taken by the new page's heading (the shell's move on navigation), out of the tour.
+  const holder = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (changingPage) holder.current?.focus({ preventScroll: true });
+  }, [changingPage]);
+
   // Escape leaves the tour from anywhere on the page, not only the popover (Decision 9), unless something handled it first
   // (the planner's group panel stops it; its canvas marks it handled) or focus is typing in a field. On a try-it step, Tab
   // from the target goes back into the popover, closing the loop the popover's own Tab opens.
@@ -352,6 +359,11 @@ function TourRun({
         return;
       }
       if (e.key !== "Tab") return;
+      // Waiting for the next page: Tab stays on the holder rather than reaching the page behind the scrim (test-hunter).
+      if (holder.current !== null && document.activeElement === holder.current) {
+        e.preventDefault();
+        return;
+      }
       const stop = tabStop();
       if (stop === null || document.activeElement !== stop) return;
       const buttons = [...document.querySelectorAll<HTMLElement>("[data-tour-popover] button:not(:disabled)")];
@@ -363,13 +375,6 @@ function TourRun({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [exit, tabStop]);
-
-  // While a new page loads, focus waits on this holder, inside the tour: the popover that had it is gone, and focus left on
-  // <body> would be taken by the new page's heading (the shell's move on navigation), out of the tour.
-  const holder = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (changingPage) holder.current?.focus({ preventScroll: true });
-  }, [changingPage]);
 
   const shown = state.shown === null ? null : steps[state.shown];
   const panel =

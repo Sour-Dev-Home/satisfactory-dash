@@ -745,6 +745,9 @@ describe("moving to a new page, and which tab a step is on", () => {
     fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
     const holder = document.querySelector("[data-tour-waiting]") as HTMLElement;
     expect(document.activeElement).toBe(holder);
+    // Tab stays on the holder rather than reaching the page behind the scrim.
+    expect(fireEvent.keyDown(holder, { key: "Tab" })).toBe(false);
+    expect(fireEvent.keyDown(holder, { key: "Tab", shiftKey: true })).toBe(false);
     fireEvent.keyDown(holder, { key: "Escape" });
     expect(document.querySelector("[data-tour-root]")).toBeNull();
     expect(document.querySelector("[data-tour-waiting]")).toBeNull();
