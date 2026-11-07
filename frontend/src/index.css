@@ -214,6 +214,9 @@
   /* A bar that sticks to the top while its section scrolls under it (the Factory page's filters, ADR-0062 F.4): above
      the content, below the header's dropdowns. */
   --z-sticky: 5;
+  /* Where such a bar sticks (`top-sticky-top`): the top of the screen, or, while the demo's tour pins the tab row, just
+     under that row (the `:root[data-guided-tour]` rule below). */
+  --spacing-sticky-top: 0px;
   --popover-width: min(24rem, calc(100vw - 2rem));
   --popover-max-height: min(70vh, 36rem);
 
@@ -993,6 +996,11 @@
   top: 0;
   z-index: var(--z-sticky);
   background: var(--color-canvas);
+}
+/* A page's own sticky bar (`top-sticky-top`: the Factory's filters) sticks just under the pinned row, not beneath it.
+   TourHost measures the row, which wraps, and publishes its height as --tour-pin-height; unmeasured, it is 0. */
+:root[data-guided-tour] {
+  --spacing-sticky-top: var(--tour-pin-height, 0px);
 }
 @supports (backdrop-filter: none) or (-webkit-backdrop-filter: none) {
   .tour-scrim {

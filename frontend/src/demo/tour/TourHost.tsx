@@ -185,8 +185,38 @@ function usePinnedTabs(): void {
   useLayoutEffect(() => {
     const root = document.documentElement;
     root.setAttribute(TOUR_ACTIVE_ATTR, "");
-    return () => root.removeAttribute(TOUR_ACTIVE_ATTR);
+    const stopMeasuring = publishPinHeight();
+    return () => {
+      stopMeasuring();
+      root.removeAttribute(TOUR_ACTIVE_ATTR);
+    };
   }, []);
+}
+
+/**
+ * The pinned row wraps (a phone puts the controls under the tabs, a long server name can wrap them again), so its height
+ * is measured and published as `--tour-pin-height`, which index.css turns into `--spacing-sticky-top`: a page's own sticky
+ * bar (the Factory's filters) then sticks just under the row instead of sliding beneath it. Written to a constructed
+ * stylesheet, not a `style` attribute (the CSP's style-src 'self', the repo's no-`style=` rule). Where the browser has no
+ * ResizeObserver or adoptedStyleSheets the value stays unset and the bar sticks at the top, as it does outside the tour.
+ */
+function publishPinHeight(): () => void {
+  const row = document.querySelector(`.${TOUR_PIN_CLASS}`);
+  if (row === null || typeof ResizeObserver === "undefined" || typeof CSSStyleSheet === "undefined" || !("adoptedStyleSheets" in document)) {
+    return () => {};
+  }
+  const sheet = new CSSStyleSheet();
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  const observer = new ResizeObserver(() => {
+    // Rounded up: a sub-pixel short value would let the bar's top edge slip under the row.
+    const height = Math.ceil(row.getBoundingClientRect().height);
+    sheet.replaceSync(`:root { --tour-pin-height: ${height}px; }`);
+  });
+  observer.observe(row, { box: "border-box" });
+  return () => {
+    observer.disconnect();
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== sheet);
+  };
 }
 
 function TourRun({

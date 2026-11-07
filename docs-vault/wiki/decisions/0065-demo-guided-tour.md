@@ -380,3 +380,13 @@ already ticked (the map remembers its layers, so any later run) and moved on str
 - **Steps without a result still move on by themselves.** The planner card's step has none: step 10 is the panel it opened.
   Step 10 has openers, so it passes the settle gate: the card's step stays on screen while the panel opens and keeps still
   for `TOUR_SETTLE_MS`, so the visitor sees it open before the next words.
+
+## Amendment, 2026-11-07: the Factory's filter bar sticks under the pinned row
+
+Decision 4's known overlap is fixed. While the tour runs, a page's own sticky bar sticks just under the pinned tab row
+instead of beneath it: it sticks at `top-sticky-top` (`--spacing-sticky-top`, 0 outside the tour), which
+`:root[data-guided-tour]` sets to `--tour-pin-height`. The row wraps (a phone puts the controls under the tabs), so the
+tour measures it (a ResizeObserver) and writes its height to a constructed stylesheet (`adoptedStyleSheets`), never a
+`style` attribute; unmeasured, the bar sticks at the top as before. The Factory's filter bar is the only such bar (the
+readings tables' headers stick inside their own scroll boxes). Targets still scroll to just under the row: the bar only
+sticks within its own section, so it never covers a target outside it.
