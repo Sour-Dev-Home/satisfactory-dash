@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { tabLabel, TOUR_STEPS } from "../../src/demo/tour/steps";
+import { stepLine, tabLabel, TOUR_STEPS } from "../../src/demo/tour/steps";
 import { tabTarget } from "../../src/demo/tour/tabTarget";
 import { expect, expectNoAxeViolations, test } from "../fixtures";
 
@@ -58,7 +58,10 @@ async function expectNoPopIn(page: Page, target: Locator): Promise<void> {
   const box = await target.boundingBox();
   expect(first, "ring").not.toBeNull();
   expect(box, "target").not.toBeNull();
-  const padded = { x: box!.x - pad, y: box!.y - pad, width: box!.width + 2 * pad, height: box!.height + 2 * pad };
+  // The ring's measured box includes its stroke, half of which lies outside the padded rect.
+  const stroke = await ring.evaluate((el) => Number.parseFloat(getComputedStyle(el).strokeWidth) || 0);
+  const out = pad + stroke / 2;
+  const padded = { x: box!.x - out, y: box!.y - out, width: box!.width + 2 * out, height: box!.height + 2 * out };
   expect(close(first!, padded), `ring ${JSON.stringify(first)} round ${JSON.stringify(padded)}`).toBe(true);
   await page.waitForTimeout(300);
   const later = await ring.boundingBox();
@@ -151,7 +154,7 @@ for (const how of ["a real click", "Do it for me"] as const) {
     await expect(panel).toBeVisible();
     await expect(page.locator("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
     await expectRingRound(page, panel);
-    await expect(page.getByRole("status").filter({ hasText: /Step \d+ of/ })).toHaveText(`Done. Step ${at + 2} of ${TOUR_STEPS.length}`);
+    await expect(page.getByRole("status").filter({ hasText: /Step \d+ of/ })).toHaveText(`Done. ${stepLine(at + 2, TOUR_STEPS.length, tabLabel(TOUR_STEPS[at + 1].path))}`);
   });
 
   test(`the map's layer step moves on after ${how}`, async ({ page }) => {
