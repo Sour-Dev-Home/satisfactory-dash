@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { signOutFromMenu } from "../test/account";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
@@ -115,7 +115,8 @@ describe("the demo app", () => {
       fireEvent.click(await screen.findByRole("button", { name: "Enter demo" }, FIRST_RENDER));
       const tour = await screen.findByRole("dialog", { name: "Welcome to the demo." }, FIRST_RENDER);
       expect(window.localStorage.getItem(TOUR_STORAGE_KEY)).toBe(TOUR_SEEN);
-      expect(document.querySelector('[data-tour="overview-health"]')).toHaveAccessibleName("Health");
+      // The welcome is centred at once, so it can show a frame before the Overview's Health card has rendered.
+      await waitFor(() => expect(document.querySelector('[data-tour="overview-health"]')).toHaveAccessibleName("Health"), FIRST_RENDER);
       expect(document.querySelector('[data-tour="overview-alerts"]')).not.toBeNull();
       fireEvent.click(within(tour).getByRole("button", { name: "Skip tour" }));
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

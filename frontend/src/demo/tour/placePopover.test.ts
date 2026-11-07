@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARROW_SIZE, holePath, padBox, placePopover, POPOVER_MARGIN, sheetAtTop, type Box } from "./placePopover";
+import { ARROW_SIZE, holePath, overlaps, padBox, placePopover, POPOVER_MARGIN, scrollToShow, sheetAtTop, type Box } from "./placePopover";
 
 const viewport = { width: 1440, height: 900 };
 const size = { width: 352, height: 200 };
@@ -87,6 +87,34 @@ describe("the hole and the phone sheet", () => {
     const d = holePath({ width: 100, height: 50 }, box(10, 10, 20, 10), 8);
     expect(d.startsWith("M0 0H100V50H0ZM15 10")).toBe(true); // radius capped at half the height
     expect(d.endsWith("Z")).toBe(true);
+  });
+
+  it("cuts several holes in one evenodd path (the target and its tab), each its own rounded rect", () => {
+    const d = holePath({ width: 1000, height: 800 }, [box(100, 300, 200, 100), box(20, 10, 80, 40)], 8);
+    expect(d.startsWith("M0 0H1000V800H0Z")).toBe(true);
+    expect(d).toContain("M108 300"); // the target's rect
+    expect(d).toContain("M28 10"); // the tab's rect
+    expect(d.match(/Z/g)).toHaveLength(3);
+  });
+
+  it("tells overlapping boxes from apart ones (a tab hole over the target's would be dimmed again)", () => {
+    expect(overlaps(box(0, 0, 10, 10), box(5, 5, 10, 10))).toBe(true);
+    expect(overlaps(box(0, 0, 10, 10), box(10, 0, 10, 10))).toBe(false);
+  });
+
+  it("scrolls the least that shows the target below the pinned tab row, or puts a tall one's top just under it", () => {
+    const bar = { top: 60, bottom: 0 };
+    // Already on screen: stay.
+    expect(scrollToShow(box(0, 300, 400, 300), 900, 0, bar)).toBe(0);
+    // A chart below the fold: just enough to bring its bottom in.
+    expect(scrollToShow(box(0, 850, 400, 100), 900, 0, bar)).toBe(50);
+    // Behind the pinned row (top at 20 with the row 60 tall): back up until it is just under the row, never behind it.
+    expect(scrollToShow(box(0, 20, 400, 300), 900, 400, bar)).toBe(360);
+    // Taller than the room under the row: its top just under the row.
+    expect(scrollToShow(box(0, 600, 400, 1000), 900, 0, bar)).toBe(540);
+    // A phone's bottom sheet (40% of 844) kept clear: above it when it fits, else its top under the row.
+    expect(scrollToShow(box(0, 300, 390, 150), 844, 0, { top: 60, bottom: 337.6 })).toBe(0);
+    expect(scrollToShow(box(0, 300, 390, 500), 844, 0, { top: 60, bottom: 337.6 })).toBe(240);
   });
 
   it("pads the target's box on every side", () => {

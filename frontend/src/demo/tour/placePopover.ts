@@ -98,21 +98,54 @@ export function placePopover(target: Box | null, size: Size, viewport: Size): Po
   return centred;
 }
 
-/** The scrim's clip: the viewport with a rounded hole at `hole` (evenodd), or the whole viewport with none. */
-export function holePath(viewport: Size, hole: Box | null, radius: number): string {
-  const outer = `M0 0H${viewport.width}V${viewport.height}H0Z`;
-  if (hole === null) return outer;
-  const r = Math.max(0, Math.min(radius, hole.width / 2, hole.height / 2));
-  const { x, y, width, height } = hole;
+/** Whether two boxes share any area. */
+export function overlaps(a: Box, b: Box): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+function roundedRect({ x, y, width, height }: Box, radius: number): string {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
   return (
-    `${outer}M${x + r} ${y}H${x + width - r}A${r} ${r} 0 0 1 ${x + width} ${y + r}V${y + height - r}` +
+    `M${x + r} ${y}H${x + width - r}A${r} ${r} 0 0 1 ${x + width} ${y + r}V${y + height - r}` +
     `A${r} ${r} 0 0 1 ${x + width - r} ${y + height}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + height - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`
   );
 }
 
+/**
+ * The scrim's clip: the viewport with a rounded hole at each of `holes` (evenodd), or the whole viewport with none. The
+ * holes must not overlap (evenodd would fill their overlap again): the caller drops one that would.
+ */
+export function holePath(viewport: Size, holes: Box | null | readonly Box[], radius: number): string {
+  const outer = `M0 0H${viewport.width}V${viewport.height}H0Z`;
+  const list = holes === null ? [] : Array.isArray(holes) ? (holes as readonly Box[]) : [holes as Box];
+  return outer + list.map((h) => roundedRect(h, radius)).join("");
+}
+
+/** The phone sheet's tallest share of the screen (`--spacing-tour-sheet`, 40% of it): what a sheet at the top can cover. */
+export const SHEET_MAX_SHARE = 0.4;
+
 /** Below `sm` the popover is a sheet on the bottom edge, or on the top when the target's centre is in the bottom 40%. */
 export function sheetAtTop(target: Box | null, viewport: Size): boolean {
   return target !== null && target.y + target.height / 2 > viewport.height * 0.6;
+}
+
+/**
+ * Where to scroll the page (a new `scrollY`) to show a step's padded target (ADR-0065 amendment, 2026-11-07). The tab
+ * row is pinned to the top while the tour runs, so `reserve.top` is its height, never covered; `reserve.bottom` is what a
+ * phone's bottom sheet covers. `target` is in viewport px at the current `scrollY`. When the target fits between them,
+ * the least move that shows it whole (none when it already is); when it is taller, its top just under the pinned bar.
+ */
+export function scrollToShow(
+  target: Box,
+  viewportHeight: number,
+  scrollY: number,
+  reserve: { top: number; bottom: number } = { top: 0, bottom: 0 },
+): number {
+  const top = target.y + scrollY;
+  const bottom = top + target.height;
+  const under = Math.max(0, top - reserve.top);
+  if (target.height > viewportHeight - reserve.top - reserve.bottom) return under;
+  return clamp(scrollY, Math.max(0, bottom - (viewportHeight - reserve.bottom)), under);
 }
 
 /** The target's box grown by `pad` on every side. */

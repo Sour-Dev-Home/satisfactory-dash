@@ -4,7 +4,26 @@
  * centred with no highlight. `try` steps say how they are done by what appears or changes, never by reading a page's
  * state (tryIt.ts); the tour moves on by itself once they are.
  */
+import { visibleTabs } from "../../shell/tabs";
+
 export type TourDone = { appears: string } | { changes: string };
+
+/**
+ * The nav's label for a step's page ("Power" for `/app/power`), named in the popover's step line so the visitor knows
+ * which tab holds what is highlighted (ADR-0065 amendment, 2026-11-07). Read from the nav's own list, every tab the
+ * operator may see included; undefined for a path that is no tab.
+ */
+export function tabLabel(path: string): string | undefined {
+  return visibleTabs(true).find((t) => t.to === path)?.label;
+}
+
+/**
+ * "Power tab · Step 4 of 15": the tab the step's page is on, first so it is read first, then the step's place ("Step N of
+ * M" alone for a page that is no tab). The popover shows it and the live region says it.
+ */
+export function stepLine(number: number, count: number, tab: string | undefined): string {
+  return `${tab === undefined ? "" : `${tab} tab · `}Step ${number} of ${count}`;
+}
 
 export interface TourStep {
   id: string;

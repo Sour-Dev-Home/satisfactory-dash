@@ -180,6 +180,8 @@
   /* The demo's guided tour (ADR-0065): the space kept round the highlighted element, the popover's width (never wider
      than the screen less the page gutters) and the phone sheet's tallest (about 40% of the screen, Decision 2). */
   --spacing-tour-pad: 8px;
+  /* Space round the current tab in its own hole: small, so the hole stays on the tab and off the line under the nav. */
+  --spacing-tour-tab-pad: 2px;
   --spacing-tour-popover: min(22rem, calc(100vw - 2rem));
   --spacing-tour-sheet: 40svh;
   /* "Since yesterday" on the Factory page keeps one height while it loads, fails or fills, so its
@@ -982,6 +984,15 @@
 .tour-scrim {
   clip-path: url(#tour-hole);
   background-color: var(--color-scrim);
+}
+/* While the tour runs (TourHost sets `data-guided-tour` on <html>), the shell's tab row is pinned to the top, so the
+   step's tab, in its own hole, is always on screen (owner's answer, 2026-11-07). `.tour-pin` is on the row in the demo
+   build only (Shell.tsx), so this is inert in production. */
+:root[data-guided-tour] .tour-pin {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--color-canvas);
 }
 @supports (backdrop-filter: none) or (-webkit-backdrop-filter: none) {
   .tour-scrim {
