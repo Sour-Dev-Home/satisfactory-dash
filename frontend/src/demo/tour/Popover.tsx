@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent
 import { cn } from "../../lib/cn";
 import { placePopover, sheetAtTop, type Box, type Size } from "./placePopover";
 import type { TourStep } from "./steps";
+import type { Focusable } from "./tryIt";
 
 export interface TourPanelProps {
   step: TourStep;
@@ -11,14 +12,19 @@ export interface TourPanelProps {
   onBack: () => void;
   onNext: () => void;
   onExit: () => void;
+  /** A try-it step showing its target: "Do it for me" (ADR-0065 Decision 6). */
+  onDoForMe?: (() => void) | undefined;
+  /** A try-it step's target, or the way into it, which Tab reaches after the last button (Decision 9). */
+  tabStop?: (() => Focusable | null) | undefined;
 }
 
 /**
  * The tour's words and buttons (ADR-0065 Decision 9): a non-modal dialog (the page must stay usable for try-it steps),
  * named by its heading and described by its words. Focus moves to the heading on each step; Tab and Shift+Tab wrap
- * through its buttons; Escape leaves the tour while focus is inside.
+ * through its buttons, and on a try-it step its target too (TourHost brings Tab from the target back); Escape leaves the
+ * tour while focus is inside (TourHost handles it on the page).
  */
-function TourPanel({ step, number, count, onBack, onNext, onExit, className }: TourPanelProps & { className?: string }) {
+function TourPanel({ step, number, count, onBack, onNext, onExit, onDoForMe, tabStop, className }: TourPanelProps & { className?: string }) {
   const titleId = useId();
   const bodyId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -41,12 +47,13 @@ function TourPanel({ step, number, count, onBack, onNext, onExit, className }: T
     const first = items[0];
     const end = items[items.length - 1];
     const at = document.activeElement;
+    const page = tabStop?.() ?? null;
     if (e.shiftKey && (at === first || at === heading.current)) {
       e.preventDefault();
-      end.focus();
+      (page ?? end).focus();
     } else if (!e.shiftKey && at === end) {
       e.preventDefault();
-      first.focus();
+      (page ?? first).focus();
     }
   };
 
@@ -75,6 +82,11 @@ function TourPanel({ step, number, count, onBack, onNext, onExit, className }: T
         <button type="button" onClick={onBack} disabled={number === 1}>
           Back
         </button>
+        {onDoForMe !== undefined && (
+          <button type="button" onClick={onDoForMe}>
+            Do it for me
+          </button>
+        )}
         <button type="button" onClick={onNext} className="border-accent bg-accent text-on-accent hover:not-disabled:border-accent">
           {last ? "Finish" : "Next"}
         </button>

@@ -297,10 +297,11 @@ export function MapPanel({ snapshot, serverId }: { snapshot: FactoryResponse; se
         Factory map
       </h3>
       {/* Three columns on a phone, so no label wraps on its own; a row from the small breakpoint up. */}
-      <fieldset className="grid grid-cols-3 gap-x-2 gap-y-2 sm:flex sm:flex-wrap sm:items-center sm:gap-x-6" {...tour("map-filters")}>
+      <fieldset className="grid grid-cols-3 gap-x-2 gap-y-2 sm:flex sm:flex-wrap sm:items-center sm:gap-x-6">
         <legend className="sr-only">Layers</legend>
         {LAYERS.map((layer) => (
-          <label key={layer.id} className="flex min-h-touch items-center gap-2">
+          // The demo tour's try-it step ticks Belts and pipes, a layer hidden at first (ADR-0065 Decision 6).
+          <label key={layer.id} className="flex min-h-touch items-center gap-2" {...(layer.id === conveyorsLayer.id ? tour("map-layer-toggle") : {})}>
             <input type="checkbox" checked={visible.has(layer.id)} onChange={() => toggle(layer.id)} />
             {layer.label}
           </label>

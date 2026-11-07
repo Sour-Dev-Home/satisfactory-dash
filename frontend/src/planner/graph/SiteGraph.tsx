@@ -954,6 +954,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
         return;
       }
       if (openKey !== null) {
+        // Handled: the demo tour's page-wide Escape (ADR-0065) leaves this one to the panel.
+        event.preventDefault();
         close();
         return;
       }
@@ -1678,6 +1680,8 @@ export default function SiteGraph({ graph, target, findings, onOpenFactory, sele
                     onFocus={() => focusNode(n)}
                     onBlur={() => setFocusKey((k) => (k === n.key ? null : k))}
                     className="sr-only"
+                    // The demo tour's marked card's keyboard path: Tab reaches it from the tour's popover (ADR-0065).
+                    {...(n.key === tourCardKey ? tour("planner-group-card-key") : {})}
                   />
                   {/* An opened group's machines, right after its own button: each a real button (Escape folds them back). */}
                   {machineWords.has(n.key) && (

@@ -177,10 +177,15 @@ describe("the demo's tour", () => {
     expect(document.activeElement).toBe(start);
   });
 
-  it("Escape elsewhere on the page does not leave the tour", () => {
+  it("Escape on the page leaves the tour too, but not while typing in a field", () => {
     renderApp();
-    fireEvent.keyDown(document.body, { key: "Escape" });
+    const field = document.createElement("input");
+    document.body.append(field);
+    fireEvent.keyDown(field, { key: "Escape" });
     expect(dialog()).toBeInTheDocument();
+    field.remove();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("Skip, or Finish on the last step, ends it and writes nothing more", () => {
@@ -352,6 +357,202 @@ describe("the demo's tour", () => {
     renderApp();
     expect(dialog().closest("[data-tour-sheet]")).not.toBeNull();
     expect(document.querySelector("[data-tour-arrow]")).toBeNull();
+  });
+});
+
+/**
+ * A planner-like page: a drawn card (an SVG `<g>`, no focus of its own) with a visually hidden keyboard button, both
+ * opening a panel that closes on Escape and stops it (as GroupPanel does); and a layer checkbox in its label.
+ */
+function TryPage({ onCard }: { onCard: () => void }) {
+  const [open, setOpen] = useState(false);
+  const show = () => {
+    onCard();
+    setOpen(true);
+  };
+  return (
+    <div data-page-reveal="revealed">
+      <svg>
+        <g
+          data-tour="card"
+          onClick={show}
+          ref={(el) => {
+            if (el) el.getBoundingClientRect = rect(20, 20, 200, 80);
+          }}
+        >
+          <rect width="200" height="80" />
+        </g>
+      </svg>
+      <button type="button" data-tour="card-key" className="sr-only" onClick={show}>
+        Refinery
+      </button>
+      {open && (
+        <aside
+          data-tour="panel"
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.stopPropagation();
+            setOpen(false);
+          }}
+          ref={(el) => {
+            if (el) el.getBoundingClientRect = rect(600, 100, 300, 400);
+          }}
+        >
+          <button type="button">In the panel</button>
+        </aside>
+      )}
+      <label
+        data-tour="toggle"
+        ref={(el) => {
+          if (el) el.getBoundingClientRect = rect(20, 300, 120, 44);
+        }}
+      >
+        <input type="checkbox" />
+        Belts and pipes
+      </label>
+    </div>
+  );
+}
+
+const CARD: TourStep = {
+  id: "card",
+  path: "/app",
+  target: "card",
+  keyTarget: "card-key",
+  title: "Open a group.",
+  body: "Try it: click the highlighted box.",
+  kind: "try",
+  done: { appears: "panel" },
+  doForMe: true,
+};
+const PANEL: TourStep = { id: "panel", path: "/app", target: "panel", openedBy: "card", title: "Inside a group.", body: "Words.", kind: "next" };
+const TOGGLE: TourStep = {
+  id: "toggle",
+  path: "/app",
+  target: "toggle",
+  title: "Choose what to see.",
+  body: "Try it: tick the highlighted box.",
+  kind: "try",
+  done: { changes: "toggle" },
+  doForMe: true,
+};
+const LAST: TourStep = { id: "last", path: "/app", target: "card", title: "The end.", body: "Words.", kind: "next" };
+
+function renderTry(steps: readonly TourStep[], onCard = vi.fn()) {
+  window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+  render(
+    <MemoryRouter initialEntries={["/app"]}>
+      <DemoBanner />
+      <Routes>
+        <Route path="/app" element={<TryPage onCard={onCard} />} />
+      </Routes>
+      <TourHost steps={steps} />
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+  return onCard;
+}
+
+const card = () => document.querySelector<SVGGElement>('[data-tour="card"]')!;
+
+describe("the tour's try-it steps", () => {
+  it("moves on by itself when the user clicks the card and the panel appears, and the next step shows the open panel without another click", async () => {
+    const onCard = renderTry([CARD, PANEL, LAST]);
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Open a group."));
+    expect(dialog()).toHaveAccessibleDescription("Try it: click the highlighted box.");
+    fireEvent.click(card());
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Inside a group."));
+    expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
+    expect(onCard).toHaveBeenCalledTimes(1);
+    // One announcement: done, and where the tour now is.
+    expect(screen.getByRole("status")).toHaveTextContent(/^Done\. Step 2 of 3$/);
+  });
+
+  it("Do it for me clicks the card (an SVG <g>) through its own handler, and the tour moves on", async () => {
+    const onCard = renderTry([CARD, PANEL, LAST]);
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Open a group."));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Inside a group."));
+    expect(onCard).toHaveBeenCalledTimes(1);
+  });
+
+  it("ticking the box moves on, and so does Do it for me, which ticks it", async () => {
+    renderTry([TOGGLE, LAST, TOGGLE, LAST]);
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+    const box = screen.getByRole("checkbox", { name: "Belts and pipes" });
+    fireEvent.click(box);
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("The end."));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+    expect(box).toBeChecked();
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
+    expect(box).not.toBeChecked();
+    await waitFor(() => expect(within(dialog()).getByText("Step 4 of 4")).toBeInTheDocument());
+  });
+
+  it("when nothing happens, Next still moves on (and the next step's opener opens the panel)", async () => {
+    const onCard = renderTry([CARD, PANEL, LAST]);
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Open a group."));
+    expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Inside a group."));
+    expect(onCard).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Step 2 of 3$/);
+  });
+
+  it("Do it for me with no answer from the page goes on as Next after the wait", async () => {
+    vi.useFakeTimers();
+    renderTry([{ ...CARD, done: { appears: "never" } }, LAST]);
+    await act(() => vi.advanceTimersByTimeAsync(50));
+    expect(dialog()).toHaveAccessibleName("Open a group.");
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
+    expect(within(dialog()).queryByRole("button", { name: "Do it for me" })).not.toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(5900));
+    expect(dialog()).toHaveAccessibleName("Open a group.");
+    await act(() => vi.advanceTimersByTimeAsync(200));
+    expect(dialog()).toHaveAccessibleName("The end.");
+  });
+
+  it("Escape with the panel open closes the panel first; the next Escape leaves the tour", async () => {
+    renderTry([CARD, PANEL, LAST]);
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Open a group."));
+    fireEvent.click(card());
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Inside a group."));
+    fireEvent.keyDown(screen.getByRole("button", { name: "In the panel" }), { key: "Escape" });
+    expect(document.querySelector('[data-tour="panel"]')).toBeNull();
+    expect(dialog()).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("Tab wraps through the popover's buttons and the target's keyboard path, both ways", async () => {
+    renderTry([CARD, PANEL, LAST]);
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Open a group."));
+    const d = dialog();
+    const skip = within(d).getByRole("button", { name: "Skip tour" });
+    const next = within(d).getByRole("button", { name: "Next" });
+    const key = screen.getByRole("button", { name: "Refinery" });
+    next.focus();
+    fireEvent.keyDown(next, { key: "Tab" });
+    expect(document.activeElement).toBe(key);
+    fireEvent.keyDown(key, { key: "Tab" });
+    expect(document.activeElement).toBe(skip);
+    fireEvent.keyDown(skip, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(key);
+    fireEvent.keyDown(key, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(next);
+    // The keyboard path opens the panel, which finishes the step.
+    fireEvent.click(key);
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Inside a group."));
+  });
+
+  it("Tab reaches a checkbox inside a label target", async () => {
+    renderTry([TOGGLE, LAST]);
+    await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+    const next = within(dialog()).getByRole("button", { name: "Next" });
+    next.focus();
+    fireEvent.keyDown(next, { key: "Tab" });
+    expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "Belts and pipes" }));
   });
 });
 

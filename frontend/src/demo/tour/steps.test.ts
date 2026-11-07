@@ -35,7 +35,21 @@ describe("the tour's steps", () => {
     for (const step of TOUR_STEPS) {
       if (step.target !== undefined) expect(marked(step.target), `${step.id}: ${step.target}`).toBe(true);
       for (const opener of [step.openedBy ?? []].flat()) expect(marked(opener), `${step.id} opened by ${opener}`).toBe(true);
+      if (step.keyTarget !== undefined) expect(marked(step.keyTarget), `${step.id} keyboard path`).toBe(true);
+      if (step.done !== undefined) expect(marked("appears" in step.done ? step.done.appears : step.done.changes), `${step.id} done`).toBe(true);
     }
+  });
+
+  it("try-it steps (the planner's card, a map layer) say how they are done and ask for it in words", () => {
+    const tries = TOUR_STEPS.filter((s) => s.kind === "try");
+    expect(tries.map((s) => [s.id, s.done, s.doForMe])).toEqual([
+      ["planner-group-card", { appears: "planner-group-panel" }, true],
+      ["map-filters", { changes: "map-layer-toggle" }, true],
+    ]);
+    for (const step of tries) expect(step.body, step.id).toMatch(/Try it: /);
+    // The details step after the card is the panel the card opens, so it shows at once once the card is clicked.
+    const at = TOUR_STEPS.findIndex((s) => s.id === "planner-group-card");
+    expect(TOUR_STEPS.at(at + 1)?.target).toBe("planner-group-panel");
   });
 
   it("open the planner on the demo's Plastic line, whose one group of machines is the oil refinery", () => {
