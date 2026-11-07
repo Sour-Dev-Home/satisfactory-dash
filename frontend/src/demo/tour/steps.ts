@@ -113,7 +113,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     keyTarget: "planner-group-card-key",
     openedBy: "planner-view-graph",
     title: "Open a group.",
-    body: "This box is the oil refinery, which turns crude oil into plastic. Try it: click the highlighted box to open its details.",
+    body: "This box is the oil refinery, which turns crude oil into plastic. Try it: click the highlighted box to open its details. Or press Next to skip this.",
     kind: "try",
     done: { appears: "planner-group-panel" },
     doForMe: true,
@@ -143,7 +143,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     // The one box the words ask for (Belts and pipes, hidden at first), so the highlight, the check and Do it for me agree.
     target: "map-layer-toggle",
     title: "Choose what to see.",
-    body: "Each box turns a layer of the map on or off; belts, pipes and power lines start hidden. Try it: tick the highlighted box to draw the belts and pipes.",
+    body: "Each box turns a layer of the map on or off; belts, pipes and power lines start hidden. Try it: tick the highlighted box, Belts and pipes, to draw them. Or press Next to skip this.",
     kind: "try",
     done: { changes: "map-layer-toggle" },
     doForMe: true,

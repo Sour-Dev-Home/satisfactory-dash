@@ -14,6 +14,8 @@ export interface TourPanelProps {
   onExit: () => void;
   /** A try-it step showing its target: "Do it for me" (ADR-0065 Decision 6). */
   onDoForMe?: (() => void) | undefined;
+  /** "Do it for me" was pressed: the button stays, disabled, so the row does not shift while the step finishes. */
+  doForMePressed?: boolean | undefined;
   /** A try-it step's target, or the way into it, which Tab reaches after the last button (Decision 9). */
   tabStop?: (() => Focusable | null) | undefined;
 }
@@ -24,7 +26,7 @@ export interface TourPanelProps {
  * through its buttons, and on a try-it step its target too (TourHost brings Tab from the target back); Escape leaves the
  * tour while focus is inside (TourHost handles it on the page).
  */
-function TourPanel({ step, number, count, onBack, onNext, onExit, onDoForMe, tabStop, className }: TourPanelProps & { className?: string }) {
+function TourPanel({ step, number, count, onBack, onNext, onExit, onDoForMe, doForMePressed, tabStop, className }: TourPanelProps & { className?: string }) {
   const titleId = useId();
   const bodyId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -83,7 +85,7 @@ function TourPanel({ step, number, count, onBack, onNext, onExit, onDoForMe, tab
           Back
         </button>
         {onDoForMe !== undefined && (
-          <button type="button" onClick={onDoForMe}>
+          <button type="button" onClick={onDoForMe} disabled={doForMePressed === true}>
             Do it for me
           </button>
         )}

@@ -220,7 +220,8 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     const timer = setTimeout(() => dispatch({ type: "next" }), TOUR_TARGET_WAIT_MS);
     return () => clearTimeout(timer);
   }, [pressedAt, state.index]);
-  const offerDoForMe = trying !== null && step.doForMe === true && pressedAt !== state.index;
+  const offerDoForMe = trying !== null && step.doForMe === true;
+  const doForMePressed = pressedAt === state.index;
 
   // Escape leaves the tour from anywhere on the page, not only the popover (Decision 9), unless something handled it first
   // (the planner's group panel stops it; its canvas marks it handled) or focus is typing in a field. On a try-it step, Tab
@@ -260,6 +261,7 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
           onNext,
           onExit: exit,
           onDoForMe: offerDoForMe ? onDoForMe : undefined,
+          doForMePressed,
           tabStop: trying === null ? undefined : tabStop,
           target: hole,
           viewport,

@@ -520,7 +520,8 @@ describe("the tour's try-it steps", () => {
     await act(() => vi.advanceTimersByTimeAsync(50));
     expect(dialog()).toHaveAccessibleName("Open a group.");
     fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
-    expect(within(dialog()).queryByRole("button", { name: "Do it for me" })).not.toBeInTheDocument();
+    // It stays, disabled, so the button row does not shift while the step finishes (ui-reviewer).
+    expect(within(dialog()).getByRole("button", { name: "Do it for me" })).toBeDisabled();
     await act(() => vi.advanceTimersByTimeAsync(5900));
     expect(dialog()).toHaveAccessibleName("Open a group.");
     await act(() => vi.advanceTimersByTimeAsync(200));
