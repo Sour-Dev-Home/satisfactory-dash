@@ -188,6 +188,19 @@ describe("the demo's tour", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("Escape inside another open native dialog (the command palette) is left to it", () => {
+    renderApp();
+    const palette = document.createElement("dialog");
+    palette.setAttribute("open", "");
+    const item = document.createElement("button");
+    palette.append(item);
+    document.body.append(palette);
+    fireEvent.keyDown(item, { key: "Escape" });
+    const still = document.querySelector("[data-tour-popover]") !== null;
+    palette.remove();
+    expect(still).toBe(true);
+  });
+
   it("Skip, or Finish on the last step, ends it and writes nothing more", () => {
     renderApp("/app", TOUR_STEPS.slice(0, 3));
     const setItem = vi.spyOn(Storage.prototype, "setItem");
@@ -485,8 +498,9 @@ describe("the tour's try-it steps", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
     expect(box).toBeChecked();
+    // Already ticked: Do it for me must not untick it; the step just goes on.
     fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
-    expect(box).not.toBeChecked();
+    expect(box).toBeChecked();
     await waitFor(() => expect(within(dialog()).getByText("Step 4 of 4")).toBeInTheDocument());
   });
 

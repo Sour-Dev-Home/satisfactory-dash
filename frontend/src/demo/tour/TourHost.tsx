@@ -204,6 +204,11 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
   const onDoForMe = useCallback(() => {
     if (trying === null) return;
     const index = state.index;
+    // Already ticked: nothing to press, so the step is as good as done.
+    if (trying instanceof HTMLElement && !pressTarget(trying)) {
+      dispatch({ type: "next" });
+      return;
+    }
     setPressedAt(index);
     // The button goes once pressed: focus waits on the heading (a panel that opens may take it, as a real click's would).
     document.querySelector<HTMLElement>("[data-tour-popover] h2")?.focus({ preventScroll: true });
@@ -224,7 +229,8 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
       if (e.key === "Escape") {
-        if (isTypingField(e.target)) return;
+        // Typing in a field, or inside another open native dialog (the command palette): Escape is theirs.
+        if (isTypingField(e.target) || (e.target instanceof Element && e.target.closest("dialog[open]") !== null)) return;
         e.preventDefault();
         exit();
         return;

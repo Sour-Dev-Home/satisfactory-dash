@@ -93,6 +93,13 @@ describe("pressTarget (Do it for me)", () => {
     expect(box.checked).toBe(true);
     expect(onChange).toHaveBeenCalledTimes(1);
   });
+
+  it("does not untick a checkbox that is already ticked, and says it pressed nothing", () => {
+    html(`<label id="l"><input type="checkbox" checked> Belts</label>`);
+    const box = document.querySelector("input")!;
+    expect(pressTarget(document.getElementById("l")!)).toBe(false);
+    expect(box.checked).toBe(true);
+  });
 });
 
 describe("tabStopOf", () => {

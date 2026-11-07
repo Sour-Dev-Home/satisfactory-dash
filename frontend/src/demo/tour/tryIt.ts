@@ -46,9 +46,12 @@ export function watchDone(done: TourDone, onDone: () => void): () => void {
  * "Do it for me": a bubbling click on the target, through the page's own handlers (an SVG card has no `.click()`). A
  * label is pressed through its control, so a checkbox toggles and fires `change` as a real tick does.
  */
-export function pressTarget(el: Element): void {
+export function pressTarget(el: Element): boolean {
   const press = el instanceof HTMLLabelElement && el.control !== null ? el.control : el;
+  // Already ticked: pressing would untick it, the opposite of what the step asks. Nothing is pressed.
+  if (press instanceof HTMLInputElement && press.type === "checkbox" && press.checked) return false;
   press.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  return true;
 }
 
 const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
