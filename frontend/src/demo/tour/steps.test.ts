@@ -5,13 +5,30 @@ import { OPEN_PARAM } from "../../planner/PlannerView";
 import { visibleTabs } from "../../shell/tabs";
 import { withDemoDesignations } from "../designations";
 import * as world from "../world";
-import { TOUR_PLANNER_SEARCH, TOUR_STEPS } from "./steps";
+import { stepLine, tabLabel, TOUR_PLANNER_SEARCH, TOUR_STEPS } from "./steps";
+import { tabTarget } from "./tabTarget";
 
 // Every source file but tests, read as text: a step's target must be marked somewhere in the app (ADR-0065 Decision 5).
 const sources = import.meta.glob<string>(["../../**/*.{ts,tsx}", "!../../**/*.test.{ts,tsx}", "!./**"], { query: "?raw", import: "default", eager: true });
 
 /** About 15 seconds of reading (ADR-0065 owner's answer 5), at a slow 200 words a minute. */
 const MAX_WORDS = 50;
+
+describe("which tab a step is on", () => {
+  it("names each step's tab from the nav's own labels, and gives each tab its own target", () => {
+    expect(TOUR_STEPS.map((s) => tabLabel(s.path))).toEqual(TOUR_STEPS.map((s) => visibleTabs(true).find((t) => t.to === s.path)?.label));
+    expect(tabLabel("/app/power")).toBe("Power");
+    expect(tabLabel("/nowhere")).toBeUndefined();
+    expect(stepLine(4, 15, "Power")).toBe("Step 4 of 15 · Power");
+    expect(stepLine(1, 3, undefined)).toBe("Step 1 of 3");
+    expect(tabTarget("/app")).toBe("tab-overview");
+    expect(tabTarget("/app/planner")).toBe("tab-planner");
+    const ids = visibleTabs(true).map((t) => tabTarget(t.to));
+    expect(new Set(ids).size).toBe(ids.length);
+    // The shell marks each NavLink with it.
+    expect(sources["../../shell/Shell.tsx"]).toContain("{...tour(tabTarget(tab.to))}");
+  });
+});
 
 describe("the tour's steps", () => {
   it("are the ADR's fifteen, each with its own id, a title and words short enough to read in 15 seconds", () => {

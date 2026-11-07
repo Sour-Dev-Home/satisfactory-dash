@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
-import { TOUR_STEPS } from "../../src/demo/tour/steps";
+import { tabLabel, TOUR_STEPS } from "../../src/demo/tour/steps";
+import { tabTarget } from "../../src/demo/tour/tabTarget";
 import { expect, expectNoAxeViolations, test } from "../fixtures";
 
 // The guided tour of the demo (ADR-0065, build PR 2): started by itself on the first visit to /app (no "demo.tour" set
@@ -40,6 +41,49 @@ async function expectRingRound(page: Page, target: Locator): Promise<void> {
     .toBe(true);
 }
 
+type Rect = { x: number; y: number; width: number; height: number };
+const close = (a: Rect, b: Rect, slack = 1.5) =>
+  Math.abs(a.x - b.x) <= slack && Math.abs(a.y - b.y) <= slack && Math.abs(a.width - b.width) <= slack && Math.abs(a.height - b.height) <= slack;
+
+/**
+ * No pop-in (ADR-0065 amendment, 2026-11-07): as soon as a step shows, its ring is its target's box padded by
+ * `--spacing-tour-pad`, and it stays there over the next ~300 ms (the step waited for the page to settle, not just appear).
+ */
+async function expectNoPopIn(page: Page, target: Locator): Promise<void> {
+  const pad = await page.evaluate(() =>
+    Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--spacing-tour-pad")),
+  );
+  const ring = page.locator("[data-tour-ring]");
+  const first = await ring.boundingBox();
+  const box = await target.boundingBox();
+  expect(first, "ring").not.toBeNull();
+  expect(box, "target").not.toBeNull();
+  const padded = { x: box!.x - pad, y: box!.y - pad, width: box!.width + 2 * pad, height: box!.height + 2 * pad };
+  expect(close(first!, padded), `ring ${JSON.stringify(first)} round ${JSON.stringify(padded)}`).toBe(true);
+  await page.waitForTimeout(300);
+  const later = await ring.boundingBox();
+  expect(later !== null && close(later, first!), `ring moved: ${JSON.stringify(first)} then ${JSON.stringify(later)}`).toBe(true);
+}
+
+/** The step's tab sits in the scrim's second hole: the tab ring is round it. */
+async function expectTabHole(page: Page, path: string): Promise<void> {
+  const tab = page.locator(`[data-tour="${tabTarget(path)}"]`);
+  const box = await tab.boundingBox();
+  const ring = await page.locator("[data-tour-tab-ring]").boundingBox();
+  expect(box, "tab").not.toBeNull();
+  expect(ring, "tab ring").not.toBeNull();
+  const slack = 1;
+  expect(
+    ring!.x <= box!.x + slack &&
+      ring!.y <= box!.y + slack &&
+      ring!.x + ring!.width >= box!.x + box!.width - slack &&
+      ring!.y + ring!.height >= box!.y + box!.height - slack,
+  ).toBe(true);
+  // The clip's evenodd path holds the viewport and both holes (three closed shapes), or the viewport and the tab's.
+  const d = (await page.locator("#tour-hole path").getAttribute("d")) ?? "";
+  expect(d.match(/Z/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+}
+
 test("walks every step of the tour with Next, each ringing its target", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   await page.goto("/?clock=fixed");
@@ -49,7 +93,8 @@ test("walks every step of the tour with Next, each ringing its target", async ({
   const dialog = page.getByRole("dialog");
   for (const [i, step] of TOUR_STEPS.entries()) {
     await expect(dialog, `step ${i + 1}`).toHaveAccessibleName(step.title, { timeout: STEP_TIMEOUT });
-    await expect(dialog.getByText(`Step ${i + 1} of ${TOUR_STEPS.length}`)).toBeVisible();
+    // The step line names the tab its page is on.
+    await expect(dialog.getByText(`Step ${i + 1} of ${TOUR_STEPS.length} · ${tabLabel(step.path)}`)).toBeVisible();
     // On a phone too: step 8 presses the planner's Graph button first (its Outline is the phone's default).
     const centred = CENTRED.has(step.id);
     if (centred) {
@@ -57,10 +102,14 @@ test("walks every step of the tour with Next, each ringing its target", async ({
       await expect(page.locator("[data-tour-ring]")).toHaveCount(0);
     } else {
       await expect(root, step.id).toHaveAttribute("data-tour-phase", "showing");
-      await expectRingRound(page, page.locator(`[data-tour="${step.target}"]`).first());
+      const target = page.locator(`[data-tour="${step.target}"]`).first();
+      await expectNoPopIn(page, target);
+      await expectRingRound(page, target);
       // A try-it step's target must be on screen to be tapped: a phone's planner canvas had the card panned off it.
       if (step.kind === "try") await expect(page.locator(`[data-tour="${step.target}"]`).first()).toBeInViewport();
     }
+    // Every step, the welcome and the finish included, shows which tab it is on: its tab in a second hole.
+    await expectTabHole(page, step.path);
     // Placed by attributes only (the CSP's style-src 'self', the repo's no-`style=` rule).
     await expect(page.locator("[data-tour-root][style], [data-tour-root] [style]")).toHaveCount(0);
     if (AXE_STEPS.has(step.id)) await expectNoAxeViolations(page, testInfo);

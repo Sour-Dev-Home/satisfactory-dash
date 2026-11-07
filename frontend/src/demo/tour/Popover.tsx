@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { placePopover, sheetAtTop, type Box, type Size } from "./placePopover";
-import type { TourStep } from "./steps";
+import { stepLine, tabLabel, type TourStep } from "./steps";
 import type { Focusable } from "./tryIt";
 
 export interface TourPanelProps {
@@ -69,7 +69,7 @@ function TourPanel({ step, number, count, onBack, onNext, onExit, onDoForMe, doF
       className={cn("pointer-events-auto grid gap-2 bg-surface text-fg", className)}
     >
       <p className="mb-0 text-xs font-semibold tracking-wide text-muted uppercase">
-        Step {number} of {count}
+        {stepLine(number, count, tabLabel(step.path))}
       </p>
       <h2 id={titleId} ref={heading} tabIndex={-1} className="mb-0 text-lg">
         {step.title}

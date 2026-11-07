@@ -317,3 +317,32 @@ tour.
   `keyTarget` is now focused for an instant on arrival, so the planner pans to the card as it does for a keyboard user,
   and focus goes straight back. The e2e walk checks every try-it target is on screen.
 - **Not done:** the ADR's pointer in "the demo's runbook": there is no demo runbook (`docs-vault/wiki/runbooks/`).
+
+## Amendment, 2026-11-07: no pop-in, and which tab
+
+The owner, after walking the tour: "Clicking through the tour means jumping to components that arent loaded in yet so
+they pop in oddly. Also the user cant tell which tab each item is on since its blurred (dont know which tab has the
+power graph)".
+
+- **Decision 4, waiting for the page, now also waits for it to settle.** Soon after the tour starts (once idle,
+  `lib/idle.ts`, so the Overview it starts on loads first; skipped under Save-Data like the app's other speculative
+  loads) it warms everything it will visit (`demo/tour/warm.ts`): the lazy chunk of each step's page (the power chart, the planner's graph, the map's
+  canvas, the very modules the pages load lazily) and each distinct page's primary queries, through
+  `shell/pageQueries.ts` as a nav link's hover prefetches them. A step on a new page (or one whose target only a click
+  shows) shows only once its target is ready as before and its box has kept still within 1 px for `TOUR_SETTLE_MS`
+  (200 ms), measured on animation frames. `TOUR_TARGET_WAIT_MS` still bounds the whole wait. A step on the same page
+  shows at once.
+- **Decision 4, the wait itself.** PR 1 kept the last step on screen while the next was awaited. Over a page changing
+  underneath that was the jumpy part, so going to a new page now shows only the plain scrim: dimmed, no hole, no ring,
+  no popover. That reads calmer than the old popover without its hole, which would point at nothing and then jump
+  across the screen to its new place. Focus waits on a visually hidden holder inside the tour (`role="dialog"`, named
+  "Guided tour"), so the shell's move to the new page's heading cannot take it out of the tour. The new step then fades
+  in with the existing token animation, which is off under reduced motion.
+- **Decision 2, a second hole for the tab.** The scrim's evenodd path also cuts a hole round the step's page's tab in the
+  top nav (`data-tour="tab-<page>"`, put on each NavLink by `tour(...)`, so nothing reaches production), with a 1 px
+  `muted` ring, not the accent one, so the target stays the main thing. The hole is dropped where it would overlap the
+  target's (evenodd would dim the overlap again). It stays clickable: it only goes to the page already shown. The nav,
+  which scrolls sideways on phones, is scrolled to show the tab (instantly, the nav only, never the page). There is no
+  menu hiding the tabs on phones; a tab with no box would get no hole. The welcome and the finish get the Overview tab.
+- **Decision 9, the words.** The popover's step line and the live region name the tab: "Step 4 of 15 · Power", the
+  label read from the nav's own list (`shell/tabs.ts`).

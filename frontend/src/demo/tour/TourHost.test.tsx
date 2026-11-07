@@ -1,15 +1,27 @@
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ServerSummary } from "@satisfactory-dash/shared";
+import { ServerContext } from "../../servers/ServerContext";
 import { DemoBanner } from "../DemoBanner";
 import { resetTourLoadForTests, TOUR_STORAGE_KEY } from "./persistence";
+import { TOUR_SETTLE_MS } from "./waitForTarget";
 import { TOUR_STEPS, type TourStep } from "./steps";
 import TourHost from "./TourHost";
 import { resetTourStoreForTests } from "./tourStore";
 
 // The targets carry data-tour by hand: in tests IS_DEMO is false, so tour() adds nothing (as in production).
 vi.mock("../mode", () => ({ IS_DEMO: true }));
+
+/**
+ * The host as the engine's tests see it: no settling wait (a target counts as found once ready, the settling has its own
+ * tests below) and no warming (no real chunks imported into jsdom).
+ */
+function Host(props: ComponentProps<typeof TourHost>) {
+  return <TourHost settleMs={0} warm={() => {}} {...props} />;
+}
 
 const rect = (x: number, y: number, width: number, height: number) => () =>
   ({ x, y, width, height, top: y, left: x, right: x + width, bottom: y + height, toJSON: () => ({}) }) as DOMRect;
@@ -85,7 +97,7 @@ function renderApp(path = "/app", steps: readonly TourStep[] = TOUR_STEPS) {
         <Route path="/app/power" element={<p>Power page</p>} />
       </Routes>
       <Where />
-      <TourHost steps={steps} />
+      <Host steps={steps} />
     </MemoryRouter>,
   );
 }
@@ -106,7 +118,8 @@ describe("the demo's tour", () => {
     expect(d).toHaveAccessibleName(TOUR_STEPS[0].title);
     expect(d).toHaveAccessibleDescription(TOUR_STEPS[0].body);
     expect(d).not.toHaveAttribute("aria-modal");
-    expect(within(d).getByText(`Step 1 of ${TOUR_STEPS.length}`)).toBeInTheDocument();
+    // The step line names the tab the step's page is on.
+    expect(within(d).getByText(`Step 1 of ${TOUR_STEPS.length} · Overview`)).toBeInTheDocument();
   });
 
   it("does not start by itself on a deep link, or once seen", () => {
@@ -123,12 +136,12 @@ describe("the demo's tour", () => {
   it("moves focus to each step's heading, and says only the step's place in a polite live region (the heading says its title)", () => {
     renderApp();
     expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[0].title }));
-    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Step 1 of ${TOUR_STEPS.length}$`));
+    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Step 1 of ${TOUR_STEPS.length} · Overview$`));
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(dialog()).toHaveAccessibleName(TOUR_STEPS[1].title);
     expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[1].title }));
-    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Step 2 of ${TOUR_STEPS.length}$`));
+    expect(screen.getByRole("status")).toHaveTextContent(new RegExp(`^Step 2 of ${TOUR_STEPS.length} · Overview$`));
 
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(dialog()).toHaveAccessibleName(TOUR_STEPS[0].title);
@@ -262,7 +275,7 @@ describe("the demo's tour", () => {
           <Route path="/app" element={<Overview />} />
           <Route path="/app/power" element={<PowerPage />} />
         </Routes>
-        <TourHost steps={[TOUR_STEPS[1], TOUR_STEPS[3]]} />
+        <Host steps={[TOUR_STEPS[1], TOUR_STEPS[3]]} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
@@ -298,7 +311,7 @@ describe("the demo's tour", () => {
     render(
       <MemoryRouter initialEntries={["/app"]}>
         <DemoBanner />
-        <TourHost steps={[{ ...TOUR_STEPS[0], target: "missing" }, TOUR_STEPS[1]]} />
+        <Host steps={[{ ...TOUR_STEPS[0], target: "missing" }, TOUR_STEPS[1]]} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
@@ -321,7 +334,7 @@ describe("the demo's tour", () => {
         <Routes>
           <Route path="/app" element={<Openable onOpen={onOpen} />} />
         </Routes>
-        <TourHost steps={[step, { ...step, id: "b", title: "Second." }]} />
+        <Host steps={[step, { ...step, id: "b", title: "Second." }]} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
@@ -380,7 +393,7 @@ describe("the demo's tour", () => {
         <Routes>
           <Route path="/app" element={<Chained />} />
         </Routes>
-        <TourHost steps={[other, step]} />
+        <Host steps={[other, step]} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
@@ -403,7 +416,7 @@ describe("the demo's tour", () => {
         <Routes>
           <Route path="/app" element={<Openable onOpen={onOpen} />} />
         </Routes>
-        <TourHost steps={[step, other]} />
+        <Host steps={[step, other]} />
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
@@ -512,7 +525,7 @@ function renderTry(steps: readonly TourStep[], onCard = vi.fn()) {
       <Routes>
         <Route path="/app" element={<TryPage onCard={onCard} />} />
       </Routes>
-      <TourHost steps={steps} />
+      <Host steps={steps} />
     </MemoryRouter>,
   );
   fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
@@ -531,7 +544,7 @@ describe("the tour's try-it steps", () => {
     expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
     expect(onCard).toHaveBeenCalledTimes(1);
     // One announcement: done, and where the tour now is.
-    expect(screen.getByRole("status")).toHaveTextContent(/^Done\. Step 2 of 3$/);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Done\. Step 2 of 3 · Overview$/);
   });
 
   it("Do it for me clicks the card (an SVG <g>) through its own handler, and the tour moves on", async () => {
@@ -554,7 +567,7 @@ describe("the tour's try-it steps", () => {
     // Already ticked: Do it for me must not untick it; the step just goes on.
     fireEvent.click(within(dialog()).getByRole("button", { name: "Do it for me" }));
     expect(box).toBeChecked();
-    await waitFor(() => expect(within(dialog()).getByText("Step 4 of 4")).toBeInTheDocument());
+    await waitFor(() => expect(within(dialog()).getByText("Step 4 of 4 · Overview")).toBeInTheDocument());
   });
 
   it("when nothing happens, Next still moves on (and the next step's opener opens the panel)", async () => {
@@ -564,7 +577,7 @@ describe("the tour's try-it steps", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await waitFor(() => expect(dialog()).toHaveAccessibleName("Inside a group."));
     expect(onCard).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("status")).toHaveTextContent(/^Step 2 of 3$/);
+    expect(screen.getByRole("status")).toHaveTextContent(/^Step 2 of 3 · Overview$/);
   });
 
   it("Do it for me with no answer from the page goes on as Next after the wait", async () => {
@@ -621,6 +634,150 @@ describe("the tour's try-it steps", () => {
     next.focus();
     fireEvent.keyDown(next, { key: "Tab" });
     expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: "Belts and pipes" }));
+  });
+});
+
+/** The top nav's tabs, marked as the shell marks them (`tour(tabTarget(path))`). */
+function Nav() {
+  return (
+    <nav aria-label="Main">
+      <a
+        href="/app"
+        data-tour="tab-overview"
+        ref={(el) => {
+          if (el) el.getBoundingClientRect = rect(0, 0, 90, 44);
+        }}
+      >
+        Overview
+      </a>
+      <a
+        href="/app/power"
+        data-tour="tab-power"
+        ref={(el) => {
+          if (el) el.getBoundingClientRect = rect(90, 0, 80, 44);
+        }}
+      >
+        Power
+      </a>
+    </nav>
+  );
+}
+
+/** The Power page, its chart still laying out (its box moving every read) until `chart.still` is set. */
+const chart = { still: false, x: 20 };
+function LayingOutPower() {
+  return (
+    <div data-page-reveal="revealed">
+      <section
+        data-tour="power-chart"
+        ref={(el) => {
+          if (!el) return;
+          el.getBoundingClientRect = () => {
+            if (!chart.still) chart.x += 4;
+            return rect(chart.x, 100, 300, 200)();
+          };
+        }}
+      >
+        Chart
+      </section>
+    </div>
+  );
+}
+
+const ringOf = (selector: string) => {
+  const ring = document.querySelector(selector);
+  return ring === null ? null : ["x", "y", "width", "height"].map((a) => Number(ring.getAttribute(a)));
+};
+const holes = () => (document.querySelector("#tour-hole path")?.getAttribute("d") ?? "").match(/Z/g)?.length ?? 0;
+
+describe("moving to a new page, and which tab a step is on", () => {
+  beforeEach(() => {
+    chart.still = false;
+    chart.x = 20;
+  });
+
+  function renderPages(props: Partial<ComponentProps<typeof TourHost>> = {}) {
+    window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+    render(
+      <MemoryRouter initialEntries={["/app"]}>
+        <DemoBanner />
+        <Nav />
+        <Routes>
+          <Route path="/app" element={<Overview />} />
+          <Route path="/app/power" element={<LayingOutPower />} />
+        </Routes>
+        <TourHost steps={[TOUR_STEPS[1], TOUR_STEPS[3]]} warm={() => {}} {...props} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+  }
+
+  it("while the next page settles: only the plain scrim (no hole, ring, tab or popover from the last step), focus kept in the tour; then the step, once its box keeps still", async () => {
+    renderPages();
+    await waitFor(() => expect(dialog()).toHaveAccessibleName(TOUR_STEPS[1].title));
+    expect(holes()).toBe(3); // the viewport, the health card and the Overview tab
+
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
+    expect(document.querySelector("[data-tour-popover]")).toBeNull();
+    expect(document.querySelector("[data-tour-ring]")).toBeNull();
+    expect(document.querySelector("[data-tour-tab-ring]")).toBeNull();
+    expect(holes()).toBe(1);
+    expect(dialog()).toHaveAccessibleName("Guided tour");
+    expect(document.activeElement).toBe(document.querySelector("[data-tour-waiting]"));
+
+    // The chart keeps moving: still waiting, well past the settling time.
+    await new Promise((r) => setTimeout(r, TOUR_SETTLE_MS * 2));
+    expect(document.querySelector("[data-tour-popover]")).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector("[data-tour-waiting]"));
+
+    chart.still = true;
+    await waitFor(() => expect(dialog()).toHaveAccessibleName(TOUR_STEPS[3].title));
+    expect(document.querySelector("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
+    expect(ringOf("[data-tour-ring]")).toEqual([chart.x - 8, 92, 316, 216]);
+    expect(document.activeElement).toBe(within(dialog()).getByRole("heading", { name: TOUR_STEPS[3].title }));
+    expect(within(dialog()).getByText(`Step 2 of 2 · Power`)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/^Step 2 of 2 · Power$/);
+  });
+
+  it("cuts a second, quieter hole round the step's tab, its ring muted, not the accent", async () => {
+    chart.still = true;
+    renderPages({ settleMs: 0 });
+    await waitFor(() => expect(dialog()).toHaveAccessibleName(TOUR_STEPS[1].title));
+    // The Overview tab (0, 0, 90, 44), padded by 2.
+    expect(ringOf("[data-tour-tab-ring]")).toEqual([-2, -2, 94, 48]);
+    expect(document.querySelector("[data-tour-tab-ring]")).toHaveClass("stroke-muted");
+    expect(document.querySelector("[data-tour-tab-ring]")).not.toHaveClass("stroke-accent");
+    const d = document.querySelector("#tour-hole path")?.getAttribute("d") ?? "";
+    expect(d).toContain("M"); // both rects in the one evenodd path
+    expect(holes()).toBe(3);
+
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(dialog()).toHaveAccessibleName(TOUR_STEPS[3].title));
+    await waitFor(() => expect(ringOf("[data-tour-tab-ring]")).toEqual([88, -2, 84, 48]));
+  });
+
+  it("warms the tour's pages once as it starts, with the app's query client and server", async () => {
+    const warm = vi.fn();
+    const client = new QueryClient();
+    window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+    render(
+      <QueryClientProvider client={client}>
+        <ServerContext.Provider value={{ id: "s1" } as ServerSummary}>
+          <MemoryRouter initialEntries={["/app"]}>
+            <DemoBanner />
+            <Routes>
+              <Route path="/app" element={<Overview />} />
+            </Routes>
+            <TourHost steps={TOUR_STEPS.slice(0, 3)} settleMs={0} warm={warm} schedule={(task) => (task(), () => {})} />
+          </MemoryRouter>
+        </ServerContext.Provider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(dialog()).toHaveAccessibleName(TOUR_STEPS[1].title));
+    expect(warm).toHaveBeenCalledTimes(1);
+    expect(warm).toHaveBeenCalledWith(TOUR_STEPS.slice(0, 3), { client, serverId: "s1" });
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARROW_SIZE, holePath, padBox, placePopover, POPOVER_MARGIN, sheetAtTop, type Box } from "./placePopover";
+import { ARROW_SIZE, holePath, overlaps, padBox, placePopover, POPOVER_MARGIN, sheetAtTop, type Box } from "./placePopover";
 
 const viewport = { width: 1440, height: 900 };
 const size = { width: 352, height: 200 };
@@ -87,6 +87,19 @@ describe("the hole and the phone sheet", () => {
     const d = holePath({ width: 100, height: 50 }, box(10, 10, 20, 10), 8);
     expect(d.startsWith("M0 0H100V50H0ZM15 10")).toBe(true); // radius capped at half the height
     expect(d.endsWith("Z")).toBe(true);
+  });
+
+  it("cuts several holes in one evenodd path (the target and its tab), each its own rounded rect", () => {
+    const d = holePath({ width: 1000, height: 800 }, [box(100, 300, 200, 100), box(20, 10, 80, 40)], 8);
+    expect(d.startsWith("M0 0H1000V800H0Z")).toBe(true);
+    expect(d).toContain("M108 300"); // the target's rect
+    expect(d).toContain("M28 10"); // the tab's rect
+    expect(d.match(/Z/g)).toHaveLength(3);
+  });
+
+  it("tells overlapping boxes from apart ones (a tab hole over the target's would be dimmed again)", () => {
+    expect(overlaps(box(0, 0, 10, 10), box(5, 5, 10, 10))).toBe(true);
+    expect(overlaps(box(0, 0, 10, 10), box(10, 0, 10, 10))).toBe(false);
   });
 
   it("pads the target's box on every side", () => {

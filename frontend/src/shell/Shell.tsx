@@ -50,6 +50,8 @@ import { pageQueries, paletteQueries, prefetchFresh } from "./pageQueries";
 import { visibleTabs } from "./tabs";
 import { offersDevAgent, senderWords } from "../agent/agentText";
 import { IS_DEMO } from "../demo/mode";
+import { tabTarget } from "../demo/tour/tabTarget";
+import { tour } from "../demo/tour/target";
 
 // The demo's guided tour (ADR-0065 Decision 8): its own chunk, in the demo build only. The bundler drops a dead dynamic
 // import only when its condition folds in this module: with the imported IS_DEMO alone it still wrote the (never
@@ -380,6 +382,7 @@ export function Shell() {
               key={tab.to}
               to={tab.to}
               end={tab.end}
+              {...tour(tabTarget(tab.to))}
               onMouseEnter={() => prefetch(tab.to)}
               onFocus={() => prefetch(tab.to)}
               onTouchStart={() => prefetch(tab.to)}
