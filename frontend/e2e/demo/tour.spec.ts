@@ -198,7 +198,9 @@ test("the Factory's sticky filter bar sticks under the tour's pinned tab row", a
       return r !== null && b !== null && b.y >= r.y + r.height - 1 && b.y <= r.y + r.height + 1;
     }, { timeout: STEP_TIMEOUT })
     .toBe(true);
-  await expect(page.locator("[data-tour-tab-ring]")).toBeInViewport();
+  // The row (and the step's tab in it) stays on screen. No tab ring here: scrolled, the step's panel runs up under the
+  // row and overlaps its tab, and Spotlight draws the tab's own ring only when it doesn't.
+  await expect(row).toBeInViewport();
 });
 
 const MAP_STEP = TOUR_STEPS.find((s) => s.id === "map-filters")!;
