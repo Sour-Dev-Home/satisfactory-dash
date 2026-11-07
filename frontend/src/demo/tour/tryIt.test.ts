@@ -60,6 +60,17 @@ describe("watchDone: changes", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
+  it("does not count a checkbox unticked, only ticked", () => {
+    html(`<label data-tour="toggle"><input type="checkbox" checked> Belts</label>`);
+    const onDone = vi.fn();
+    watchDone({ changes: "toggle" }, onDone);
+    const box = document.querySelector("input")!;
+    box.click();
+    expect(onDone).not.toHaveBeenCalled();
+    box.click();
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
   it("never fires when nothing changes, and stops listening when stopped", () => {
     html(`<input data-tour="toggle" type="checkbox">`);
     const onDone = vi.fn();

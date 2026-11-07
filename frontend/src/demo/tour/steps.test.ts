@@ -54,6 +54,11 @@ describe("the tour's steps", () => {
       for (const opener of [step.openedBy ?? []].flat()) expect(marked(opener), `${step.id} opened by ${opener}`).toBe(true);
       if (step.keyTarget !== undefined) expect(marked(step.keyTarget), `${step.id} keyboard path`).toBe(true);
       if (step.done !== undefined) expect(marked("appears" in step.done ? step.done.appears : step.done.changes), `${step.id} done`).toBe(true);
+      if (step.result !== undefined) {
+        expect(marked(step.result.target), `${step.id} result`).toBe(true);
+        expect(step.kind, `${step.id} result`).toBe("try");
+        for (const words of [step.result.body, step.result.already]) expect(words.split(/\s+/).length).toBeLessThanOrEqual(MAX_WORDS);
+      }
     }
   });
 

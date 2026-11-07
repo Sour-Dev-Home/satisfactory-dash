@@ -289,18 +289,45 @@ function TourRun({
     };
   }, [step, settleMs]);
 
-  // A try-it step (Decision 6) is seen done by what appears or changes, and the tour then moves on by itself. Next stays
-  // enabled meanwhile: moving on without doing it is fine (step 10's openers then open the panel instead).
+  // A try-it step (Decision 6) is seen done by what appears or changes. With a `result` the tour stays on the step and shows
+  // it (the highlight moves, the words change, Next moves on); without one it moves on by itself (the planner's card: the
+  // next step is the panel it opened). Next stays enabled meanwhile: moving on without doing it is fine.
   const [doneInto, setDoneInto] = useState<number | null>(null);
   const [pressedAt, setPressedAt] = useState<number | null>(null);
+  // `shown` once the result's target has settled (or was given up on): the words and the highlight change together.
+  const [result, setResult] = useState<{ index: number; already: boolean; shown: boolean } | null>(null);
+  const resultHere = result !== null && result.index === state.index ? result : null;
+  const inResult = resultHere !== null;
   useEffect(() => {
-    if (step.kind !== "try" || step.done === undefined) return undefined;
+    if (step.kind !== "try" || step.done === undefined || inResult) return undefined;
+    const index = steps.indexOf(step);
     const stop = watchDone(step.done, () => {
-      setDoneInto(steps.indexOf(step) + 1);
+      if (step.result !== undefined) {
+        setResult({ index, already: false, shown: false });
+        return;
+      }
+      setDoneInto(index + 1);
       dispatch({ type: "next" });
     });
     return stop;
-  }, [step, steps]);
+  }, [step, steps, inResult]);
+  // The result's target, through the same settle gate as a step's: then the hole moves there and the words change.
+  useEffect(() => {
+    if (!inResult || step.result === undefined) return undefined;
+    const index = steps.indexOf(step);
+    const show = () => setResult((r) => (r !== null && r.index === index ? { ...r, shown: true } : r));
+    return waitForTarget(step.result.target, {
+      settleMs,
+      onFound: (el) => {
+        bringIntoView(el);
+        targetRef.current = el;
+        setTarget(el);
+        show();
+      },
+      // No result target: the words still change, the highlight stays where it was.
+      onTimeout: show,
+    });
+  }, [inResult, step, steps, settleMs]);
 
 
   const onLost = useCallback((el: Element) => {
@@ -335,38 +362,48 @@ function TourRun({
   const onNext = useCallback(() => {
     setDoneInto(null);
     setPressedAt(null);
+    setResult(null);
     if (isLastStep(state, count) && state.shown === state.index) exit();
     else dispatch({ type: "next" });
   }, [state, count, exit]);
   const onBack = useCallback(() => {
     setDoneInto(null);
     setPressedAt(null);
+    setResult(null);
     dispatch({ type: "back" });
   }, []);
 
   // A try-it step showing its target: Do it for me, and Tab reaching the target (Decisions 6 and 9).
-  const trying = step.kind === "try" && state.phase === "showing" && state.shown === state.index && target !== null ? target : null;
+  const showingThis = step.kind === "try" && state.phase === "showing" && state.shown === state.index;
+  const trying = showingThis && !inResult && target !== null ? target : null;
   const tabStop = useCallback(() => (trying === null ? null : tabStopOf(trying, step.keyTarget)), [trying, step]);
   const onDoForMe = useCallback(() => {
     if (trying === null) return;
     const index = state.index;
     // Focus waits on the heading (the button turns disabled; a panel that opens may take focus, as a real click's would).
     document.querySelector<HTMLElement>("[data-tour-popover] h2")?.focus({ preventScroll: true });
-    // Pressed once only. Already ticked: nothing to press, so the step is as good as done.
+    // Pressed once only, never unticking. Already ticked: nothing to press, so the step is done already.
     if (!pressTarget(trying)) {
-      dispatch({ type: "next" });
+      if (step.result !== undefined) setResult({ index, already: true, shown: false });
+      else dispatch({ type: "next" });
       return;
     }
     setPressedAt(index);
-  }, [trying, state.index]);
+  }, [trying, state.index, step]);
   // Do it for me pressed and nothing registered (the page did not answer): the step goes on as a Next step would.
   useEffect(() => {
-    if (pressedAt === null || pressedAt !== state.index) return undefined;
+    if (pressedAt === null || pressedAt !== state.index || inResult) return undefined;
     const timer = setTimeout(() => dispatch({ type: "next" }), TOUR_TARGET_WAIT_MS);
     return () => clearTimeout(timer);
-  }, [pressedAt, state.index]);
-  const offerDoForMe = trying !== null && step.doForMe === true;
-  const doForMePressed = pressedAt === state.index;
+  }, [pressedAt, state.index, inResult]);
+  // Shown, disabled, while the result settles; gone once it shows (Next is then the one thing to press).
+  // It stays, disabled, through the result too, so the button row never shifts under the pointer (ui-reviewer).
+  const offerDoForMe = step.doForMe === true && showingThis && (trying !== null || resultHere !== null);
+  const doForMePressed = pressedAt === state.index || inResult;
+  const resultWords =
+    resultHere?.shown === true && step.result !== undefined
+      ? { title: step.result.title ?? step.title, body: resultHere.already ? step.result.already : step.result.body }
+      : null;
 
   // While a new page loads, focus waits on this holder, inside the tour: the popover that had it is gone, and focus left on
   // <body> would be taken by the new page's heading (the shell's move on navigation), out of the tour.
@@ -411,7 +448,8 @@ function TourRun({
     shown === null || state.shown === null || changingPage
       ? null
       : {
-          step: shown,
+          // The same step (its id keeps the panel and focus), its words the result's once that shows.
+          step: resultWords === null || state.shown !== state.index ? shown : { ...shown, ...resultWords },
           number: state.shown + 1,
           count,
           onBack,
@@ -447,7 +485,7 @@ function TourRun({
         {/* After a try-it step is done, one announcement: "Done." with the next step's place, not two. */}
         {shown === null || state.shown === null || state.phase === "waiting"
           ? ""
-          : `${doneInto === state.shown ? "Done. " : ""}${stepLine(state.shown + 1, count, tabLabel(shown.path))}`}
+          : `${doneInto === state.shown || (resultWords !== null && state.shown === state.index) ? "Done. " : ""}${stepLine(state.shown + 1, count, tabLabel(shown.path))}`}
       </p>
     </div>
   );

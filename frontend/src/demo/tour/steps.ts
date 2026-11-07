@@ -2,7 +2,7 @@
  * The tour's steps (ADR-0065 "The steps"). Each names its page (`path`, `search`), its target (an element with that
  * `data-tour`, demo/tour/target.ts) and its words, which must stand alone: a step whose target never appears is shown
  * centred with no highlight. `try` steps say how they are done by what appears or changes, never by reading a page's
- * state (tryIt.ts); the tour moves on by itself once they are.
+ * state (tryIt.ts); once done the tour shows the step's `result`, or, with none, moves on by itself.
  */
 import { visibleTabs } from "../../shell/tabs";
 
@@ -48,6 +48,22 @@ export interface TourStep {
    * one is already there. Each must be an idempotent "show" (never a toggle that a second click undoes).
    */
   openedBy?: string | readonly string[];
+  /**
+   * What a try-it step shows once done (ADR-0065 Decision 6, amended 2026-11-07). With one, the tour stays on the step:
+   * the highlight moves to `target`, the words become `body` (`already` when Do it for me found it done before it pressed
+   * anything), and Next moves on. Without one, the tour moves on by itself, as the planner's card step does to the panel
+   * it opened.
+   */
+  result?: TourResult;
+}
+
+export interface TourResult {
+  /** The `data-tour` to highlight once done. */
+  target: string;
+  title?: string;
+  body: string;
+  /** The words when it was already done (a box the map remembered ticked). */
+  already: string;
 }
 
 /**
@@ -165,6 +181,13 @@ export const TOUR_STEPS: readonly TourStep[] = [
     body: "Each box turns a layer of the map on or off; belts, pipes and power lines start hidden. Try it: tick the highlighted box, Belts and pipes, to draw them. Or press Next to skip this.",
     kind: "try",
     done: { changes: "map-layer-toggle" },
+    // Stay to see it drawn: moving on at once jumped to Settings before the layer appeared (owner, 2026-11-07).
+    result: {
+      target: "map-canvas",
+      title: "Belts and pipes, drawn.",
+      body: "Done: belts and pipes are now drawn on the map, as lines between the buildings. Press Next when you're ready.",
+      already: "Belts and pipes are already drawn on the map, as lines between the buildings. Press Next when you're ready.",
+    },
     doForMe: true,
   },
   {

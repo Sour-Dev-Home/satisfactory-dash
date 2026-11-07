@@ -359,3 +359,24 @@ power graph)".
 - **Decision 9, the words.** The popover's step line and the live region lead with the tab: "Power tab · Step 4 of 15"
   ("Done. Power tab · Step 10 of 15" after a try-it step), the label read from the nav's own list (`shell/tabs.ts`); a
   page that is no tab keeps "Step N of M".
+
+## Amendment, 2026-11-07: a try-it step's result
+
+The owner: "Do it for me just skips to the next step". Two causes: once done, the tour moved on at once, so on the map
+step the visitor never saw the layer drawn (it jumped to Settings); and Do it for me pressed nothing when the box was
+already ticked (the map remembers its layers, so any later run) and moved on straight away.
+
+- **Decision 6 amended: a step may declare a `result`**, what to show once it is done: a target and words
+  (`steps.ts`, `TourResult`). Done by the visitor, by Do it for me, or found done already, a step with a result stays:
+  its highlight moves to the result's target through the same settle gate, its title and words become the result's,
+  Do it for me stays disabled while that settles and then goes, so Next is the one action, and the live region says
+  "Done." once ("Done. Map tab · Step 12 of 15"). Nothing moves on by itself. Back or Next leaves it; coming back shows
+  the step asking again.
+- **The map step's result** is the map itself (`map-canvas`): "Done: belts and pipes are now drawn on the map...", or,
+  when Do it for me found the box ticked, "Belts and pipes are already drawn on the map...". An already-ticked box still
+  shows the step as asked (the visitor may untick and tick it); Do it for me never unticks it.
+- **`changes` counts a tick only.** Unticking a remembered box is not doing a step that asks to tick one, so it no longer
+  finishes it (`tryIt.ts`).
+- **Steps without a result still move on by themselves.** The planner card's step has none: step 10 is the panel it opened.
+  Step 10 has openers, so it passes the settle gate: the card's step stays on screen while the panel opens and keeps still
+  for `TOUR_SETTLE_MS`, so the visitor sees it open before the next words.
