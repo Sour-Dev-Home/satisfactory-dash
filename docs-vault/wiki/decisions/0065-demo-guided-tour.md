@@ -286,3 +286,34 @@ tour.
   Next at 1440 and 390: each heading, the ring round its target (only the welcome centred, phones included), `[style]` 0 on the overlay,
   axe on five steps, screenshots of four (new baselines, `npm run baselines`), and step 10 opening its panel by itself,
   again after Back.
+
+## Build note, PR 3 (2026-11-07): the try-it steps
+
+- **Built as Decision 6 says**, in `demo/tour/tryIt.ts`: step 9 is `done: { appears: "planner-group-panel" }`, step 12
+  `done: { changes: "map-layer-toggle" }`, both `doForMe`. Once done the tour moves on by itself; step 10 then shows the
+  panel just opened at once, since its openers press nothing while their step's target is there. Next stays enabled.
+- **`appears` means new.** An element with that `data-tour` that was not there when the step began: Back from step 10
+  leaves the panel open, and a plain "is it there" would jump straight forward again.
+- **`changes`** is a `change` event on or inside the target, listened for in the capture phase (a page handler that stops
+  it cannot hide it).
+- **Step 12's target moved.** The ADR highlighted the layer fieldset (`map-filters`), but Do it for me needs one box to
+  press and the words now ask for one. `map-layer-toggle` marks the Belts and pipes label (a layer hidden at first) in
+  `map/MapPanel.tsx`; it is the step's target, its `changes` target and what Do it for me presses (a label through its
+  checkbox, so `change` fires). The fieldset is no longer marked. The step's id stays `map-filters`.
+- **"If nothing registers within the wait"** is read as: after Do it for me, if the step is not done within
+  `TOUR_TARGET_WAIT_MS`, the tour goes on as Next would. Do it for me shows only while the target is highlighted, and goes
+  once pressed (focus moves to the popover's heading).
+- **Decision 9 amended.** Escape leaves the tour from anywhere on the page (a document listener), not only the popover,
+  except while typing in a field or when the page handled it first: the group panel stops its Escape, and the planner
+  canvas's Escape that closes the panel now calls `preventDefault` like the rest of its Escape chain (`SiteGraph.tsx`).
+  On try-it steps Tab wraps through the popover's buttons and the target. The SVG card takes no focus, so a step can name
+  `keyTarget`, its keyboard path: `planner-group-card-key` on the card's visually hidden button. The live region says
+  "Done. Step N of M" once on arriving by a try-it step, not a separate "Done.".
+- **Two fixes from CI's phone run.** (1) A late "lost": the last step's element, gone with its page, could be seen gone
+  on a frame after the next step's target was found but before React rendered it, which knocked the new step to the
+  centred fallback (step 13, Settings, on phones). A loss now counts only for the target currently set (a
+  deterministic RTL test runs that frame by hand). (2) On a phone the planner's canvas had the refinery card panned off
+  the screen: the ring was round it but nothing could be tapped (Do it for me worked, a real tap could not). A step's
+  `keyTarget` is now focused for an instant on arrival, so the planner pans to the card as it does for a keyboard user,
+  and focus goes straight back. The e2e walk checks every try-it target is on screen.
+- **Not done:** the ADR's pointer in "the demo's runbook": there is no demo runbook (`docs-vault/wiki/runbooks/`).

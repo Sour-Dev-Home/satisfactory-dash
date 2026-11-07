@@ -40,11 +40,25 @@ describe("the planner's tour targets", () => {
     expect(node?.kind).toBe("machines");
     expect(document.querySelector('[data-tour="planner-group-panel"]')).toBeNull();
 
-    // The tour's click (TourHost's `openedBy`, and build PR 3's "Do it for me"): a bubbling click on the SVG card.
+    // The card's keyboard path (the try-it step's Tab stop) is that card's own visually hidden button.
+    const keys = document.querySelectorAll<HTMLButtonElement>('[data-tour="planner-group-card-key"]');
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toHaveAttribute("aria-expanded", "false");
+
+    // The tour's click (TourHost's `openedBy`, and "Do it for me"): a bubbling click on the SVG card.
     act(() => {
       card.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     const panel = await screen.findByRole("complementary");
     expect(panel).toHaveAttribute("data-tour", "planner-group-panel");
+    expect(keys[0]).toHaveAttribute("aria-expanded", "true");
+
+    // Escape on the canvas closes the panel and says it was handled, so the tour's page-wide Escape leaves it alone.
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    act(() => {
+      keys[0].dispatchEvent(escape);
+    });
+    expect(escape.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 });

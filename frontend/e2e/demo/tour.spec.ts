@@ -58,6 +58,8 @@ test("walks every step of the tour with Next, each ringing its target", async ({
     } else {
       await expect(root, step.id).toHaveAttribute("data-tour-phase", "showing");
       await expectRingRound(page, page.locator(`[data-tour="${step.target}"]`).first());
+      // A try-it step's target must be on screen to be tapped: a phone's planner canvas had the card panned off it.
+      if (step.kind === "try") await expect(page.locator(`[data-tour="${step.target}"]`).first()).toBeInViewport();
     }
     // Placed by attributes only (the CSP's style-src 'self', the repo's no-`style=` rule).
     await expect(page.locator("[data-tour-root][style], [data-tour-root] [style]")).toHaveCount(0);
@@ -71,6 +73,50 @@ test("walks every step of the tour with Next, each ringing its target", async ({
   await expect(root).toHaveCount(0);
   expect(await page.evaluate(() => window.localStorage.getItem("demo.tour"))).toBe("seen");
 });
+
+/** Enters the demo and presses Next up to the step with this id (on a phone, step 8 presses the planner's Graph first). */
+async function walkTo(page: Page, id: string): Promise<{ dialog: Locator; at: number }> {
+  await page.goto("/?clock=fixed");
+  await page.getByRole("button", { name: "Enter demo" }).click();
+  const dialog = page.getByRole("dialog");
+  const at = TOUR_STEPS.findIndex((s) => s.id === id);
+  for (const step of TOUR_STEPS.slice(0, at)) {
+    await expect(dialog).toHaveAccessibleName(step.title, { timeout: STEP_TIMEOUT });
+    await dialog.getByRole("button", { name: "Next" }).click();
+  }
+  await expect(dialog).toHaveAccessibleName(TOUR_STEPS.at(at)!.title, { timeout: STEP_TIMEOUT });
+  await expect(page.locator("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing", { timeout: STEP_TIMEOUT });
+  return { dialog, at };
+}
+
+// Try-it steps (build PR 3): doing what the words ask, through the hole, moves the tour on by itself; so does "Do it for
+// me", a bubbling click on the target through the page's own handlers.
+for (const how of ["a real click", "Do it for me"] as const) {
+  test(`the planner's card step moves on to the open panel after ${how}`, async ({ page }) => {
+    test.setTimeout(90_000);
+    const { dialog, at } = await walkTo(page, "planner-group-card");
+    if (how === "a real click") await page.locator('[data-tour="planner-group-card"]').click();
+    else await dialog.getByRole("button", { name: "Do it for me" }).click();
+    await expect(dialog).toHaveAccessibleName(TOUR_STEPS.at(at + 1)!.title, { timeout: STEP_TIMEOUT });
+    const panel = page.locator('[data-tour="planner-group-panel"]');
+    await expect(panel).toBeVisible();
+    await expect(page.locator("[data-tour-root]")).toHaveAttribute("data-tour-phase", "showing");
+    await expectRingRound(page, panel);
+    await expect(page.getByRole("status").filter({ hasText: /Step \d+ of/ })).toHaveText(`Done. Step ${at + 2} of ${TOUR_STEPS.length}`);
+  });
+
+  test(`the map's layer step moves on after ${how}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    const { dialog, at } = await walkTo(page, "map-filters");
+    const box = page.getByRole("checkbox", { name: "Belts and pipes" });
+    await expect(box).not.toBeChecked();
+    if (how === "a real click") await box.click();
+    else await dialog.getByRole("button", { name: "Do it for me" }).click();
+    const next = TOUR_STEPS.at(at + 1)!;
+    await expect(dialog).toHaveAccessibleName(next.title, { timeout: STEP_TIMEOUT });
+    await expect(page).toHaveURL(new RegExp(`${next.path}$`));
+  });
+}
 
 test("the planner's details step opens the group panel itself when Next skipped the click", async ({ page }) => {
   test.setTimeout(60_000);

@@ -8,7 +8,8 @@ import { AttachedPopover, SheetPopover } from "./Popover";
 import { Spotlight } from "./Spotlight";
 import { TOUR_STEPS, type TourStep } from "./steps";
 import { registerTourHost, startTour, stopTour, useTour } from "./tourStore";
-import { findReadyTarget, targetSelector, waitForTarget } from "./waitForTarget";
+import { isTypingField, pressTarget, revealByKeyPath, tabStopOf, watchDone } from "./tryIt";
+import { findReadyTarget, targetSelector, TOUR_TARGET_WAIT_MS, waitForTarget } from "./waitForTarget";
 
 /** The banner's "Take the tour" button: where focus goes when the tour ends and where it was is gone. */
 export const BANNER_TOUR_TARGET = "demo-banner-tour";
@@ -71,7 +72,7 @@ const sameBox = (a: Box | null, b: Box | null) =>
   a === b || (a !== null && b !== null && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height);
 
 /** The target's box, read every frame while it shows (a page fades in, the planner's canvas pans); `onLost` once it goes. */
-function useTargetBox(target: Element | null, onLost: () => void): Box | null {
+function useTargetBox(target: Element | null, onLost: (el: Element) => void): Box | null {
   const [box, setBox] = useState<Box | null>(null);
   const lost = useRef(onLost);
   useEffect(() => {
@@ -82,7 +83,7 @@ function useTargetBox(target: Element | null, onLost: () => void): Box | null {
     let frame = 0;
     const read = () => {
       if (!target.isConnected) {
-        lost.current();
+        lost.current(target);
         return;
       }
       const r = target.getBoundingClientRect();
@@ -113,6 +114,9 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     go.current = navigate;
   });
   const [target, setTarget] = useState<Element | null>(null);
+  // The target as last set, read by `onLost`: the previous step's element can be seen gone (its page unmounted) on a frame
+  // after the next step's target was found but before React rendered it, and must not knock the new step to fallback.
+  const targetRef = useRef<Element | null>(null);
 
   // Each step goes to its page, then waits for its target (Decision 4). The last step's box stays on screen meanwhile.
   useEffect(() => {
@@ -140,11 +144,16 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     open(0);
     const cancel = waitForTarget(own, {
       onFound: (el) => {
+        // A card drawn inside the planner's canvas is panned into view through its keyboard path first (a phone's canvas
+        // can leave it off the screen; the page cannot scroll it there).
+        if (step.keyTarget !== undefined) revealByKeyPath(step.keyTarget);
         if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "instant" });
+        targetRef.current = el;
         setTarget(el);
         dispatch({ type: "found" });
       },
       onTimeout: () => {
+        targetRef.current = null;
         setTarget(null);
         dispatch({ type: "timeout" });
       },
@@ -155,7 +164,23 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
     };
   }, [step]);
 
-  const onLost = useCallback(() => {
+  // A try-it step (Decision 6) is seen done by what appears or changes, and the tour then moves on by itself. Next stays
+  // enabled meanwhile: moving on without doing it is fine (step 10's openers then open the panel instead).
+  const [doneInto, setDoneInto] = useState<number | null>(null);
+  const [pressedAt, setPressedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (step.kind !== "try" || step.done === undefined) return undefined;
+    const stop = watchDone(step.done, () => {
+      setDoneInto(steps.indexOf(step) + 1);
+      dispatch({ type: "next" });
+    });
+    return stop;
+  }, [step, steps]);
+
+
+  const onLost = useCallback((el: Element) => {
+    if (targetRef.current !== el) return;
+    targetRef.current = null;
     setTarget(null);
     dispatch({ type: "lost" });
   }, []);
@@ -172,16 +197,84 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
   }, []);
   // Finish is the last step's Next: it ends the tour as Skip does, and writes nothing more (the start marked it seen).
   const onNext = useCallback(() => {
+    setDoneInto(null);
+    setPressedAt(null);
     if (isLastStep(state, count) && state.shown === state.index) exit();
     else dispatch({ type: "next" });
   }, [state, count, exit]);
-  const onBack = useCallback(() => dispatch({ type: "back" }), []);
+  const onBack = useCallback(() => {
+    setDoneInto(null);
+    setPressedAt(null);
+    dispatch({ type: "back" });
+  }, []);
+
+  // A try-it step showing its target: Do it for me, and Tab reaching the target (Decisions 6 and 9).
+  const trying = step.kind === "try" && state.phase === "showing" && state.shown === state.index && target !== null ? target : null;
+  const tabStop = useCallback(() => (trying === null ? null : tabStopOf(trying, step.keyTarget)), [trying, step]);
+  const onDoForMe = useCallback(() => {
+    if (trying === null) return;
+    const index = state.index;
+    // Focus waits on the heading (the button turns disabled; a panel that opens may take focus, as a real click's would).
+    document.querySelector<HTMLElement>("[data-tour-popover] h2")?.focus({ preventScroll: true });
+    // Pressed once only. Already ticked: nothing to press, so the step is as good as done.
+    if (!pressTarget(trying)) {
+      dispatch({ type: "next" });
+      return;
+    }
+    setPressedAt(index);
+  }, [trying, state.index]);
+  // Do it for me pressed and nothing registered (the page did not answer): the step goes on as a Next step would.
+  useEffect(() => {
+    if (pressedAt === null || pressedAt !== state.index) return undefined;
+    const timer = setTimeout(() => dispatch({ type: "next" }), TOUR_TARGET_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [pressedAt, state.index]);
+  const offerDoForMe = trying !== null && step.doForMe === true;
+  const doForMePressed = pressedAt === state.index;
+
+  // Escape leaves the tour from anywhere on the page, not only the popover (Decision 9), unless something handled it first
+  // (the planner's group panel stops it; its canvas marks it handled) or focus is typing in a field. On a try-it step, Tab
+  // from the target goes back into the popover, closing the loop the popover's own Tab opens.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === "Escape") {
+        // Typing in a field, or inside another open native dialog (the command palette): Escape is theirs.
+        if (isTypingField(e.target) || (e.target instanceof Element && e.target.closest("dialog[open]") !== null)) return;
+        e.preventDefault();
+        exit();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const stop = tabStop();
+      if (stop === null || document.activeElement !== stop) return;
+      const buttons = [...document.querySelectorAll<HTMLElement>("[data-tour-popover] button:not(:disabled)")];
+      const to = e.shiftKey ? buttons.at(-1) : buttons.at(0);
+      if (to === undefined) return;
+      e.preventDefault();
+      to.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [exit, tabStop]);
 
   const shown = state.shown === null ? null : steps[state.shown];
   const panel =
     shown === null || state.shown === null
       ? null
-      : { step: shown, number: state.shown + 1, count, onBack, onNext, onExit: exit, target: hole, viewport };
+      : {
+          step: shown,
+          number: state.shown + 1,
+          count,
+          onBack,
+          onNext,
+          onExit: exit,
+          onDoForMe: offerDoForMe ? onDoForMe : undefined,
+          doForMePressed,
+          tabStop: trying === null ? undefined : tabStop,
+          target: hole,
+          viewport,
+        };
 
   return (
     <div data-tour-root="" data-tour-phase={state.phase} className="pointer-events-none fixed inset-0 z-(--z-tour)">
@@ -190,7 +283,8 @@ function TourRun({ steps }: { steps: readonly TourStep[] }) {
       </Spotlight>
       {!wide && panel !== null && <SheetPopover {...panel} />}
       <p role="status" className="sr-only">
-        {shown === null || state.phase === "waiting" ? "" : `Step ${(state.shown ?? 0) + 1} of ${count}`}
+        {/* After a try-it step is done, one announcement: "Done." with the next step's place, not two. */}
+        {shown === null || state.phase === "waiting" ? "" : `${doneInto === state.shown ? "Done. " : ""}Step ${(state.shown ?? 0) + 1} of ${count}`}
       </p>
     </div>
   );

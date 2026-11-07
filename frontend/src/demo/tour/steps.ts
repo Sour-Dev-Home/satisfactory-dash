@@ -1,8 +1,8 @@
 /**
  * The tour's steps (ADR-0065 "The steps"). Each names its page (`path`, `search`), its target (an element with that
  * `data-tour`, demo/tour/target.ts) and its words, which must stand alone: a step whose target never appears is shown
- * centred with no highlight. `try` steps (build PR 3) say how they are done by what appears or changes, never by reading
- * a page's state.
+ * centred with no highlight. `try` steps say how they are done by what appears or changes, never by reading a page's
+ * state (tryIt.ts); the tour moves on by itself once they are.
  */
 export type TourDone = { appears: string } | { changes: string };
 
@@ -18,6 +18,11 @@ export interface TourStep {
   done?: TourDone;
   /** A try-it step offers "Do it for me", a bubbling click on the target. */
   doForMe?: boolean;
+  /**
+   * A try-it step whose target takes no focus itself (the planner's card is drawn in SVG): the `data-tour` of its keyboard
+   * path, which Tab reaches from the popover (ADR-0065 Decision 9). Otherwise Tab reaches the target, or what is inside it.
+   */
+  keyTarget?: string;
   /**
    * A target only clicks show, which the address cannot open (the planner's Graph view on a phone, its group panel): each
    * of these `data-tour`s in turn, once ready, is clicked as "Do it for me" would, unless the step's own target or a later
@@ -100,16 +105,18 @@ export const TOUR_STEPS: readonly TourStep[] = [
     body: "This is the Plastic line, one of the demo's factories. Each box is a group of machines; the lines show what feeds what, with the item's name at each end.",
     kind: "next",
   },
-  // build PR 3: try-it (`done: { appears: "planner-group-panel" }`, Do it for me clicks the card).
   {
     id: "planner-group-card",
     path: "/app/planner",
     search: TOUR_PLANNER_SEARCH,
     target: "planner-group-card",
+    keyTarget: "planner-group-card-key",
     openedBy: "planner-view-graph",
     title: "Open a group.",
-    body: "Clicking a box opens its details. This one is the oil refinery, which turns crude oil into plastic.",
-    kind: "next",
+    body: "This box is the oil refinery, which turns crude oil into plastic. Try it: click the highlighted box to open its details. Or press Next to skip this.",
+    kind: "try",
+    done: { appears: "planner-group-panel" },
+    doForMe: true,
   },
   {
     id: "planner-group-panel",
@@ -130,14 +137,16 @@ export const TOUR_STEPS: readonly TourStep[] = [
     body: "The game's map with the factory on it: buildings, rails, trains, drone ports, ore and oil spots, and the player's markers. Drag to move, scroll or pinch to zoom.",
     kind: "next",
   },
-  // build PR 3: try-it (`done: { changes: "map-layer-toggle" }`, Do it for me toggles one).
   {
     id: "map-filters",
     path: "/app/map",
-    target: "map-filters",
+    // The one box the words ask for (Belts and pipes, hidden at first), so the highlight, the check and Do it for me agree.
+    target: "map-layer-toggle",
     title: "Choose what to see.",
-    body: "Each box turns a layer of the map on or off. Belts, pipes and power lines start hidden; ticking one draws it.",
-    kind: "next",
+    body: "Each box turns a layer of the map on or off; belts, pipes and power lines start hidden. Try it: tick the highlighted box, Belts and pipes, to draw them. Or press Next to skip this.",
+    kind: "try",
+    done: { changes: "map-layer-toggle" },
+    doForMe: true,
   },
   {
     id: "settings-alerts",
