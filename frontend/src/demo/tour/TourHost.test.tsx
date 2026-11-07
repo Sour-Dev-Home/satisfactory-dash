@@ -950,9 +950,13 @@ describe("moving to a new page, and which tab a step is on", () => {
     }
   });
 
-  it("publishes the pinned row's height in a constructed stylesheet while it runs, for a page's sticky bar, and removes it on exit", async () => {
-    // jsdom has no adoptedStyleSheets or ResizeObserver: a plain array, and an observer that measures once on observe.
+  // jsdom has no adoptedStyleSheets or ResizeObserver: a plain array, and an observer that measures on observe and
+  // again whenever `resize()` is called.
+  const observers: Array<() => void> = [];
+  function stubPinMeasuring({ withObserver = true } = {}) {
+    observers.length = 0;
     Object.defineProperty(document, "adoptedStyleSheets", { configurable: true, writable: true, value: [] });
+    if (!withObserver) return;
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -961,51 +965,110 @@ describe("moving to a new page, and which tab a step is on", () => {
           this.callback = callback;
         }
         observe() {
+          observers.push(this.callback);
           this.callback();
         }
-        disconnect() {}
+        disconnect() {
+          observers.splice(observers.indexOf(this.callback), 1);
+        }
       },
     );
-    function Pinned() {
-      return (
-        <div data-page-reveal="revealed">
-          <div
-            className={TOUR_PIN_CLASS}
-            ref={(el) => {
-              if (el) el.getBoundingClientRect = rect(0, 0, 390, 109.5);
-            }}
-          >
-            <a href="/app" data-tour="tab-overview">
-              Overview
-            </a>
-          </div>
+  }
+  const resize = () => observers.forEach((measure) => measure());
+  let pinHeight = 109.5;
+  function Pinned() {
+    return (
+      <div data-page-reveal="revealed">
+        <div
+          className={TOUR_PIN_CLASS}
+          ref={(el) => {
+            if (el) el.getBoundingClientRect = () => rect(0, 0, 390, pinHeight)();
+          }}
+        >
+          <a href="/app" data-tour="tab-overview">
+            Overview
+          </a>
         </div>
-      );
-    }
-    const step: TourStep = { id: "welcome", path: "/app", title: "Hello.", body: "Words.", kind: "next" };
-    const sheets = () => document.adoptedStyleSheets.flatMap((s) => [...s.cssRules].map((r) => r.cssText)).join(" ");
+      </div>
+    );
+  }
+  const pinStep: TourStep = { id: "welcome", path: "/app", title: "Hello.", body: "Words.", kind: "next" };
+  const sheetText = () => document.adoptedStyleSheets.flatMap((s) => [...s.cssRules].map((r) => r.cssText)).join(" ");
+  function renderPinned() {
+    window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
+    render(
+      <MemoryRouter initialEntries={["/app"]}>
+        <DemoBanner />
+        <Routes>
+          <Route path="/app" element={<Pinned />} />
+        </Routes>
+        <Host steps={[pinStep]} />
+      </MemoryRouter>,
+    );
+  }
+  function unstubPinMeasuring() {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(document, "adoptedStyleSheets");
+    pinHeight = 109.5;
+  }
+
+  it("follows the pinned row as it wraps, in the same sheet, and leaves other adopted sheets alone", async () => {
+    stubPinMeasuring();
+    const other = new CSSStyleSheet();
+    document.adoptedStyleSheets = [other];
     try {
-      window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
-      render(
-        <MemoryRouter initialEntries={["/app"]}>
-          <DemoBanner />
-          <Routes>
-            <Route path="/app" element={<Pinned />} />
-          </Routes>
-          <Host steps={[step]} />
-        </MemoryRouter>,
-      );
+      renderPinned();
+      fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Hello."));
+      expect(document.adoptedStyleSheets).toHaveLength(2);
+      expect(sheetText()).toContain("--tour-pin-height: 110px");
+      pinHeight = 160;
+      resize();
+      expect(document.adoptedStyleSheets).toHaveLength(2);
+      expect(sheetText()).toContain("--tour-pin-height: 160px");
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Skip tour" }));
+      expect(document.adoptedStyleSheets).toEqual([other]);
+      expect(observers).toHaveLength(0);
+    } finally {
+      unstubPinMeasuring();
+    }
+  });
+
+  it("without ResizeObserver, publishes nothing and the tour still runs (the bar sticks at the top)", async () => {
+    stubPinMeasuring({ withObserver: false });
+    vi.stubGlobal("ResizeObserver", undefined);
+    try {
+      renderPinned();
+      fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Hello."));
+      expect(document.adoptedStyleSheets).toHaveLength(0);
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Skip tour" }));
+      expect(document.adoptedStyleSheets).toHaveLength(0);
+    } finally {
+      unstubPinMeasuring();
+    }
+  });
+
+  it("publishes the pinned row's height in a constructed stylesheet while it runs, for a page's sticky bar, and removes it on exit", async () => {
+    stubPinMeasuring();
+    try {
+      renderPinned();
       expect(document.adoptedStyleSheets).toHaveLength(0);
       fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
       await waitFor(() => expect(dialog()).toHaveAccessibleName("Hello."));
-      expect(sheets()).toContain("--tour-pin-height: 109.5px");
+      expect(sheetText()).toContain("--tour-pin-height: 110px");
       // Nothing written as a style attribute (the CSP's style-src 'self').
       expect(document.documentElement).not.toHaveAttribute("style");
       fireEvent.click(within(dialog()).getByRole("button", { name: "Skip tour" }));
       expect(document.adoptedStyleSheets).toHaveLength(0);
+      // Taken again, one sheet again, not two.
+      fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Hello."));
+      expect(document.adoptedStyleSheets).toHaveLength(1);
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Skip tour" }));
+      expect(document.adoptedStyleSheets).toHaveLength(0);
     } finally {
-      vi.unstubAllGlobals();
-      Reflect.deleteProperty(document, "adoptedStyleSheets");
+      unstubPinMeasuring();
     }
   });
 

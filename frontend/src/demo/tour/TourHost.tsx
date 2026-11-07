@@ -208,7 +208,8 @@ function publishPinHeight(): () => void {
   const sheet = new CSSStyleSheet();
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
   const observer = new ResizeObserver(() => {
-    const height = row.getBoundingClientRect().height;
+    // Rounded up: a sub-pixel short value would let the bar's top edge slip under the row.
+    const height = Math.ceil(row.getBoundingClientRect().height);
     sheet.replaceSync(`:root { --tour-pin-height: ${height}px; }`);
   });
   observer.observe(row, { box: "border-box" });
