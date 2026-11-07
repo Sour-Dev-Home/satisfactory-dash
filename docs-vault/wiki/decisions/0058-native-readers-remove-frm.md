@@ -1,6 +1,6 @@
 # ADR-0058: Native game readers in the mod, then remove the FRM dependency and bridge
 
-Status: **accepted** (owner, 2026-10-25; answers and the sprint grouping in "Owner's answers" at the end, which override
+Status: **accepted** (owner, 2026-10-25), **done** (2026-11-06: R7 shipped in mod 0.2.0, scope A; see "Done" at the end; answers and the sprint grouping in "Owner's answers" at the end, which override
 Decisions 2 and 6 where they differ). Written to carry out the owner's decision recorded in ADR-0051 section 2 ("lets move
 to removing the dependency now. its a big project and scraps some work but it would be worth it ... Ideally we get
 parity with the info we already use for the dashboard"). Nothing here is built until the owner approves it in the mod
@@ -437,3 +437,19 @@ and enrolment by code works the same for the mod. What changed is what the dashb
    provenance (mod), parity and tick-cost runs (mod CI, owner-approved dispatch), evidence and `mod-claims.md` row (dash),
    then the switch PR (mod).
 5. Mod: the removal release R7, then the notes for hosts.
+
+## Done (2026-11-06)
+
+R7 shipped in mod **0.2.0** (scope A, the mod only), released on GitHub on 2026-11-06 (tag `v0.2.0` on mod main
+`c4a95b1`, `SatisDashAgent-WindowsServer.zip`), relayed by the mod session with the owner's approval and checked here against
+the release. The mod's one dependency is SML `^3.12.0`: no FRM code, settings or traffic. A host's old `frmPort`/`frmToken`
+keys are ignored with one log line, and an upgrading host needs no new enrolment. Evidence: mod-test run 42115897812 on
+`b5da273` (the same tree as `c4a95b1`); tick-cost-native 42165880692 (tick median 29.97 without the mod, 30.01 with it;
+longest step 1.01 ms, under the 2 ms ceiling); soak 41878531754, accepted by the owner's ruling (R7 plan D3); the parity
+record native-parity 41340686528. Sprint S4-A's evidence is in #833 (merged 2026-11-06).
+
+- **What stays (Decision 5):** the Node agent and `packages/game-adapter` keep FRM, frozen, for hosts without the mod.
+- **Hosts:** a mod host installs SML and SatisDashAgent 0.2.0 only (`runbooks/servers.md`; the public guides already
+  say so); a Node-agent host keeps its FRM install (`runbooks/agent-app.md`).
+- **Not yet:** the ficsit.app listing waits on the mod's Linux server build (mod #86,
+  `docs/plans/2026-11-06-linux-server-build.md`), so 0.2.0 is GitHub-only and Windows server only.
