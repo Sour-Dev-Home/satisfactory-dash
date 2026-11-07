@@ -647,6 +647,19 @@ describe("the tour's try-it steps", () => {
       await waitFor(() => expect(dialog()).toHaveAccessibleName("Drawn."));
     });
 
+    it("unticking the box during the result changes nothing, and Do it for me pressed twice announces one Done", async () => {
+      renderTry([WITH_RESULT, NEXT]);
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Choose what to see."));
+      const button = within(dialog()).getByRole("button", { name: "Do it for me" });
+      fireEvent.click(button);
+      fireEvent.click(button);
+      await waitFor(() => expect(dialog()).toHaveAccessibleName("Drawn."));
+      fireEvent.click(box()); // unticks
+      await new Promise((r) => setTimeout(r, 50));
+      expect(dialog()).toHaveAccessibleName("Drawn.");
+      expect(screen.getByRole("status")).toHaveTextContent(/^Done\. Overview tab · Step 1 of 2$/);
+    });
+
     it("Back from the result shows the step asking again", async () => {
       renderTry([NEXT, WITH_RESULT]);
       await waitFor(() => expect(dialog()).toHaveAccessibleName("Settings next."));
