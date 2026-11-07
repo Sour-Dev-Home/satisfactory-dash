@@ -739,6 +739,17 @@ describe("moving to a new page, and which tab a step is on", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/^Step 2 of 2 · Power$/);
   });
 
+  it("Escape while the next page settles (focus on the holder, no popover or Skip) still leaves the tour", async () => {
+    renderPages();
+    await waitFor(() => expect(dialog()).toHaveAccessibleName(TOUR_STEPS[1].title));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
+    const holder = document.querySelector("[data-tour-waiting]") as HTMLElement;
+    expect(document.activeElement).toBe(holder);
+    fireEvent.keyDown(holder, { key: "Escape" });
+    expect(document.querySelector("[data-tour-root]")).toBeNull();
+    expect(document.querySelector("[data-tour-waiting]")).toBeNull();
+  });
+
   it("cuts a second, quieter hole round the step's tab, its ring muted, not the accent", async () => {
     chart.still = true;
     renderPages({ settleMs: 0 });
