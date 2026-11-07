@@ -50,7 +50,7 @@ import { pageQueries, paletteQueries, prefetchFresh } from "./pageQueries";
 import { visibleTabs } from "./tabs";
 import { offersDevAgent, senderWords } from "../agent/agentText";
 import { IS_DEMO } from "../demo/mode";
-import { tabTarget } from "../demo/tour/tabTarget";
+import { tabTarget, TOUR_PIN_CLASS } from "../demo/tour/tabTarget";
 import { tour } from "../demo/tour/target";
 
 // The demo's guided tour (ADR-0065 Decision 8): its own chunk, in the demo build only. The bundler drops a dead dynamic
@@ -365,7 +365,13 @@ export function Shell() {
       {/* relative: the bell's dropdown is positioned against this row, so it lines up with the page edge. */}
       {/* items-end and no bottom padding: the active tab's amber underline sits on the row's line,
           and the controls keep their own gap above it. */}
-      <div className="relative flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-line">
+      {/* tour-pin: the demo's tour pins this row to the top while it runs (index.css; ADR-0065 amendment). */}
+      <div
+        className={cn(
+          "relative flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-line",
+          IS_DEMO && TOUR_PIN_CLASS,
+        )}
+      >
         {/* min-w-0: a flex item's default min-width is its content, which beats max-w-full, so
             without it the nav never scrolls and a sixth tab (Servers) lands off-screen at 390 px. */}
         {/* Tighter tabs on phones (no gap, px-1.5, no letter-spacing) so the six standard tabs (Planner made

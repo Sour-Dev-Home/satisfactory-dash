@@ -7,6 +7,7 @@ import type { ServerSummary } from "@satisfactory-dash/shared";
 import { ServerContext } from "../../servers/ServerContext";
 import { DemoBanner } from "../DemoBanner";
 import { resetTourLoadForTests, TOUR_STORAGE_KEY } from "./persistence";
+import { TOUR_ACTIVE_ATTR, TOUR_PIN_CLASS } from "./tabTarget";
 import { TOUR_SETTLE_MS } from "./waitForTarget";
 import { TOUR_STEPS, type TourStep } from "./steps";
 import TourHost from "./TourHost";
@@ -770,8 +771,8 @@ describe("moving to a new page, and which tab a step is on", () => {
     await waitFor(() => expect(ringOf("[data-tour-tab-ring]")).toEqual([88, -2, 84, 48]));
   });
 
-  it("scrolls a target below the fold only as far as keeps the step's tab on screen, instantly; centres one too tall for both", async () => {
-    // A wide 900 px high window scrolled 300 px down (a step before centred something low): the nav is off the top.
+  it("pins the tab row while it runs, and keeps each target below the pinned row, instantly (a tall one's top just under it)", async () => {
+    // A wide 900 px high window scrolled 300 px down, the tab row (pinned) 60 px tall.
     const root = document.documentElement;
     Object.defineProperty(root, "clientHeight", { configurable: true, value: 900 });
     const scrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
@@ -780,25 +781,26 @@ describe("moving to a new page, and which tab a step is on", () => {
     const scrollTo = vi.fn();
     vi.stubGlobal("scrollTo", scrollTo);
     const centre = vi.fn();
+    let at = 0;
     let height = 100;
-    // In page px: the tab at 40, the target at 600 (padded by 8: 592 to 708 tall 100).
     function Low() {
       return (
         <div data-page-reveal="revealed">
-          <a
-            href="/app"
-            data-tour="tab-overview"
+          <div
+            className={TOUR_PIN_CLASS}
             ref={(el) => {
-              if (el) el.getBoundingClientRect = rect(0, 40 - 300, 90, 44);
+              if (el) el.getBoundingClientRect = rect(0, 0, 1000, 60);
             }}
           >
-            Overview
-          </a>
+            <a href="/app" data-tour="tab-overview">
+              Overview
+            </a>
+          </div>
           <section
             data-tour="low"
             ref={(el) => {
               if (!el) return;
-              el.getBoundingClientRect = () => rect(20, 600 - 300, 300, height)();
+              el.getBoundingClientRect = () => rect(20, at, 300, height)();
               el.scrollIntoView = centre;
             }}
           >
@@ -819,15 +821,22 @@ describe("moving to a new page, and which tab a step is on", () => {
           <Host steps={[low, { ...low, id: "low-2", title: "Low again." }]} />
         </MemoryRouter>,
       );
+      expect(root).not.toHaveAttribute(TOUR_ACTIVE_ATTR);
       fireEvent.click(screen.getByRole("button", { name: "Take the tour" }));
+      expect(root).toHaveAttribute(TOUR_ACTIVE_ATTR);
       await waitFor(() => expect(dialog()).toHaveAccessibleName("Low."));
-      // Up to 40, the least move that shows the tab (at 40) with the target (to 708) below it, not the target centred.
-      expect(scrollTo).toHaveBeenCalledWith({ top: 40, behavior: "instant" });
-      expect(centre).not.toHaveBeenCalled();
+      // The target's padded top (-8) sits behind the 60 px row: up by 68, to just under it (300 - 68 = 232).
+      expect(scrollTo).toHaveBeenLastCalledWith({ top: 232, behavior: "instant" });
+      // Taller than the room under the row (900 - 60): its padded top (292 in view, 592 on the page) just under the row.
+      at = 300;
       height = 1000;
       fireEvent.click(within(dialog()).getByRole("button", { name: "Next" }));
       await waitFor(() => expect(dialog()).toHaveAccessibleName("Low again."));
-      expect(centre).toHaveBeenCalledWith({ block: "center", behavior: "instant" });
+      expect(scrollTo).toHaveBeenLastCalledWith({ top: 532, behavior: "instant" });
+      expect(centre).not.toHaveBeenCalled();
+      // Leaving the tour unpins the row.
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Skip tour" }));
+      expect(root).not.toHaveAttribute(TOUR_ACTIVE_ATTR);
     } finally {
       vi.unstubAllGlobals();
       Reflect.deleteProperty(root, "clientHeight");

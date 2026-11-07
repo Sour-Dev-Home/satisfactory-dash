@@ -102,21 +102,19 @@ describe("the hole and the phone sheet", () => {
     expect(overlaps(box(0, 0, 10, 10), box(10, 0, 10, 10))).toBe(false);
   });
 
-  it("scrolls the least that shows both the target and its tab, or says centre when they cannot fit together", () => {
-    const tab = (y: number) => box(100, y, 80, 44);
-    // Both already on screen: stay.
-    expect(scrollToShow(box(0, 300, 400, 300), tab(60), 900, 0)).toBe(0);
-    // A chart below the fold (page at the top, nav at 60): scroll just enough to bring its bottom in, the nav still in view.
-    expect(scrollToShow(box(0, 850, 400, 100), tab(60), 900, 0)).toBe(50);
-    // Scrolled past the nav (centred earlier): back up to show the tab.
-    expect(scrollToShow(box(0, 200, 400, 300), tab(-340), 900, 400)).toBe(60);
-    // Too tall together: null (centre the target instead).
-    expect(scrollToShow(box(0, 600, 400, 800), tab(60), 900, 0)).toBeNull();
-    // A phone's bottom sheet (40% of 844) kept clear: fits above it, or not at all.
-    expect(scrollToShow(box(0, 300, 390, 150), tab(60), 844, 0, { top: 0, bottom: 337.6 })).toBe(0);
-    expect(scrollToShow(box(0, 300, 390, 300), tab(60), 844, 0, { top: 0, bottom: 337.6 })).toBeNull();
-    // No tab (none with a box): centre.
-    expect(scrollToShow(box(0, 700, 400, 300), null, 900, 0)).toBeNull();
+  it("scrolls the least that shows the target below the pinned tab row, or puts a tall one's top just under it", () => {
+    const bar = { top: 60, bottom: 0 };
+    // Already on screen: stay.
+    expect(scrollToShow(box(0, 300, 400, 300), 900, 0, bar)).toBe(0);
+    // A chart below the fold: just enough to bring its bottom in.
+    expect(scrollToShow(box(0, 850, 400, 100), 900, 0, bar)).toBe(50);
+    // Behind the pinned row (top at 20 with the row 60 tall): back up until it is just under the row, never behind it.
+    expect(scrollToShow(box(0, 20, 400, 300), 900, 400, bar)).toBe(360);
+    // Taller than the room under the row: its top just under the row.
+    expect(scrollToShow(box(0, 600, 400, 1000), 900, 0, bar)).toBe(540);
+    // A phone's bottom sheet (40% of 844) kept clear: above it when it fits, else its top under the row.
+    expect(scrollToShow(box(0, 300, 390, 150), 844, 0, { top: 60, bottom: 337.6 })).toBe(0);
+    expect(scrollToShow(box(0, 300, 390, 500), 844, 0, { top: 60, bottom: 337.6 })).toBe(240);
   });
 
   it("pads the target's box on every side", () => {

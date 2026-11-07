@@ -130,29 +130,22 @@ export function sheetAtTop(target: Box | null, viewport: Size): boolean {
 }
 
 /**
- * Where to scroll the page (a new `scrollY`) so a step's padded target and its page's tab in the top nav are both in view
- * (ADR-0065 amendment, 2026-11-07: centring a target below the fold scrolled the nav, and the tab's hole, off screen).
- * Boxes are in viewport px at the current `scrollY`. `reserve` is what a phone's sheet covers at the bottom (or top), kept
- * clear. The smallest move that shows both: the current scroll when they already are, else the nearest such scroll.
- * Null when both cannot fit at once (or there is no tab): the caller centres the target instead.
+ * Where to scroll the page (a new `scrollY`) to show a step's padded target (ADR-0065 amendment, 2026-11-07). The tab
+ * row is pinned to the top while the tour runs, so `reserve.top` is its height, never covered; `reserve.bottom` is what a
+ * phone's bottom sheet covers. `target` is in viewport px at the current `scrollY`. When the target fits between them,
+ * the least move that shows it whole (none when it already is); when it is taller, its top just under the pinned bar.
  */
 export function scrollToShow(
   target: Box,
-  tab: Box | null,
   viewportHeight: number,
   scrollY: number,
   reserve: { top: number; bottom: number } = { top: 0, bottom: 0 },
-): number | null {
-  if (tab === null) return null;
-  const top = Math.min(target.y, tab.y) + scrollY;
-  const bottom = Math.max(target.y + target.height, tab.y + tab.height) + scrollY;
-  const room = viewportHeight - reserve.top - reserve.bottom;
-  if (bottom - top > room) return null;
-  // Any scroll in [lowest, highest] shows both; keep the current one when it does, else move the least.
-  const lowest = Math.max(0, bottom - (viewportHeight - reserve.bottom));
-  const highest = top - reserve.top;
-  if (highest < lowest) return null;
-  return clamp(scrollY, lowest, highest);
+): number {
+  const top = target.y + scrollY;
+  const bottom = top + target.height;
+  const under = Math.max(0, top - reserve.top);
+  if (target.height > viewportHeight - reserve.top - reserve.bottom) return under;
+  return clamp(scrollY, Math.max(0, bottom - (viewportHeight - reserve.bottom)), under);
 }
 
 /** The target's box grown by `pad` on every side. */

@@ -113,9 +113,10 @@ test("walks every step of the tour with Next, each ringing its target", async ({
     }
     // Every step, the welcome and the finish included, shows which tab it is on: its tab in a second hole.
     await expectTabHole(page, step.path);
-    // The chart sits below the fold at 1440 x 900: the page is scrolled only as far as keeps the nav, and so the tab's hole,
-    // on screen (centring the chart had scrolled it away).
-    if (step.id === "power-chart" && (page.viewportSize()?.width ?? 0) >= 1440) {
+    // Targets below the fold (the chart at 1440 x 900; the game connection's rows, far down Settings, on a phone): the tab
+    // row is pinned to the top while the tour runs, so the tab and its hole stay on screen as the page scrolls.
+    const wide = (page.viewportSize()?.width ?? 0) >= 1440;
+    if ((wide && step.id === "power-chart") || (!wide && step.id === "settings-connection")) {
       await expect(page.locator("[data-tour-tab-ring]")).toBeInViewport();
       await expect(page.locator(`[data-tour="${tabTarget(step.path)}"]`)).toBeInViewport({ ratio: 1 });
     }

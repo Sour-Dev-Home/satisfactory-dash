@@ -985,6 +985,15 @@
   clip-path: url(#tour-hole);
   background-color: var(--color-scrim);
 }
+/* While the tour runs (TourHost sets `data-guided-tour` on <html>), the shell's tab row is pinned to the top, so the
+   step's tab, in its own hole, is always on screen (owner's answer, 2026-11-07). `.tour-pin` is on the row in the demo
+   build only (Shell.tsx), so this is inert in production. */
+:root[data-guided-tour] .tour-pin {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--color-canvas);
+}
 @supports (backdrop-filter: none) or (-webkit-backdrop-filter: none) {
   .tour-scrim {
     -webkit-backdrop-filter: blur(var(--blur-tour));

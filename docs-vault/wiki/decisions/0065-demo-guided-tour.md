@@ -346,9 +346,16 @@ power graph)".
   menu hiding the tabs on phones; a tab with no box would get no hole. The welcome and the finish get the Overview tab.
 - **Decision 4, scrolling to the target.** Centring every target (`block: "center"`) scrolled the nav, and so the tab's
   hole, off screen for any target below the fold (the Power chart at 1440 x 900 and on phones, in CI's screenshots).
-  Now, where the padded target and the tab fit on screen together (on a phone, above the bottom sheet's 40%), the page
-  scrolls the least that shows both (`scrollToShow` in `placePopover.ts`), instantly; only where they cannot does it
-  centre the target as before. The planner card's pan through its keyboard button runs first, as before.
+  Fitting the target and the tab on screen together was tried first and failed in CI: the Power chart sits too low on
+  the page for both in 900 px. **Owner's answer (2026-11-07): pin the tab bar while the tour runs, demo only.** The tour
+  sets `data-guided-tour` on `<html>` while it runs (removed on exit), and `index.css`'s
+  `:root[data-guided-tour] .tour-pin` makes the shell's tab row `sticky` at the top (`--z-sticky`, the page's
+  `--color-canvas` behind it). The shell adds `.tour-pin` in the demo build only, so production renders no such class and
+  the rule is inert there (no `data-tour` text reaches its CSS). So the tab, in its hole, is always on screen, and each
+  target is scrolled (instantly, `scrollToShow` in `placePopover.ts`) the least that shows it below the pinned row and
+  above a phone's bottom sheet, or, when taller than that room, with its top just under the row, never behind it. The
+  planner card's pan through its keyboard button runs first, as before. Known overlap: on Factory the page's own sticky
+  filter bar (also `--z-sticky`, top 0) can slide under the pinned row while the tour runs.
 - **Decision 9, the words.** The popover's step line and the live region lead with the tab: "Power tab · Step 4 of 15"
   ("Done. Power tab · Step 10 of 15" after a try-it step), the label read from the nav's own list (`shell/tabs.ts`); a
   page that is no tab keeps "Step N of M".

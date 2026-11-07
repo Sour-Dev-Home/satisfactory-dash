@@ -10,7 +10,7 @@ import { padBox, scrollToShow, SHEET_MAX_SHARE, sheetAtTop, type Box, type Size 
 import { AttachedPopover, SheetPopover } from "./Popover";
 import { Spotlight } from "./Spotlight";
 import { stepLine, tabLabel, TOUR_STEPS, type TourStep } from "./steps";
-import { tabTarget } from "./tabTarget";
+import { tabTarget, TOUR_ACTIVE_ATTR, TOUR_PIN_CLASS } from "./tabTarget";
 import { registerTourHost, startTour, stopTour, useTour } from "./tourStore";
 import { isTypingField, pressTarget, revealByKeyPath, tabStopOf, watchDone } from "./tryIt";
 import { findReadyTarget, targetSelector, TOUR_SETTLE_MS, TOUR_TARGET_WAIT_MS, waitForTarget } from "./waitForTarget";
@@ -161,27 +161,32 @@ function useTabBox(path: string | null, step: number | null): Box | null {
 }
 
 /**
- * Scrolls a step's target into view, instantly (ADR-0065 amendment, 2026-11-07). Where the padded target and its page's
- * tab fit on screen together (leaving a phone's bottom sheet clear), the page moves the least that shows both, so the
- * tab's hole is seen; otherwise the target is centred as before, and the step line still names the tab.
+ * Scrolls a step's target into view, instantly (ADR-0065 amendment, 2026-11-07). The tab row is pinned to the top while
+ * the tour runs (`.tour-pin`), so its tab, in its own hole, is always on screen; the target is kept below the pinned row
+ * (never behind it) and above a phone's bottom sheet, moving the page the least that shows it, or, when it is taller than
+ * that room, with its top just under the row.
  */
-function bringIntoView(el: Element, path: string): void {
+function bringIntoView(el: Element): void {
   const pad = tokenPx("--spacing-tour-pad", 8);
   const r = el.getBoundingClientRect();
   const target = padBox({ x: r.x, y: r.y, width: r.width, height: r.height }, pad);
-  const tabEl = document.querySelector(targetSelector(tabTarget(path)));
-  const t = tabEl?.getBoundingClientRect();
-  const tab = t === undefined || t.width <= 0 || t.height <= 0 ? null : { x: t.x, y: t.y, width: t.width, height: t.height };
+  const bar = document.querySelector(`.${TOUR_PIN_CLASS}`)?.getBoundingClientRect().height ?? 0;
   const height = document.documentElement.clientHeight;
+  if (height <= 0) return; // no layout (jsdom): nothing to scroll
   const wide = typeof window.matchMedia === "function" && window.matchMedia(WIDE_QUERY).matches;
   // A phone's sheet sits at the bottom while the target is in the top 60% of the screen, which fitting it there keeps so.
-  const reserve = { top: 0, bottom: wide ? 0 : height * SHEET_MAX_SHARE };
-  const to = scrollToShow(target, tab, height, window.scrollY, reserve);
-  if (to === null) {
-    if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "instant" });
-    return;
-  }
-  if (Math.abs(to - window.scrollY) >= 1) window.scrollTo({ top: to, behavior: "instant" });
+  const reserve = { top: bar, bottom: wide ? 0 : height * SHEET_MAX_SHARE };
+  const to = scrollToShow(target, height, window.scrollY, reserve);
+  if (Math.abs(to - window.scrollY) >= 1 && typeof window.scrollTo === "function") window.scrollTo({ top: to, behavior: "instant" });
+}
+
+/** Pins the shell's tab row while the tour runs (index.css, `:root[data-guided-tour] .tour-pin`), unpinned on exit. */
+function usePinnedTabs(): void {
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute(TOUR_ACTIVE_ATTR, "");
+    return () => root.removeAttribute(TOUR_ACTIVE_ATTR);
+  }, []);
 }
 
 function TourRun({
@@ -196,6 +201,7 @@ function TourRun({
   schedule: (task: () => void) => () => void;
 }) {
   const count = steps.length;
+  usePinnedTabs();
   // Everything the tour will visit is warmed once, as it starts: each page's lazy chunk and its primary queries.
   const client = useContext(QueryClientContext);
   const serverId = useContext(ServerContext)?.id;
@@ -266,7 +272,7 @@ function TourRun({
         // A card drawn inside the planner's canvas is panned into view through its keyboard path first (a phone's canvas
         // can leave it off the screen; the page cannot scroll it there).
         if (step.keyTarget !== undefined) revealByKeyPath(step.keyTarget);
-        bringIntoView(el, step.path);
+        bringIntoView(el);
         targetRef.current = el;
         setTarget(el);
         dispatch({ type: "found" });
