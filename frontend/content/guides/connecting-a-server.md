@@ -19,9 +19,9 @@ What your server needs:
 
 ## Step 1: install the mod
 
-The mod isn't published yet. When it is, this guide will link to its download.
+Download the mod from its [releases page on GitHub](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/releases/latest): `SatisDashAgent-WindowsServer.zip` for a Windows server, `SatisDashAgent-LinuxServer.zip` for a Linux one. It needs the Satisfactory Mod Loader (SML) 3.12.0 or later on the server.
 
-Install it the way your host supports mods: with Satisfactory Mod Manager connected to your server over SFTP, or by uploading the mod into the server's `FactoryGame/Mods` folder. The Satisfactory Mod Loader loads mods when the server starts, so start or restart the server once after installing.
+The mod isn't in Satisfactory Mod Manager's catalogue yet. Install SML the way your host supports mods (Satisfactory Mod Manager connected over SFTP does it for you), then upload the mod's folder into the server's `FactoryGame/Mods` folder as `FactoryGame/Mods/SatisDashAgent/`, holding `SatisDashAgent.uplugin` directly. The Satisfactory Mod Loader loads mods when the server starts, so start or restart the server once after installing.
 
 On its first start without a code, the mod writes its config file, `FactoryGame/Configs/SatisDashAgent.cfg`, with the dashboard's address filled in and an empty code. It then waits; your game runs normally in the meantime.
 
@@ -49,7 +49,7 @@ The code appears in the server console and in its log, `FactoryGame.log`, as a l
 
 On a Linux server in a container, such as Docker, the console can lag minutes behind the log, so read the code in `FactoryGame.log` there. The code in the chat can't be copied, so type it: codes never contain 0, 1, 8 or 9, so there's no 0 or 1 to mistake for O or I.
 
-1. Go to [satis-manager.com/pair](/app/pair) and sign in, or use the **Pair a server** link in **Settings**, under **Satis Manager mod**, or the **Pair it** link beside the add-server form.
+1. Go to [satis-manager.com/pair](/app/pair) and sign in, or use the **Pair a server** link in **Settings**, under **Satis Manager mod**, or, before you have any server, the **Pair it** link beside the form for your first one. Sign-in is invite-only during the beta, so for now pairing needs an account that already exists.
 2. Type the code and press **Continue**. Lower case and missing dashes are fine.
 3. Check the server name, version and request time under "Is this your server?", choose **A new server** or **One of my servers**, and press **Approve**.
 

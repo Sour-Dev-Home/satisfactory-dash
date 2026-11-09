@@ -29,12 +29,12 @@ Start the server once, then claim it from the game: open Satisfactory, add the s
 
 The Satis Manager mod needs **SML 3.12.0 or later** (3.x) on the server, and no other mod.
 
-**With Satisfactory Mod Manager (SMM):** add your server in SMM (it often finds a server installed on the same PC through Steam or Epic; otherwise give it the folder, or SFTP for a rented host). SMM installs SML for you along with the mods that need it.
+**With Satisfactory Mod Manager (SMM):** add your server in SMM (it often finds a server installed on the same PC through Steam or Epic; otherwise give it the folder, or SFTP for a rented host). SMM installs SML for you along with the mods that need it. The Satis Manager mod isn't in SMM's catalogue yet, so add it by hand (step 3 below) once SML is on the server.
 
 **By hand:**
 1. Stop the server.
 2. Download SML from [ficsit.app](https://ficsit.app/mod/SML), choosing the build for your server (Windows server or Linux server), and unzip it into `FactoryGame/Mods` in the server's folder, so its files end up in `FactoryGame/Mods/SML/`. Folder names and nesting matter.
-3. Install the Satis Manager mod into `FactoryGame/Mods/SatisDashAgent/`. That folder should hold `SatisDashAgent.uplugin` directly, not another folder. The mod isn't published yet. When it is, this guide will link to its download.
+3. Install the Satis Manager mod into `FactoryGame/Mods/SatisDashAgent/`. That folder should hold `SatisDashAgent.uplugin` directly, not another folder. Download it from the mod's [releases page on GitHub](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/releases/latest): take `SatisDashAgent-WindowsServer.zip` or `SatisDashAgent-LinuxServer.zip` for your server.
 4. Start the server.
 
 ## Step 3: pair the server with your dashboard
@@ -44,6 +44,8 @@ On its first start, the mod prints a pairing code in the server console and in t
 > Pairing code ABCD-EFGH-JKLM: sign in at satis-manager.com/pair and enter it (expires in 15 minutes)
 
 On a Linux server in a container, such as Docker, the console can lag minutes behind the log, so read the code in `FactoryGame.log` there. If you join the server while you're the only player on, the code also shows in the game's chat. The chat can't be copied, so type the code; codes never contain 0, 1, 8 or 9.
+
+You need a Satis Manager account to approve the code. Sign-in is invite-only during the beta (see [Getting started](/guides/getting-started)), so for now pairing works only with an account that already exists.
 
 1. Go to [satis-manager.com/pair](/app/pair) and sign in. Later, you can also get there from **Settings**, under **Satis Manager mod**, with the **Pair a server** link.
 2. Type the code and press **Continue**. Lower case and missing dashes are fine.

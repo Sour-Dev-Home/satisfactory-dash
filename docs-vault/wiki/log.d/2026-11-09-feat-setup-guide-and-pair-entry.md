@@ -7,3 +7,9 @@
   "Pair a server" link to `/app/pair` for every member, and the pairing code's hint says codes never contain 0, 1, 8 or
   9 (lower case and missing dashes were already accepted). New raw source `mod-0.3.0-requirements-2026-11-09.md`
   quotes the mod repo's plugin descriptor, release notes and end-to-end record for these claims.
+- **Mod v0.3.0 is released** (2026-11-09, the owner's go). The guides now link its GitHub releases page in place of "not
+  published yet":
+  - `connecting-a-server.md`, `setting-up-from-scratch.md` and `faq.md` now link it.
+  - They say the mod isn't in SMM's catalogue yet, so it's added by hand after SML.
+  - The pairing steps say sign-in is invite-only during the beta, so pairing needs an existing account until sign-up opens (#186, `SIGNUP_MODE`).
+  - `faq.md` loses the same "players install nothing" error.
