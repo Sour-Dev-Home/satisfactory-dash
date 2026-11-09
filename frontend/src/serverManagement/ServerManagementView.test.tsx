@@ -1,34 +1,27 @@
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
-import {
-  errorConnectionTestFailed,
-  errorConnectionUnreadable,
-  errorImportRequired,
-  errorLanRequiresCertPinning,
-  errorOperatorOnly,
-  managedServersAllStates,
-  managedServersEmpty,
-  serverConnectionOk,
-  testConnectionApiUnauthorized,
-  testConnectionFrmUnreachable,
-} from "@satisfactory-dash/shared/fixtures";
+import { errorOperatorOnly, managedServersAllStates, renameAgentServerResponse } from "@satisfactory-dash/shared/fixtures";
+import { managedAgentNone, managedAgentOne, managedAgentSeveral } from "../test/managedMocks";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 import { ServerManagementView } from "./ServerManagementView";
 
-const [okServer, unreadableServer, refusedServer] = managedServersAllStates.servers;
+// ADR-0030 (the operator's Servers page) after ADR-0066: every server connects through the mod, so the list is the
+// managed answer's agent servers, each renamed (#266) or removed. No direct-poll add, edit, test or switch back.
 
-function renderView() {
-  return renderWithClient(<ServerManagementView />);
+const [factoryTwo, creativeTest] = managedAgentSeveral.agentServers;
+
+function serveManaged(body: unknown, status = 200) {
+  server.use(http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(body as object, { status })));
 }
 
-/** Records every body sent to a route and answers with `reply`. */
-function capture(method: "post" | "patch", route: string, reply: () => Response) {
+/** Records every body sent to the rename route and answers with `reply`. */
+function captureRename(reply: () => Response) {
   const bodies: unknown[] = [];
   server.use(
-    http[method](route, async ({ request }) => {
+    http.patch(endpoints.serverManagement.renameAgent.route, async ({ request }) => {
       bodies.push(await request.json());
       return reply();
     }),
@@ -36,97 +29,151 @@ function capture(method: "post" | "patch", route: string, reply: () => Response)
   return bodies;
 }
 
+const renderView = () => renderWithClient(<ServerManagementView />);
 const row = (name: string) => screen.getByRole("listitem", { name });
-const type = (label: RegExp | string, value: string) =>
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+const type = (label: RegExp | string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe("ServerManagementView: the list", () => {
-  it("shows each stored server with its address and token suffixes, never a token", async () => {
+  it("lists one agent server, read through the mod, with Rename and Remove", async () => {
+    serveManaged(managedAgentOne);
     renderView();
-    const ok = await screen.findByRole("listitem", { name: okServer.displayName });
-    expect(ok).toHaveTextContent("127.0.0.1, game API port 7777, FRM port 8080");
-    expect(ok).toHaveTextContent("API token ends in 1a2b · FRM token ends in 3c4d");
+    const list = await screen.findByRole("list", { name: "Game servers" });
+    const item = within(list).getByRole("listitem", { name: factoryTwo.displayName });
+    expect(item).toHaveTextContent(`${factoryTwo.id} · read through the Satis Manager mod. The mod's status is on Settings.`);
+    expect(within(item).getByRole("button", { name: `Rename ${factoryTwo.displayName}` })).toBeInTheDocument();
+    expect(within(item).getByRole("button", { name: `Remove ${factoryTwo.displayName}` })).toBeInTheDocument();
+    expect(item).not.toHaveTextContent(/agent/i);
   });
 
-  it("offers re-entering both tokens, renaming and removing for an unreadable server", async () => {
+  it("lists several, each button named after its server, starting with the visible label (#305)", async () => {
+    serveManaged(managedAgentSeveral);
     renderView();
-    await screen.findByRole("list", { name: "Game servers" });
-    const item = within(row(unreadableServer.displayName));
-    expect(item.getByText(/saved tokens can't be read/)).toBeInTheDocument();
-    const who = unreadableServer.displayName;
-    for (const name of [`Re-enter both tokens for ${who}`, `Rename ${who}`, `Remove ${who}`]) {
-      expect(item.getByRole("button", { name })).toBeInTheDocument();
-    }
-    expect(item.queryByRole("button", { name: /^Test connection/ })).not.toBeInTheDocument();
-  });
-
-  // #305: every row has the same buttons, so each name carries its server for a screen reader,
-  // starting with the visible text (WCAG 2.5.3).
-  it("names each row's buttons after their server, starting with the visible label", async () => {
-    renderView();
-    await screen.findByRole("list", { name: "Game servers" });
-    const removes = screen.getAllByRole("button", { name: /^Remove / }).map((b) => b.getAttribute("aria-label"));
-    expect(new Set(removes).size).toBe(removes.length);
-    for (const button of within(row(okServer.displayName)).getAllByRole("button")) {
-      expect(button.getAttribute("aria-label")).toMatch(new RegExp(`^${button.textContent}\\b.*${okServer.displayName}$`));
+    const list = await screen.findByRole("list", { name: "Game servers" });
+    expect(within(list).getAllByRole("listitem").map((li) => li.getAttribute("aria-labelledby") && li.querySelector("h4")?.textContent)).toEqual([
+      factoryTwo.displayName,
+      creativeTest.displayName,
+    ]);
+    for (const button of within(row(creativeTest.displayName)).getAllByRole("button")) {
+      expect(button.getAttribute("aria-label")).toMatch(new RegExp(`^${button.textContent}\\b.*${creativeTest.displayName}$`));
     }
   });
 
-  it("says a refused address isn't allowed, and warns about both tokens only for a LAN address", async () => {
+  it("shows an empty state when there are no agent servers, and offers no direct-poll Add a server", async () => {
+    serveManaged(managedAgentNone);
     renderView();
-    await screen.findByRole("list", { name: "Game servers" });
-    const refused = within(row(refusedServer.displayName));
-    expect(refused.getByText("This server's saved address isn't allowed. Edit the host or remove it.")).toBeInTheDocument();
-    expect(refused.getByRole("button", { name: `Edit host of ${refusedServer.displayName}` })).toBeInTheDocument();
-    expect(refused.getByText(/token and data travel unencrypted/)).toHaveTextContent(/Both tokens/);
-    // Loopback servers get no LAN warning.
-    expect(within(row(okServer.displayName)).queryByText(/unencrypted/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/^No game servers yet\./)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add a server" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
-  it("shows an empty state when nothing is stored", async () => {
-    server.use(http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedServersEmpty)));
+  it("is the empty state too for an older backend that sends no agentServers (ADR-0007)", async () => {
+    serveManaged({ servers: [] });
     renderView();
-    expect(await screen.findByText(/No game servers yet/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add a server" })).toBeInTheDocument();
+    expect(await screen.findByText(/^No game servers yet\./)).toBeInTheDocument();
+  });
+
+  // ADR-0066: the old backend still sends its stored direct-poll connections; nothing here can act on one, so they
+  // are not shown, never mind the tokens' suffixes or a LAN warning.
+  it("ignores stored connections the old backend still sends in `servers`", async () => {
+    serveManaged({ ...managedServersAllStates, agentServers: managedAgentOne.agentServers });
+    renderView();
+    const list = await screen.findByRole("list", { name: "Game servers" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    for (const stored of managedServersAllStates.servers) expect(screen.queryByText(stored.displayName)).not.toBeInTheDocument();
+    expect(screen.queryByText(/token|FRM port|Test connection|saved address/i)).not.toBeInTheDocument();
+  });
+
+  it("is the empty state when only stored connections are sent", async () => {
+    serveManaged(managedServersAllStates);
+    renderView();
+    expect(await screen.findByText(/^No game servers yet\./)).toBeInTheDocument();
   });
 
   it("shows the backend's refusal for a member who isn't the operator", async () => {
-    server.use(http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(errorOperatorOnly, { status: 403 })));
+    serveManaged(errorOperatorOnly, 403);
     renderView();
     expect(await screen.findByRole("alert")).toHaveTextContent("Only the operator can manage servers.");
   });
+});
 
-  it("shows the API and FRM token hints for every combination the contract allows", async () => {
-    const base = serverConnectionOk.server; // apiTokenLast4 "1a2b", frmTokenSet true, frmTokenLast4 "3c4d"
-    const bothSuffixes = { ...base, id: "both-suffixes", displayName: "Both suffixes" };
-    const noFrmToken = { ...base, id: "no-frm-token", displayName: "No FRM token", frmTokenSet: false, frmTokenLast4: null };
-    const frmSetNoSuffix = { ...base, id: "frm-no-suffix", displayName: "FRM set no suffix", frmTokenLast4: null };
-    const apiSetNoSuffix = { ...base, id: "api-no-suffix", displayName: "API set no suffix", apiTokenLast4: null };
-    server.use(
-      http.get(endpoints.serverManagement.list.route, () =>
-        HttpResponse.json({ servers: [bothSuffixes, noFrmToken, frmSetNoSuffix, apiSetNoSuffix] }),
-      ),
-    );
+describe("ServerManagementView: renaming", () => {
+  it("renames one through its own route, with only the name", async () => {
+    serveManaged(managedAgentOne);
+    const bodies = captureRename(() => HttpResponse.json(renameAgentServerResponse));
     renderView();
-    expect(await screen.findByText("API token ends in 1a2b · FRM token ends in 3c4d")).toBeInTheDocument();
-    expect(within(row("No FRM token")).getByText("API token ends in 1a2b · no FRM token")).toBeInTheDocument();
-    expect(within(row("FRM set no suffix")).getByText("API token ends in 1a2b · FRM token set")).toBeInTheDocument();
-    expect(within(row("API set no suffix")).getByText("API token set · FRM token ends in 3c4d")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: `Rename ${factoryTwo.displayName}` }));
+    expect(screen.getByRole("heading", { name: `Rename server: ${factoryTwo.displayName}` })).toHaveFocus();
+    expect(screen.queryByLabelText("Host")).not.toBeInTheDocument();
+    type("Name", renameAgentServerResponse.server.displayName);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(`Saved ${renameAgentServerResponse.server.displayName}.`)).toBeInTheDocument();
+    expect(bodies).toEqual([{ displayName: renameAgentServerResponse.server.displayName }]);
+    expect(screen.getByRole("heading", { name: "Game servers" })).toHaveFocus();
   });
 
-  it("tests a saved connection and reports each check", async () => {
-    server.use(http.post(endpoints.serverManagement.testSaved.route, () => HttpResponse.json(testConnectionApiUnauthorized)));
+  it("says why a new name is refused, and sends nothing", async () => {
+    serveManaged(managedAgentOne);
+    const bodies = captureRename(() => HttpResponse.json(renameAgentServerResponse));
     renderView();
-    await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Test connection to ${okServer.displayName}` }));
-    const result = await within(row(okServer.displayName)).findByText("Connection test failed.");
-    expect(result.parentElement).toHaveTextContent("Game API: rejected the token");
-    expect(result.parentElement).toHaveTextContent("FicsitRemoteMonitoring: OK");
+    fireEvent.click(await screen.findByRole("button", { name: `Rename ${factoryTwo.displayName}` }));
+    type("Name", "Two​worlds");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText(/^A name is printable text/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
+    type("Name", "   ");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("Enter a name.")).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
+  it("says nothing to change when the name is unchanged, and sends nothing", async () => {
+    serveManaged(managedAgentOne);
+    const bodies = captureRename(() => HttpResponse.json(renameAgentServerResponse));
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: `Rename ${factoryTwo.displayName}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("Nothing to change.")).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
+  it("sends only one request for two submits that land before React re-renders", async () => {
+    serveManaged(managedAgentOne);
+    const bodies = captureRename(() => HttpResponse.json(renameAgentServerResponse));
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: `Rename ${factoryTwo.displayName}` }));
+    type("Name", renameAgentServerResponse.server.displayName);
+    const form = screen.getByRole("button", { name: "Save" }).closest("form")!;
+    await act(async () => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+    });
+    await screen.findByText(`Saved ${renameAgentServerResponse.server.displayName}.`);
+    expect(bodies).toHaveLength(1);
+  });
+
+  it("shows the backend's refusal and stays on the form", async () => {
+    serveManaged(managedAgentOne);
+    captureRename(() => HttpResponse.json(errorOperatorOnly, { status: 403 }));
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: `Rename ${factoryTwo.displayName}` }));
+    type("Name", "Another name");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Only the operator can manage servers.");
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("cancels back to the list", async () => {
+    serveManaged(managedAgentOne);
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: `Rename ${factoryTwo.displayName}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByRole("list", { name: "Game servers" })).toBeInTheDocument();
   });
 });
 
 describe("ServerManagementView: removing", () => {
   it("asks first, says what happens, and removes on confirm", async () => {
+    serveManaged(managedAgentOne);
     let removed = "";
     server.use(
       http.delete(endpoints.serverManagement.remove.route, ({ params }) => {
@@ -135,339 +182,40 @@ describe("ServerManagementView: removing", () => {
       }),
     );
     renderView();
-    await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Remove ${okServer.displayName}` }));
-    const confirm = screen.getByRole("group", { name: `Remove ${okServer.displayName}?` });
+    fireEvent.click(await screen.findByRole("button", { name: `Remove ${factoryTwo.displayName}` }));
+    const confirm = screen.getByRole("group", { name: `Remove ${factoryTwo.displayName}?` });
     // Only what the backend really does: removing a server deletes its recorded history too (#193).
-    expect(confirm).toHaveTextContent("its saved tokens and recorded history are erased. The game and its saves are never touched.");
-    expect(confirm).not.toHaveTextContent(/delet/i);
+    expect(confirm).toHaveTextContent("its recorded history is erased. The game and its saves are never touched.");
+    expect(confirm).toHaveTextContent("the mod's connection stops working");
+    expect(confirm).not.toHaveTextContent(/delet|token/i);
     expect(removed).toBe("");
     fireEvent.click(within(confirm).getByRole("button", { name: "Remove server" }));
-    expect(await screen.findByText(`Removed ${okServer.displayName}.`)).toBeInTheDocument();
-    expect(removed).toBe(okServer.id);
+    expect(await screen.findByText(`Removed ${factoryTwo.displayName}.`)).toBeInTheDocument();
+    expect(removed).toBe(factoryTwo.id);
   });
 
   it("shows the backend's refusal when removing fails, and keeps the confirmation open", async () => {
+    serveManaged(managedAgentOne);
     server.use(http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(errorOperatorOnly, { status: 403 })));
     renderView();
-    await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Remove ${okServer.displayName}` }));
-    const confirm = screen.getByRole("group", { name: `Remove ${okServer.displayName}?` });
+    fireEvent.click(await screen.findByRole("button", { name: `Remove ${factoryTwo.displayName}` }));
+    const confirm = screen.getByRole("group", { name: `Remove ${factoryTwo.displayName}?` });
     fireEvent.click(within(confirm).getByRole("button", { name: "Remove server" }));
     expect(await within(confirm).findByRole("alert")).toHaveTextContent("Only the operator can manage servers.");
-    // Still there: the row was not removed, and the confirmation is still open.
     expect(within(confirm).getByRole("button", { name: "Remove server" })).toBeInTheDocument();
-    expect(screen.getByRole("listitem", { name: okServer.displayName })).toBeInTheDocument();
+    expect(row(factoryTwo.displayName)).toBeInTheDocument();
   });
 
-  it("keeps the server when the operator changes their mind", async () => {
+  it("keeps the server when the operator changes their mind, and a reopened confirm shows no old error", async () => {
+    serveManaged(managedAgentOne);
+    server.use(http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(errorOperatorOnly, { status: 403 })));
     renderView();
-    await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Remove ${okServer.displayName}` }));
+    fireEvent.click(await screen.findByRole("button", { name: `Remove ${factoryTwo.displayName}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove server" }));
+    await screen.findByRole("alert");
     fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
     expect(screen.queryByRole("group")).not.toBeInTheDocument();
-  });
-});
-
-describe("ServerManagementView: adding", () => {
-  async function openAdd() {
-    renderView();
-    fireEvent.click(await screen.findByRole("button", { name: "Add a server" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Add a server" })).toHaveFocus());
-  }
-
-  function fillValid() {
-    type("Server id", "second");
-    type("Name", "Second world");
-    type("Game API token", "api-token-value");
-  }
-
-  it("marks invalid fields from the shared schema and sends nothing", async () => {
-    const bodies = capture("post", endpoints.serverManagement.create.route, () => HttpResponse.json({}));
-    await openAdd();
-    type("Server id", "Not Valid!");
-    type("Game API port", "70000");
-    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-    expect(screen.getByLabelText("Server id")).toHaveAttribute("aria-invalid", "true");
-    expect(screen.getByLabelText("Server id")).toHaveFocus();
-    expect(screen.getByText("Enter a port from 1 to 65535.")).toBeInTheDocument();
-    // An empty name says so, not "up to 64 characters".
-    expect(screen.getByText("Enter a name.")).toBeInTheDocument();
-    expect(bodies).toEqual([]);
-  });
-
-  // #271: a name is refused for its length or for characters that aren't printable text, and the
-  // form says which (the shared schema's own message), rather than one line for every refusal.
-  it.each([
-    ["too long", "x".repeat(65), "Enter a name of up to 64 characters."],
-    ["a direction-changing character", "Main‮world", /^A name is printable text: no control, invisible or direction-changing characters\.$/],
-  ])("says why a name is refused: %s", async (_case, name, message) => {
-    const bodies = capture("post", endpoints.serverManagement.create.route, () => HttpResponse.json({}));
-    await openAdd();
-    fillValid();
-    type("Name", name);
-    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-    expect(screen.getByText(message)).toBeInTheDocument();
-    expect(screen.getByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
-    expect(bodies).toEqual([]);
-  });
-
-  it.each(["7777.5", "0x1F", "", "-1", "1e3"])(
-    "rejects a port of %j instead of coercing it to a number",
-    async (rawPort) => {
-      const bodies = capture("post", endpoints.serverManagement.create.route, () => HttpResponse.json({}));
-      await openAdd();
-      fillValid();
-      type("Game API port", rawPort);
-      fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-      expect(screen.getByText("Enter a port from 1 to 65535.")).toBeInTheDocument();
-      expect(bodies).toEqual([]);
-    },
-  );
-
-  it("trims surrounding whitespace from a port before parsing it", async () => {
-    const bodies = capture("post", endpoints.serverManagement.create.route, () =>
-      HttpResponse.json({ server: { ...okServer, id: "second", displayName: "Second world" } }),
-    );
-    await openAdd();
-    fillValid();
-    type("Game API port", " 7777 ");
-    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-    await screen.findByText("Added Second world.");
-    expect(bodies).toEqual([
-      { id: "second", displayName: "Second world", host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-value" },
-    ]);
-  });
-
-  it("says a reserved id is reserved", async () => {
-    await openAdd();
-    fillValid();
-    type("Server id", "managed");
-    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-    expect(screen.getByText("That id is reserved.")).toBeInTheDocument();
-  });
-
-  it("sends the new server, omitting a blank FRM token, and returns to the list", async () => {
-    const bodies = capture("post", endpoints.serverManagement.create.route, () =>
-      HttpResponse.json({ server: { ...okServer, id: "second", displayName: "Second world" } }),
-    );
-    await openAdd();
-    fillValid();
-    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-    expect(await screen.findByText("Added Second world.")).toBeInTheDocument();
-    expect(bodies).toEqual([
-      { id: "second", displayName: "Second world", host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-value" },
-    ]);
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Game servers" })).toHaveFocus());
-  });
-
-  it("tests the entered values without the id or name, and reports pass or fail", async () => {
-    const bodies = capture("post", endpoints.serverManagement.testConnection.route, () =>
-      HttpResponse.json(testConnectionFrmUnreachable),
-    );
-    await openAdd();
-    fillValid();
-    type("FRM token (optional)", "frm-token");
-    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    expect(await screen.findByText("Connection test failed.")).toBeInTheDocument();
-    expect(screen.getByText(/FicsitRemoteMonitoring: didn't answer/)).toBeInTheDocument();
-    expect(bodies).toEqual([
-      { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-value", frmToken: "frm-token" },
-    ]);
-  });
-
-  it("hints that only this machine works for a LAN IP, but never for a hostname", async () => {
-    await openAdd();
-    type("Host", "192.168.1.20");
-    expect(screen.getByText("Only servers on this machine can be added for now.")).toBeInTheDocument();
-    type("Host", "game-box");
-    expect(screen.queryByText("Only servers on this machine can be added for now.")).not.toBeInTheDocument();
-  });
-
-  it.each([
-    ["lan_requires_cert_pinning", 422, errorLanRequiresCertPinning, "Only servers on this machine can be added for now."],
-    ["import_required", 409, errorImportRequired, errorImportRequired.error.message],
-    ["connection_test_failed", 422, errorConnectionTestFailed, errorConnectionTestFailed.error.message],
-  ] as const)("shows %s in plain words and stays on the form", async (_code, status, body, text) => {
-    server.use(http.post(endpoints.serverManagement.create.route, () => HttpResponse.json(body, { status })));
-    await openAdd();
-    fillValid();
-    type("Host", "game-box");
-    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(text);
-    expect(screen.getByLabelText("Game API token")).toHaveValue("api-token-value");
-  });
-
-  it("cancels back to the list", async () => {
-    await openAdd();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Game servers" })).toHaveFocus());
-  });
-
-  it("sends only one request for two submits that land before React re-renders, and shows no error", async () => {
-    // save.isPending only updates on the next render; the pending-body ref is what drops the
-    // second submit, before it can become a failed mutation shown as an error.
-    const bodies = capture("post", endpoints.serverManagement.create.route, () =>
-      HttpResponse.json({ server: { ...okServer, id: "second", displayName: "Second world" } }),
-    );
-    await openAdd();
-    fillValid();
-    const form = screen.getByRole("button", { name: "Add server" }).closest("form")!;
-    // A single outer act() batches both submits before React flushes any state update, the same
-    // way two fast physical clicks in a browser can both land before a re-render disables the button.
-    await act(async () => {
-      fireEvent.submit(form);
-      fireEvent.submit(form);
-    });
-    await screen.findByText("Added Second world.");
-    expect(bodies.length).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: `Remove ${factoryTwo.displayName}` }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-  });
-});
-
-describe("ServerManagementView: keeping tokens out of the mutation cache", () => {
-  // LoginForm (src/auth/LoginForm.tsx) deliberately keeps the password out of `mutate()`'s
-  // variables because TanStack Query keeps a mutation's variables in its cache for minutes
-  // (see its comment). ServerForm's save and test-connection mutations pass the token straight
-  // as `mutate(body)`, so it lands in `client.getMutationCache()` the same way the password would.
-  async function openAdd(client: ReturnType<typeof renderView>["client"]) {
-    fireEvent.click(await screen.findByRole("button", { name: "Add a server" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Add a server" })).toHaveFocus());
-    void client;
-  }
-
-  it("does not keep the API token in the mutation cache after adding a server", async () => {
-    server.use(
-      http.post(endpoints.serverManagement.create.route, () =>
-        HttpResponse.json({ server: { ...okServer, id: "second", displayName: "Second world" } }),
-      ),
-    );
-    const { client } = renderView();
-    await openAdd(client);
-    type("Server id", "second");
-    type("Name", "Second world");
-    type("Game API token", "secret-api-token");
-    fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-    await screen.findByText("Added Second world.");
-
-    const mutations = client.getMutationCache().getAll();
-    expect(mutations.length).toBeGreaterThan(0);
-    expect(JSON.stringify(mutations.map((m) => m.state))).not.toContain("secret-api-token");
-  });
-
-  it("does not keep the API token in the mutation cache after testing a new connection", async () => {
-    server.use(http.post(endpoints.serverManagement.testConnection.route, () => HttpResponse.json(testConnectionApiUnauthorized)));
-    const { client } = renderView();
-    await openAdd(client);
-    type("Server id", "second");
-    type("Name", "Second world");
-    type("Game API token", "secret-api-token");
-    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    await screen.findByText("Connection test failed.");
-
-    const mutations = client.getMutationCache().getAll();
-    expect(mutations.length).toBeGreaterThan(0);
-    expect(JSON.stringify(mutations.map((m) => m.state))).not.toContain("secret-api-token");
-  });
-
-  it("does not keep a re-entered token in the mutation cache after editing a server", async () => {
-    server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json({ server: okServer })));
-    const { client } = renderView();
-    await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(okServer.displayName)).getByRole("button", { name: `Edit ${okServer.displayName}` }));
-    type("Game API token", "secret-edit-token");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText(`Saved ${okServer.displayName}.`);
-
-    const mutations = client.getMutationCache().getAll();
-    expect(mutations.length).toBeGreaterThan(0);
-    expect(JSON.stringify(mutations.map((m) => m.state))).not.toContain("secret-edit-token");
-  });
-});
-
-describe("ServerManagementView: editing", () => {
-  async function openFor(serverName: string, button: string) {
-    renderView();
-    await screen.findByRole("list", { name: "Game servers" });
-    fireEvent.click(within(row(serverName)).getByRole("button", { name: button }));
-  }
-
-  it("never prefills a token, shows only its suffix, and sends only what changed", async () => {
-    const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: okServer }));
-    await openFor(okServer.displayName, `Edit ${okServer.displayName}`);
-    expect(screen.getByLabelText("Game API token")).toHaveValue("");
-    expect(screen.getByLabelText("Game API token")).toHaveAttribute("type", "password");
-    expect(screen.getByText("Set, ends in 1a2b. Leave blank to keep it.")).toBeInTheDocument();
-    type("Game API port", "7780");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText(`Saved ${okServer.displayName}.`)).toBeInTheDocument();
-    expect(bodies).toEqual([{ apiPort: 7780 }]);
-  });
-
-  it("clears the FRM token with null when asked", async () => {
-    const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: okServer }));
-    await openFor(okServer.displayName, `Edit ${okServer.displayName}`);
-    fireEvent.click(screen.getByLabelText(/Remove the FRM token/));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText(`Saved ${okServer.displayName}.`);
-    expect(bodies).toEqual([{ frmToken: null }]);
-  });
-
-  it("sends nothing when nothing changed", async () => {
-    const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: okServer }));
-    await openFor(okServer.displayName, `Edit ${okServer.displayName}`);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(screen.getByText("Nothing to change.")).toBeInTheDocument();
-    expect(bodies).toEqual([]);
-  });
-
-  it("repairs an unreadable server with both tokens, a blank FRM token as null", async () => {
-    const bodies = capture("patch", endpoints.serverManagement.update.route, () =>
-      HttpResponse.json({ server: { ...unreadableServer, state: "ok" } }),
-    );
-    await openFor(unreadableServer.displayName, `Re-enter both tokens for ${unreadableServer.displayName}`);
-    expect(screen.queryByLabelText("Host")).not.toBeInTheDocument();
-    type("Game API token", "new-api-token");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText(`Saved ${unreadableServer.displayName}.`);
-    expect(bodies).toEqual([{ apiToken: "new-api-token", frmToken: null }]);
-  });
-
-  it("renames an unreadable server with only the name", async () => {
-    const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: unreadableServer }));
-    await openFor(unreadableServer.displayName, `Rename ${unreadableServer.displayName}`);
-    expect(screen.queryByLabelText("Game API token")).not.toBeInTheDocument();
-    type("Name", "Renamed");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText(/^Saved /);
-    expect(bodies).toEqual([{ displayName: "Renamed" }]);
-  });
-
-  // The plain "rename" and "renameAgent" modes share one bodyFor branch (ServerForm.tsx); this
-  // guards the "rename" side of that shared line against a regression from the agent-mode refactor.
-  it("says nothing to change for a plain rename with no edit", async () => {
-    const bodies = capture("patch", endpoints.serverManagement.update.route, () => HttpResponse.json({ server: unreadableServer }));
-    await openFor(unreadableServer.displayName, `Rename ${unreadableServer.displayName}`);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(screen.getByText("Nothing to change.")).toBeInTheDocument();
-    expect(bodies).toEqual([]);
-  });
-
-  it("shows connection_unreadable in plain words on the repair form, and stays on it", async () => {
-    server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(errorConnectionUnreadable, { status: 409 })));
-    await openFor(unreadableServer.displayName, `Re-enter both tokens for ${unreadableServer.displayName}`);
-    type("Game API token", "new-api-token");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(errorConnectionUnreadable.error.message);
-    expect(screen.getByLabelText("Game API token")).toHaveValue("new-api-token");
-  });
-
-  it("shows connection_unreadable in plain words on the rename form too, even though renaming needs no tokens", async () => {
-    server.use(http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(errorConnectionUnreadable, { status: 409 })));
-    await openFor(unreadableServer.displayName, `Rename ${unreadableServer.displayName}`);
-    type("Name", "Renamed");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(errorConnectionUnreadable.error.message);
-    expect(screen.getByLabelText("Name")).toHaveValue("Renamed");
   });
 });

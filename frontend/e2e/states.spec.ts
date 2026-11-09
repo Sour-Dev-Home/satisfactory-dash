@@ -682,19 +682,23 @@ const CASES: StateCase[] = [
   // The panels with no data say "Updating…" (calm, no alert) while the gap is recent, not "Couldn't load".
   { scenario: "deploy-gap", name: "deploy-gap-power", path: "/app/power", shows: "Updating…" },
   { scenario: "contract-drift", shows: /doesn't understand/ },
-  // Server management (ADR-0030), operator only: the three stored states, then the add form's refusals.
-  { scenario: "servers-manage", path: "/app/servers", shows: "This server's saved address isn't allowed. Edit the host or remove it." },
-  { scenario: "servers-manage", name: "servers-add-form", path: "/app/servers", shows: "Leave blank if FRM runs without a token.", act: openAddForm },
-  // ADR-0031: a server read through the game PC's agent (#266), and its switch back to local (#273).
-  { scenario: "servers-with-agent", path: "/app/servers", shows: /read through the game PC's agent/ },
+  // Server management (ADR-0030), operator only. ADR-0066: the servers the mod connects, each renamed or removed.
+  { scenario: "servers-manage", path: "/app/servers", shows: "creative-test · read through the Satis Manager mod. The mod's status is on Settings." },
   {
-    scenario: "servers-with-agent",
-    name: "servers-switch-to-local",
+    scenario: "servers-manage",
+    name: "servers-rename",
     path: "/app/servers",
-    shows: /tested first and nothing changes if it fails/,
-    act: (page) => page.getByRole("button", { name: "Switch back to local for Factory two" }).click(),
+    shows: "Rename server",
+    act: (page) => page.getByRole("button", { name: "Rename Factory two" }).click(),
   },
-  { scenario: "servers-first", shows: "No game servers yet. Add the first one; for now it has to run on this machine." },
+  {
+    scenario: "servers-manage",
+    name: "servers-remove-confirm",
+    path: "/app/servers",
+    shows: /the mod's connection stops working/,
+    act: (page) => page.getByRole("button", { name: "Remove Factory two" }).click(),
+  },
+  { scenario: "servers-first", shows: /^No game servers yet\./ },
   // The operator's metrics page (ADR-0056): every table filled, each section's reason for having no data, a 429, a
   // failing read, the loading skeleton, and a user who isn't the operator (the unknown-page redirect lands on the Overview).
   // Chart-led since the 2026-10-26 amendment: the headline tiles and trends, then every folded Details opened (the text
@@ -707,24 +711,6 @@ const CASES: StateCase[] = [
   { scenario: "metrics-error", path: "/app/metrics", shows: "Retry" },
   { scenario: "metrics-forbidden", path: "/app/metrics", shows: / played$/ },
   { scenario: "metrics-loading", path: "/app/metrics", shows: "Refresh", act: skeletonsShown },
-  {
-    scenario: "servers-lan-refused",
-    path: "/app/servers",
-    shows: "Only servers on this machine can be added for now.",
-    act: (page) => addServer(page, "192.168.1.20"),
-  },
-  {
-    scenario: "servers-import-required",
-    path: "/app/servers",
-    shows: /Import them first/,
-    act: (page) => addServer(page, "127.0.0.1"),
-  },
-  {
-    scenario: "servers-test-failed",
-    path: "/app/servers",
-    shows: "Game API: rejected the token",
-    act: (page) => page.getByRole("button", { name: "Test connection" }).first().click(),
-  },
   // Stored power history (ADR-0027, #74): the 24-hour range, with a gap and a fuse trip.
   {
     scenario: "default",
@@ -765,7 +751,7 @@ const CASES: StateCase[] = [
   { scenario: "push-opted-in", name: "push-subscribed", path: "/app/settings", shows: /This device is subscribed/, clock: FIXTURE_NOW, browser: "subscribed" },
   { scenario: "push-enabled", name: "push-denied", path: "/app/settings", shows: /Notifications are blocked for this site/, clock: FIXTURE_NOW, browser: "denied" },
   { scenario: "push-viewer", path: "/app/settings", shows: /It applies to every device where push is on/, clock: FIXTURE_NOW, browser: "off" },
-  // Settings → Game PC agent (ADR-0031 PR 7). The clock sits 8 s after the agent was last heard.
+  // Settings → Satis Manager mod (ADR-0031 PR 7). The clock sits 8 s after the agent was last heard.
   { scenario: "agent-local-operator", path: "/app/settings", shows: /forgets its stored game-server tokens/, clock: AGENT_NOW },
   {
     scenario: "agent-local-operator",
@@ -920,23 +906,10 @@ async function showConveyors(page: Page) {
   await page.getByRole("checkbox", { name: "Belts and pipes" }).check();
 }
 
-async function openAddForm(page: Page) {
-  await page.getByRole("button", { name: "Add a server" }).click();
-}
-
 /** Opens the header bell's dropdown (ADR-0027 PR 9) and lets it finish popping in. */
 async function openAlerts(page: Page) {
   await page.getByRole("button", { name: /^Alerts/ }).click();
   await settleAnimations(page);
-}
-
-async function addServer(page: Page, host: string) {
-  await openAddForm(page);
-  await page.getByLabel("Server id").fill("second");
-  await page.getByLabel("Name").fill("Second world");
-  await page.getByLabel("Host").fill(host);
-  await page.getByLabel("Game API token").fill("example-token");
-  await page.getByRole("button", { name: "Add server" }).click();
 }
 
 for (const { scenario, shows, path = "/app", name = scenario, act, clock, browser, ready, width, storage } of CASES) {

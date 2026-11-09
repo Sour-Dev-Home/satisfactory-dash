@@ -2,7 +2,7 @@
 title: Frequently asked questions
 description: Answers about privacy, what Satis Manager reads from your server, whether it changes your game, the Satis Manager mod, and cost.
 order: 9
-updated: 2026-11-03
+updated: 2026-11-09
 ---
 Short answers to the questions people ask most. Each one links to the guide with more detail.
 
@@ -44,8 +44,6 @@ You can leave a server, or delete your account, from **Settings**, under **Your 
 ## Who can see my server?
 
 Only its members. The person who added a server is its owner. Owners and admins can do more, such as creating enrolment codes, revoking the mod's connection and reshaping factories on the Planner. Viewers can look but not change anything.
-
-Your server's members can see who is online. Settings has a short, ready-made message under **Tell your players** that you can paste into your server's Discord, so your players know.
 
 ## Does my game's admin token go to the cloud?
 

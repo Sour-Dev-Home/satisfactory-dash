@@ -3,9 +3,6 @@ import { useCallback, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentStatusResponse } from "@satisfactory-dash/shared";
 import { useAgentWrites, type EnrollmentCode } from "../api/agentWrites";
-// The API origin through the transport (never import.meta.env here): the demo build swaps the
-// transport, so its bundle never carries the real API's URL (e2e/build-output.spec.ts).
-import { apiHref } from "../api/client";
 import { queries } from "../api/queries";
 import { CopyButton } from "../components/CopyButton";
 import { tour } from "../demo/tour/target";
@@ -17,15 +14,13 @@ import { EnrolmentGuide } from "../selfServe/EnrolmentGuide";
 import { useSelectedServer } from "../servers/ServerContext";
 import { cn } from "../lib/cn";
 import {
-  agentBackendUrl,
   agentVersionLine,
   canCreateCode,
   canRevoke,
   connectionText,
   gameConnectionView,
   lastSeenText,
-  offersDevAgent,
-  senderWords,
+  SENDER_WORDS,
   type GameConnectionView,
 } from "./agentText";
 import { useHashTarget } from "../lib/useHashTarget";
@@ -33,7 +28,7 @@ import { useHashTarget } from "../lib/useHashTarget";
 const isAgentAnchor = (id: string) => id === "agent";
 
 /**
- * Settings → Satis Manager mod, or "Game PC agent" for the operator (ADR-0031 PR 7, `senderWords`): whether an agent reports for this server, when it was
+ * Settings → Satis Manager mod (ADR-0031 PR 7; ADR-0066: the mod for everyone): whether the mod reports for this server, when it was
  * last heard and its version, and for those allowed, an enrolment code and revoking. Every member
  * reads it. Keyed by server in the shell, so a code never follows the user to another server.
  */
@@ -42,8 +37,7 @@ export function AgentSettings() {
   // /app/settings#agent (#351's deep links) scrolls here.
   useHashTarget(isAgentAnchor);
   const isOperator = useQuery(queries.servers()).data?.canManageServers === true;
-  const devAgent = offersDevAgent(isOperator);
-  const words = senderWords(devAgent);
+  const words = SENDER_WORDS;
   const status = useQuery(queries.agentStatus(server.id));
   const { createCode, revoke } = useAgentWrites(server.id);
   // The code lives only here: shown once, gone when the section unmounts (see useAgentWrites).
@@ -85,12 +79,11 @@ export function AgentSettings() {
         <>
         {/* ADR-0046: the player's own server needs to be told where the code goes (the mod's config file). */}
         {server.createdVia === "self_serve" && canCreateCode(status.data.connectionKind, server.role, isOperator) && (
-          <EnrolmentGuide enrolled={status.data.enrolled} devAgent={devAgent} />
+          <EnrolmentGuide enrolled={status.data.enrolled} />
         )}
         <AgentPanel
           agent={status.data}
           code={code}
-          devAgent={devAgent}
           canCreate={canCreateCode(status.data.connectionKind, server.role, isOperator)}
           canRevoke={canRevoke(server.role)}
           creating={createCode.isPending}
@@ -130,8 +123,8 @@ const TONE_CLASS = new Map<GameConnectionView["tone"], string>([
   ["unknown", "text-muted"],
 ]);
 
-function GameConnectionRow({ agent, now, noun }: { agent: AgentStatusResponse; now: number; noun: string }) {
-  const view = gameConnectionView(agent, now, noun);
+function GameConnectionRow({ agent, now }: { agent: AgentStatusResponse; now: number }) {
+  const view = gameConnectionView(agent, now);
   if (view === null) return null;
   return (
     <>
@@ -175,13 +168,11 @@ function GameConnectionIcon({ tone }: { tone: "ok" | "warn" }) {
 }
 
 /**
- * Presentational: one server's agent, and the controls this user may use. A new code says where the mod reads it;
- * `devAgent` (`offersDevAgent`: the operator) adds the Node agent's enrol command, which players are not offered.
+ * Presentational: one server's agent, and the controls this user may use. A new code says where the mod reads it.
  */
 export function AgentPanel({
   agent,
   code,
-  devAgent = false,
   canCreate,
   canRevoke,
   creating,
@@ -193,7 +184,6 @@ export function AgentPanel({
 }: {
   agent: AgentStatusResponse;
   code: EnrollmentCode | null;
-  devAgent?: boolean;
   canCreate: boolean;
   canRevoke: boolean;
   creating: boolean;
@@ -222,13 +212,13 @@ export function AgentPanel({
     if (!agent.enrolled && confirming) setConfirming(false);
   }
   const local = agent.connectionKind === "local";
-  const words = senderWords(devAgent);
+  const words = SENDER_WORDS;
   return (
     <>
       {/* The demo tour's "Connecting a game" step (ADR-0065): the status rows, not the whole section (taller than a phone). */}
       <dl className="mb-0" {...tour("settings-connection")}>
         <dt>Reached</dt>
-        <dd>{connectionText(agent.connectionKind, devAgent)}</dd>
+        <dd>{connectionText(agent.connectionKind)}</dd>
         <dt>{words.label}</dt>
         <dd>
           {agent.enrolled ? (
@@ -253,7 +243,7 @@ export function AgentPanel({
             "None enrolled"
           )}
         </dd>
-        <GameConnectionRow agent={agent} now={now} noun={words.noun} />
+        <GameConnectionRow agent={agent} now={now} />
         {agent.enrolled && (
           <>
             <dt>{words.versionLabel}</dt>
@@ -277,27 +267,13 @@ export function AgentPanel({
             {/* docs-vault/raw-sources/mod-core-v1-config.md, as in EnrolmentGuide. */}
             <code>enrollmentCode</code> in <code>FactoryGame/Configs/SatisDashAgent.cfg</code>.
           </p>
-          {devAgent && (
-            <>
-              {/* The agent app's command (docs-vault/wiki/runbooks/agent-app.md, "Enrol"), for development only
-                  (owner, 2026-11-03). Whether --replace is needed depends on what the PC has stored, which the
-                  dashboard can't see, so it's only named. */}
-              <p className="mb-0 text-sm text-muted">For development, with the agent app instead: in the agent&apos;s folder, run:</p>
-              <p className="mb-0 font-mono text-sm break-words">
-                node agent.cjs enroll {code.code} --url {agentBackendUrl(apiHref(""))}
-              </p>
-              <p className="mb-0 text-sm text-muted">
-                If this PC was enrolled before (or the agent was revoked), add <code>--replace</code>.
-              </p>
-            </>
-          )}
         </div>
       ) : (
         canCreate && (
           <div className="grid gap-2">
             {local && (
               <p className="mb-0 text-sm text-muted">
-                Enrolling an agent switches this server to it: the dashboard stops reaching the game server directly and
+                Enrolling the mod switches this server to it: the dashboard stops reaching the game server directly and
                 forgets its stored game-server tokens.
               </p>
             )}
@@ -356,7 +332,7 @@ export function AgentPanel({
       {!canCreate && (
         <p className="mb-0 text-sm text-muted">
           {local
-            ? "Only the dashboard's operator can enrol an agent for this server."
+            ? "Only the dashboard's operator can enrol the mod for this server."
             : `Only a server owner or admin can enrol or revoke ${words.noun}.`}
         </p>
       )}

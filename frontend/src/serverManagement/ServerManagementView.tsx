@@ -1,11 +1,11 @@
 import { Loadable, Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { AgentServer } from "@satisfactory-dash/shared";
 import { queries } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { AgentServerRow } from "./AgentServerRow";
-import { ServerForm, type FormMode } from "./ServerForm";
-import { ServerRow } from "./ServerRow";
+import { RenameServerForm } from "./RenameServerForm";
 
 /** The server list while it loads: a couple of rows in the list's own box. */
 function ServersSkeleton() {
@@ -19,12 +19,14 @@ function ServersSkeleton() {
 }
 
 /**
- * ADR-0030: the operator adds, edits and removes game servers. Shown only when the server list
- * says canManageServers; hiding it is UX only (every route is operator-only on the backend).
+ * ADR-0030: the operator renames and removes game servers. Shown only when the server list says canManageServers;
+ * hiding it is UX only (every route is operator-only on the backend). ADR-0066: every server connects through the
+ * mod, so the list is the managed answer's `agentServers`. Its `servers` (stored direct-poll connections) are ignored
+ * even when an older backend still sends some: nothing here can add, edit or test one any more.
  */
 export function ServerManagementView() {
   const managed = useQuery(queries.managedServers());
-  const [editing, setEditing] = useState<FormMode | null>(null);
+  const [renaming, setRenaming] = useState<AgentServer | null>(null);
   const [notice, setNotice] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   // Opening or closing the form replaces what had focus: land on the heading of what's shown.
@@ -32,45 +34,37 @@ export function ServerManagementView() {
   useEffect(() => {
     if (!moved.current) return;
     moved.current = false;
-    const target = editing ? document.querySelector<HTMLElement>("#server-form-anchor h3") : heading.current;
+    const target = renaming ? document.querySelector<HTMLElement>("#server-form-anchor h3") : heading.current;
     target?.setAttribute("tabindex", "-1");
     target?.focus();
-  }, [editing]);
+  }, [renaming]);
 
-  const open = (mode: FormMode) => {
+  const open = (server: AgentServer) => {
     moved.current = true;
     setNotice("");
-    setEditing(mode);
+    setRenaming(server);
   };
   const close = (message: string) => {
     moved.current = true;
     setNotice(message);
-    setEditing(null);
+    setRenaming(null);
   };
 
-  if (editing) {
+  if (renaming) {
     return (
       <div id="server-form-anchor">
-        <ServerForm key={editing.kind === "create" ? "create" : `${editing.kind}-${editing.server.id}`} mode={editing} onDone={close} />
+        <RenameServerForm key={renaming.id} server={renaming} onDone={close} />
       </div>
     );
   }
 
-  const servers = managed.data?.servers;
-  // Optional: an older backend doesn't list them (ADR-0007).
-  const agentServers = managed.data?.agentServers ?? [];
+  // Optional in the contract: an older backend doesn't list them (ADR-0007).
+  const servers = managed.data ? (managed.data.agentServers ?? []) : undefined;
   return (
     <section aria-labelledby="servers-heading" className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 id="servers-heading" ref={heading} tabIndex={-1} className="mb-0">
-          Game servers
-        </h3>
-        {servers && (
-          <button type="button" onClick={() => open({ kind: "create" })} className="border-accent bg-accent text-on-accent">
-            Add a server
-          </button>
-        )}
-      </div>
+      <h3 id="servers-heading" ref={heading} tabIndex={-1} className="mb-0">
+        Game servers
+      </h3>
       <p role="status" className="mb-0 empty:hidden">
         {notice}
       </p>
@@ -89,36 +83,16 @@ export function ServerManagementView() {
             {null}
           </Loadable>
         )
-      ) : servers.length === 0 && agentServers.length === 0 ? (
+      ) : servers.length === 0 ? (
         <p className="rounded-card border border-line bg-surface p-5 text-muted">
-          No game servers yet. Add the first one; for now it has to run on this machine.
+          No game servers yet. Servers added with Add your server show here; each connects through the Satis Manager mod.
         </p>
       ) : (
-        <>
-          {servers.length > 0 && (
-            <ul aria-label="Game servers" className="divide-y divide-line rounded-card border border-line bg-surface">
-              {servers.map((server) => (
-                <ServerRow key={server.id} server={server} onEdit={open} onRemoved={close} />
-              ))}
-            </ul>
-          )}
-          {agentServers.length > 0 && (
-            // A visible heading (ui review): sighted users see why this group is apart, not only a second card.
-            <div className="grid gap-2">
-              <h4 id="agent-servers-heading" className="mb-0">
-                Servers read through an agent
-              </h4>
-              <ul
-                aria-labelledby="agent-servers-heading"
-                className="divide-y divide-line rounded-card border border-line bg-surface"
-              >
-                {agentServers.map((server) => (
-                  <AgentServerRow key={server.id} server={server} onEdit={open} />
-                ))}
-              </ul>
-            </div>
-          )}
-        </>
+        <ul aria-labelledby="servers-heading" className="divide-y divide-line rounded-card border border-line bg-surface">
+          {servers.map((server) => (
+            <AgentServerRow key={server.id} server={server} onRename={open} onRemoved={close} />
+          ))}
+        </ul>
       )}
     </section>
   );

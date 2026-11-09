@@ -67,22 +67,11 @@ export const servers: ServerListResponse = {
   canManageServers: true,
 };
 
+// ADR-0066: every server connects through the mod, so the demo server is an agent server and no stored
+// connection is listed (`servers` stays in the contract, empty, until the contract PR removes it).
 export const managedServers: ManagedServerListResponse = {
-  servers: [
-    {
-      id: DEMO_SERVER_ID,
-      displayName: "Demo factory",
-      host: "127.0.0.1",
-      apiPort: 7777,
-      frmPort: 8080,
-      apiTokenSet: true,
-      apiTokenLast4: "d3m0",
-      frmTokenSet: true,
-      frmTokenLast4: "f4k3",
-      state: "ok",
-      plainHttpOverLan: false,
-    },
-  ],
+  servers: [],
+  agentServers: [{ id: DEMO_SERVER_ID, displayName: "Demo factory", kind: "agent" }],
 };
 
 /** The demo save's play time: about 36 days at DEMO_EPOCH, growing with the clock. */

@@ -19,8 +19,8 @@ contract needs to grow, not that this module should special-case a backend detai
 - Routing (ADR-0016 item 4, ADR-0021): React Router in declarative mode (`BrowserRouter` in
   `App.tsx`). The signed-in app lives under `/app/*` (`src/shell/Shell.tsx`: tabs Overview,
   Power, Factory, Planner, Map, Settings, plus Servers and Metrics for the operator only: ADR-0030, `src/serverManagement/`,
-  shown when the server list says `canManageServers`; tokens are write-only there, never prefilled or
-  shown beyond their last 4). `/` is the static landing page (`src/landing/`, main site only;
+  shown when the server list says `canManageServers`; since ADR-0066 it lists only the servers the mod connects
+  (`agentServers`), to rename or remove). `/` is the static landing page (`src/landing/`, main site only;
   the demo's `/` is "Enter demo"); any other path redirects to `/app`, keeping the query
   string. Keep `/` and the static public paths (`/guides/*`, `/changelog`, below) free of app code: no
   queries, no auth, no API calls (`e2e/landing.spec.ts`, `e2e/guides.spec.ts`). Its link-preview tags are static
