@@ -224,6 +224,7 @@ export const QUERY_NAMES = [
   "servers.getConnectionMeta",
   "servers.getMemberRole",
   "servers.insertSelfServeServer",
+  "servers.isOperatorServer",
   "servers.listAgentServers",
   "servers.listConnectionMetas",
   "servers.listConnections",

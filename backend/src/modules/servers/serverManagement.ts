@@ -3,7 +3,7 @@ import type { withTransaction } from "../../platform/db/transaction.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { ServerNotFoundError } from "../../platform/errorResponse.js";
 import { Mutex } from "../../platform/mutex.js";
-import { findServerByPublicId, listOperatorAgentServers, renameServer, softDeleteServer } from "./repositories/serverRepository.js";
+import { findServerByPublicId, isOperatorServer, listOperatorAgentServers, renameServer, softDeleteServer } from "./repositories/serverRepository.js";
 import type { ServerRuntime } from "./serverRuntime.js";
 
 /**
@@ -68,9 +68,10 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
 
     remove(actorUserId, publicId) {
       return mutex.run(async () => {
-        // ADR-0066: any live server, whatever its kind. It used to look the server up by its stored connection, so an agent
-        // server the operator created could not be removed here (a 404).
-        if ((await findServerByPublicId(deps.db, publicId)) === undefined) throw new ServerNotFoundError();
+        // ADR-0066: any live server the operator created, whatever its kind. It used to look the server up by its stored
+        // connection, so an agent server the operator created could not be removed here (a 404). A self-serve server stays
+        // its owner's to remove, even when the operator is a member of it (the same 404 as before).
+        if (!(await isOperatorServer(deps.db, publicId))) throw new ServerNotFoundError();
         // The row's memberships, any stored connection and its recorded data go in one transaction; then its workers stop.
         const removed = await softDeleteServer(deps.db, publicId, { actorUserId });
         if (!removed) throw new ServerNotFoundError();

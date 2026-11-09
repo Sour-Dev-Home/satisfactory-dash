@@ -6,6 +6,7 @@ import { ServerNotFoundError } from "../../platform/errorResponse.js";
 // renames and removes servers; adding, editing, testing and switching a direct-poll server are gone.
 const repo = vi.hoisted(() => ({
   findServerByPublicId: vi.fn(),
+  isOperatorServer: vi.fn(),
   listOperatorAgentServers: vi.fn(),
   renameServer: vi.fn(),
   softDeleteServer: vi.fn(),
@@ -13,6 +14,7 @@ const repo = vi.hoisted(() => ({
 
 vi.mock("./repositories/serverRepository.js", () => ({
   findServerByPublicId: repo.findServerByPublicId,
+  isOperatorServer: repo.isOperatorServer,
   listOperatorAgentServers: repo.listOperatorAgentServers,
   renameServer: repo.renameServer,
   softDeleteServer: repo.softDeleteServer,
@@ -37,6 +39,7 @@ function setup() {
 beforeEach(() => {
   for (const fn of Object.values(repo)) fn.mockReset();
   repo.findServerByPublicId.mockResolvedValue(agentRow);
+  repo.isOperatorServer.mockResolvedValue(true);
   repo.renameServer.mockResolvedValue(true);
   repo.softDeleteServer.mockResolvedValue(true);
 });
@@ -84,8 +87,8 @@ describe("the operator's servers (ADR-0031; ADR-0066: every server is reached th
 });
 
 describe("remove", () => {
-  it("is a not-found for an unknown server, touching nothing", async () => {
-    repo.findServerByPublicId.mockResolvedValue(undefined);
+  it("is a not-found for an unknown server or one the operator didn't create (a self-serve server), touching nothing", async () => {
+    repo.isOperatorServer.mockResolvedValue(false);
     const { service, runtime } = setup();
     await expect(service.remove(OPERATOR, "nope")).rejects.toBeInstanceOf(ServerNotFoundError);
     expect(repo.softDeleteServer).not.toHaveBeenCalled();

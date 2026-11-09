@@ -5,12 +5,13 @@ import type { RequestHandler } from "express";
 import { ManagedServerListResponseSchema } from "@satisfactory-dash/shared";
 import { createApp } from "../../app.js";
 import { createLogger } from "../../platform/logger.js";
+import { withTransaction } from "../../platform/db/transaction.js";
 import { Mutex } from "../../platform/mutex.js";
 import { createTestDatabase, dbTestsAvailable } from "../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../test-support/testDb.js";
 import { createUser } from "../identity/repositories/userRepository.js";
 import { addMember, getMemberRole } from "./repositories/memberRepository.js";
-import { findServerByPublicId, switchToAgentConnection, upsertConfiguredServer } from "./repositories/serverRepository.js";
+import { findServerByPublicId, insertSelfServeServer, switchToAgentConnection, upsertConfiguredServer } from "./repositories/serverRepository.js";
 import { createServerManagementRouters } from "./serverManagementRouter.js";
 import { createServerManagementService } from "./serverManagement.js";
 import { ServerRuntime } from "./serverRuntime.js";
@@ -80,6 +81,23 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
     expect(await getMemberRole(pool, { publicId, userId: operatorId })).toBeUndefined();
     expect(runtime.has(publicId)).toBe(false);
     expect((await request(app).delete(`/api/servers/${publicId}`)).status).toBe(404);
+  });
+
+  it("does not remove a self-serve server, even one the operator is a member of: 404, the server and its entry stay", async () => {
+    const runtime = new ServerRuntime<string>();
+    const owner = await createUser(pool, { displayName: `owner-${++counter}` });
+    const publicId = `ss-${counter}`;
+    const server = await withTransaction(pool, async (client) => {
+      const row = await insertSelfServeServer(client, { publicId, displayName: `Name ${publicId}`, createdByUserId: owner.id });
+      await addMember(client, { serverId: row.id, userId: owner.id, role: "owner", actorUserId: owner.id });
+      return row;
+    });
+    await addMember(pool, { serverId: server.id, userId: operatorId, role: "admin", actorUserId: owner.id });
+    runtime.add({ id: publicId, displayName: `Name ${publicId}`, services: "agent", workers: [], kind: "agent" });
+    expect((await request(appWith(runtime)).delete(`/api/servers/${publicId}`)).status).toBe(404);
+    expect(await findServerByPublicId(pool, publicId)).toBeDefined();
+    expect(await getMemberRole(pool, { publicId, userId: operatorId })).toBe("admin");
+    expect(runtime.has(publicId)).toBe(true);
   });
 
   it("the direct-poll routes answer 410 and write nothing", async () => {
