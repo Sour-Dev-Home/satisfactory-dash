@@ -55,7 +55,7 @@ prerendered `/`: keep it free of anything that differs between the build and the
       opens it) from `components/dangerButton.ts` (#275), with the safe choice first.
 - [ ] **Repeated controls name their item.** When every row or card has the same button, give each an
       `aria-label` that starts with the visible text and ends with the item, e.g. `Remove ${name}` (#305,
-      `serverManagement/ServerRow.tsx`).
+      `serverManagement/AgentServerRow.tsx`).
 - [ ] **Focus:** a control that swaps itself for a confirm moves focus into it, and back on cancel. Use a
       stable `useCallback` ref: a view that re-renders every second re-focuses with an inline one.
 - [ ] **Layout-stable loading (#494):** the loading branch is `<Loadable pending skeleton>` with a skeleton

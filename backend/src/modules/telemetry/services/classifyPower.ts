@@ -1,5 +1,5 @@
 import type { PowerCircuit as PowerCircuitResponse } from "@satisfactory-dash/shared";
-import type { PowerCircuit } from "../../gameserver/index.js";
+import type { PowerCircuit } from "../domain.js";
 
 /** Battery percent below which a net-draining circuit counts as "at risk" rather
  *  than "ok". Not sourced from docs-vault — FRM's own DiscIT.Battery webhook config

@@ -1,9 +1,9 @@
 // Picks what a pull request's CI has to run, from the files it changes. The unit is the workspace: a change
 // to a workspace runs that workspace's lint, typecheck, unit tests and build, and the same for every workspace
 // that depends on it (read from the workspaces' package.json files and imports), so a change to packages/shared still
-// reaches the frontend, the backend and the agent. The heavy jobs follow from that: the frontend's Playwright
-// suite (e2e.yml) runs when the frontend is selected, the server manager's when it is, and the backend image,
-// compose and load-smoke jobs when the backend is.
+// reaches the frontend and the backend. The heavy jobs follow from that: the frontend's Playwright suite
+// (e2e.yml) runs when the frontend is selected, and the backend image, compose and load-smoke jobs when the
+// backend is.
 //
 // It may run too much, never too little:
 // - pushes to main, manual runs and an unknown base run everything (the workflow passes no file list);
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Every npm workspace, in the order the root scripts run them. A test checks this against package.json. */
-export const WORKSPACES = ["packages/shared", "packages/game-adapter", "frontend", "backend", "agent", "server-manager"];
+export const WORKSPACES = ["packages/shared", "packages/game-adapter", "frontend", "backend"];
 
 /** Files that decide how the tests run rather than what they test: any change runs everything. */
 export const SETUP = [
@@ -39,7 +39,7 @@ export const SETUP = [
 
 /**
  * Paths outside a workspace that a workspace (or a job) reads anyway, and the targets they select. A target is
- * a workspace directory, or `load` (the load-smoke job), `compose` (the compose job) or `systemd` (the unit-file check). Workspace targets also
+ * a workspace directory, or `load` (the load-smoke job) or `compose` (the compose job). Workspace targets also
  * select their dependents.
  */
 export const INPUTS = [
@@ -49,12 +49,10 @@ export const INPUTS = [
   [/^backend\/src\/modules\/telemetry\/itemForms\.generated\.json$/, ["frontend"]],
   [/^load\//, ["backend", "load"]], // backend/scripts/load-seed.ts imports load/lib
   [/^scripts\/load-report\.mjs$/, ["load"]],
-  [/^frontend\/src\/index\.css$/, ["server-manager"]], // the server manager's build and tests read its tokens
   [/^LICENSE$/, ["frontend"]], // frontend/e2e/legal.spec.ts reads it
   [/^\.env\.example$/, ["backend"]],
   [/^backend\/src\/modules\/identity\/signupConfig\.ts$/, ["frontend"]], // frontend/src/auth/googleSignIn.test.ts checks TERMS_VERSION against it
   [/^compose\.yaml$/, ["compose"]],
-  [/^agent\/packaging\//, ["systemd"]], // the Linux agent's unit file: `systemd-analyze verify` (ci.yml)
 ];
 
 /** Paths no build or test reads. The always-on checks (script tests, log fragment, security) still run. */
@@ -141,7 +139,7 @@ export function classify(file) {
   return "unattributed";
 }
 
-const ALL_TARGETS = [...WORKSPACES, "load", "compose", "systemd"];
+const ALL_TARGETS = [...WORKSPACES, "load", "compose"];
 
 /**
  * @param {string[] | undefined} changed the PR's changed paths; undefined when there is no PR to compare with
@@ -170,11 +168,9 @@ export function outputs(result) {
     reason: result.reason,
     workspaces: result.workspaces.join(" "),
     frontend: has("frontend"),
-    server_manager: has("server-manager"),
     backend: has("backend"),
     load: has("backend") || has("load"),
     compose: has("backend") || has("compose"),
-    systemd: has("systemd"),
   };
 }
 

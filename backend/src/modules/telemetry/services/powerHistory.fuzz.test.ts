@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { PowerHistoryResponseSchema } from "@satisfactory-dash/shared";
 import { createLogger } from "../../../platform/logger.js";
-import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
+import type { ServerStatus } from "../../gameserver/index.js";
+import type { PowerCircuit } from "../domain.js";
 import { createTelemetryServices } from "../index.js";
 import type { TelemetryPorts } from "../index.js";
 

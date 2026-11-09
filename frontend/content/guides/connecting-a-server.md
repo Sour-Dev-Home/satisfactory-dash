@@ -2,7 +2,7 @@
 title: Connecting a server
 description: Connect a Satisfactory dedicated server to Satis Manager with its mod: install it, paste the enrolment code, and fix a connection.
 order: 2
-updated: 2026-11-03
+updated: 2026-11-09
 ---
 Satis Manager never reaches into your network. Instead, the Satis Manager mod runs inside your dedicated server, reads the game directly, and sends the readings out to the dashboard over HTTPS. You don't open or forward any port for it, and you don't give the dashboard your game's admin token. This guide covers installing the mod, linking it to your account, and what to check when a server doesn't show up.
 
@@ -41,24 +41,12 @@ A server that hasn't connected within 24 hours of adding it is removed automatic
 
 The mod notices when its config file changes and reads it again, so you don't need to restart the server. Once it has connected, **Settings** shows the server as enrolled, and data arrives within a few seconds. The mod keeps its own credential after that, so later restarts need no code.
 
-## Or pair from the server's console
-
-If editing a file on your host is awkward, the mod can show a pairing code instead. It prints one in the server console and in the log (FactoryGame.log), and writes it to pairing.txt next to the mod.
-
-1. In the dashboard, open **Pair a server** (the **Pair it** link beside the add-server form).
-2. Type the code and press **Continue**.
-3. Check the server name, version and request time under "Is this your server?", choose **A new server** or **One of my servers**, and press **Approve**.
-
-Only approve a server you started pairing yourself. The mod prints a fresh code when one expires, for up to an hour; after that, restart the server to get a new one.
-
 ## How your connection is protected
 
 - **No inbound port.** The mod only makes outgoing connections.
 - **No game admin token.** The mod reads the game from the inside, so its config holds only the dashboard's address and the code.
 - **Codes are single use** and short-lived, and the service stores only a hash of each one.
 - **The mod's credential** is a file in the server's folder. On a rented host, anyone with access to those files, such as the host's staff or other SFTP users, could read it. If you think it leaked, press **Revoke…** in Settings, then **Revoke the mod's access**. The mod then drops the old credential, and you can connect it again with a new code.
-
-Your server's members can see who is online. Settings has a ready-made message under **Tell your players** that you can copy into your server's Discord.
 
 ## Troubleshooting
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { FactoryResponseSchema } from "@satisfactory-dash/shared";
 import { ProductionService } from "./productionService.js";
-import type { FactoryBuilding } from "../../gameserver/index.js";
+import type { FactoryBuilding } from "../domain.js";
 
 const rate = (className: string, percent: number) => ({
   name: className,

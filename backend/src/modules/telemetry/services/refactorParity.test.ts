@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Factory, FactoryBuilding as Out, Power, PowerCircuit as OutCircuit } from "@satisfactory-dash/shared";
-import type { FactoryBuilding, PowerCircuit } from "../../gameserver/index.js";
+import type { FactoryBuilding, PowerCircuit } from "../domain.js";
 import { UpstreamError } from "../../../platform/errors.js";
 import { classifyBuilding } from "./classifyBuilding.js";
 import { PlayersService } from "./playersService.js";
 import { PowerService } from "./powerService.js";
 import { ProductionService } from "./productionService.js";
-import type { UnitResolver } from "./productionService.js";
+import type { UnitResolver } from "../itemForms.js";
 
 // ADR-0031 refactor A parity: the reference implementations below are the ORIGINAL (origin/main) code, copied inline.
 

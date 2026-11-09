@@ -22,16 +22,15 @@ export interface GameConnectionView {
   /** `ok` and `warn` take the status tokens and an icon; `unknown` is muted. */
   tone: "ok" | "warn" | "unknown";
   label: string;
-  /** "last read 8 s ago", "not read since the agent started", or null when not reported. */
+  /** "last read 8 s ago", "not read since the mod started", or null when not reported. */
   lastRead: string | null;
 }
 
 export function gameConnectionView(
   agent: Pick<AgentStatusResponse, "enrolled" | "online" | "gameReachable" | "lastGameReadAt">,
   now: number,
-  /** What sends the data, in a sentence (`SenderWords.noun`). */
-  noun = "the agent",
 ): GameConnectionView | null {
+  const noun = SENDER_WORDS.noun;
   if (!agent.enrolled || (agent.gameReachable === undefined && agent.lastGameReadAt === undefined)) return null;
   const lastRead = agent.lastGameReadAt !== undefined ? lastReadText(agent.lastGameReadAt, now) : agent.gameReachable === false ? `not read since ${noun} started` : null;
   if (agent.online === false) return { tone: "unknown", label: `Unknown while ${noun} is offline`, lastRead };
@@ -59,11 +58,11 @@ export function agentVersionLine(agentVersion: string | null, modVersion: string
 
 /**
  * How the backend reaches the server, in words. An unknown kind is shown as it came. An `agent` server is fed by the
- * mod or the Node agent; players are only offered the mod (`devAgent` false), so for them it is the mod.
+ * mod, the only way a server connects (ADR-0066); a `local` row is a leftover until the backend converts it.
  */
-export function connectionText(kind: string, devAgent: boolean): string {
+export function connectionText(kind: string): string {
   if (kind === "local") return "Directly, from the dashboard's backend";
-  if (kind === "agent") return devAgent ? "Through the game PC's agent" : "Through the Satis Manager mod";
+  if (kind === "agent") return "Through the Satis Manager mod";
   return kind;
 }
 
@@ -77,25 +76,14 @@ export function canCreateCode(kind: string, role: ServerSummary["role"], isOpera
   return role === "owner" || role === "admin";
 }
 
-/**
- * Whether Settings offers the Node edge agent (its enrol command, its "Tell your players" notice) next to the mod.
- * Owner, 2026-11-03: only the mod is released; the agent and the server-manager app are for development. So players
- * get the mod's steps only, and the operator, who develops and runs the agent against this backend, keeps both. The
- * server list's `canManageServers` decides rather than `import.meta.env.DEV`: the operator needs the command in the
- * production build too, and this module stays free of build flags (the demo build swaps the transport, not the env).
- */
-export function offersDevAgent(isOperator: boolean): boolean {
-  return isOperator;
-}
-
-/** The words Settings uses for what sends a server's data: the mod for players, the agent where it is offered. */
+/** The words Settings uses for what sends a server's data: the mod, for everyone (ADR-0066 retired the Node agent). */
 export interface SenderWords {
   /** The Settings section's heading, its crash-boundary label and its search-palette entry. */
   heading: string;
   /** The status row's label ("Mod: Enrolled · Online"). */
   label: string;
   versionLabel: string;
-  /** In a sentence: "the mod", "the agent". */
+  /** In a sentence: "the mod". */
   noun: string;
   /** The confirmed revoke button. */
   revoke: string;
@@ -105,7 +93,7 @@ export interface SenderWords {
   revokeWarning: string;
 }
 
-const MOD_WORDS: SenderWords = {
+export const SENDER_WORDS: SenderWords = {
   heading: "Satis Manager mod",
   label: "Mod",
   versionLabel: "Mod version",
@@ -114,29 +102,6 @@ const MOD_WORDS: SenderWords = {
   revokeConfirm: "Confirm revoking the mod's access",
   revokeWarning: "The mod's access ends at once. This server then shows no data, and can't be changed, until the mod is enrolled again.",
 };
-const AGENT_WORDS: SenderWords = {
-  heading: "Game PC agent",
-  label: "Agent",
-  versionLabel: "Agent version",
-  noun: "the agent",
-  revoke: "Revoke the agent",
-  revokeConfirm: "Confirm revoking the agent",
-  revokeWarning: "The agent stops working at once. This server then shows no data, and can't be changed, until an agent is enrolled again.",
-};
-
-export function senderWords(devAgent: boolean): SenderWords {
-  return devAgent ? AGENT_WORDS : MOD_WORDS;
-}
-
-/**
- * The backend address for the agent's `--url`: the frontend's configured API origin (`apiHref("")`) when
- * it has one, so the command can be pasted as is. In development (Vite proxies only /api, not the
- * agent's /agent/v1) and in the demo it's empty, so the placeholder stays.
- */
-export function agentBackendUrl(configured: string | undefined): string {
-  const origin = (configured ?? "").trim().replace(/\/+$/, "");
-  return origin.startsWith("https://") ? origin : "https://<your backend>";
-}
 
 /**
  * The agent's reported version for Settings. A stamped build (`0.1.0+abc1234.20261024`) reads as

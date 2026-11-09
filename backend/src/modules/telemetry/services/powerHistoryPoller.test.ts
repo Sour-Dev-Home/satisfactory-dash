@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
+import type { ServerStatus } from "../../gameserver/index.js";
+import type { PowerCircuit } from "../domain.js";
 import { createLogger } from "../../../platform/logger.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
 import { ObservationBoard } from "./observationBoard.js";

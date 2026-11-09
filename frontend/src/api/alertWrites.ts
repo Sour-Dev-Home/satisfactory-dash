@@ -54,7 +54,7 @@ export function useAlertWrites(serverId: string) {
 
   // The webhook URL is a bearer secret. It travels through this ref, not as the mutation's `variables`:
   // TanStack keeps a mutation's variables in its cache after it settles (and devtools show them), the
-  // same reason ServerForm.tsx passes a server's token this way. The ref is cleared as soon as the
+  // same reason LoginForm.tsx passes the credentials this way. The ref is cleared as soon as the
   // request is built, and the mutation isn't kept once it settles (gcTime 0). Call `saveWebhook(url)`.
   const pendingWebhook = useRef<string | null>(null);
   const putDiscord = useMutation({

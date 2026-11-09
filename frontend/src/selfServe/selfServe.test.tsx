@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, useLocation } from "react-router";
 import { describe, expect, it } from "vitest";
@@ -372,12 +372,12 @@ describe("the enrolment instructions", () => {
     // ADR-0051: the mod re-reads its config, so nothing tells the player to (re)start the server.
     expect(guide).toHaveTextContent(/so there is no need to restart it/);
     expect(guide).not.toHaveTextContent(/start the game server/);
-    // Owner, 2026-11-03: the mod is the only way a player connects; the agent's step and its notice are development-only.
+    // ADR-0066: the mod is the only way a server connects; the agent's step and its notice are gone.
     expect(guide).not.toHaveTextContent(/agent app/);
     expect(screen.queryByRole("heading", { name: "Tell your players" })).not.toBeInTheDocument();
   });
 
-  it("add the agent's step and the players notice for the operator only", async () => {
+  it("give the operator the same mod-only steps (ADR-0066)", async () => {
     serveList({ servers: [pendingServer], selfServeEnabled: true, canManageServers: true });
     server.use(
       http.get(endpoints.agent.status.route, () =>
@@ -386,9 +386,9 @@ describe("the enrolment instructions", () => {
     );
     renderAgent();
     const guide = (await screen.findByText("Connect your game server")).closest("details")!;
-    expect(guide).toHaveTextContent(/For development, with the agent app instead: run the command shown with the code\./);
-    expect(within(guide).getByRole("heading", { name: "Tell your players" })).toBeInTheDocument();
     expect(guide).toHaveTextContent(/FactoryGame\/Configs\/SatisDashAgent\.cfg/);
+    expect(guide).not.toHaveTextContent(/agent app/);
+    expect(screen.queryByRole("heading", { name: "Tell your players" })).not.toBeInTheDocument();
   });
 
   it("are not shown for an operator's server", async () => {

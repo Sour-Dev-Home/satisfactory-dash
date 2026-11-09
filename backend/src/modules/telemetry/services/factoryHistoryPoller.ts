@@ -1,14 +1,14 @@
 import type { Logger } from "pino";
-import type { FactoryBuilding, ServerStatus } from "../../gameserver/index.js";
+import type { ServerStatus } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
-import type { ItemSampleRow, TransitionRow } from "../repositories/historyRepository.js";
+import type { FactoryBuilding } from "../domain.js";
+import { areInputsFull, diffDecidedStates, isBackedUp, MAX_TRANSITIONS_PER_POLL, sumItemRates } from "../factoryStates.js";
+import type { TransitionRow } from "../repositories/historyRepository.js";
+import type { BackgroundWorker } from "./backgroundWorker.js";
 import { bestOutputPercent, classifyBuilding } from "./classifyBuilding.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
 import type { ObservationSink } from "./observationBoard.js";
-import type { BackgroundWorker } from "./powerHistoryPoller.js";
-import { areInputsFull } from "../../gameserver/index.js";
-import { isBackedUp } from "./productionService.js";
 
 export interface FactoryHistoryPorts {
   getFactoryBuildings(): Promise<FactoryBuilding[]>;
@@ -33,32 +33,11 @@ export interface FactoryHistoryPollerOptions {
 
 export const FACTORY_HISTORY_INTERVAL_SECONDS = 30;
 const DEFAULT_POLL_TIMEOUT_MS = 30_000;
-/** A poll that turns up more transitions than this drops the rest: a mass change (a reload, a tripped grid) is noise. */
-export const MAX_TRANSITIONS_PER_POLL = 500;
-/** When more than this share of the buildings are new, the world changed (a load, a different save): re-baseline. */
-const NEW_IDS_BASELINE_SHARE = 0.5;
-
-/** Total production per item across every building: the factory's output as one sample per item. */
-export function sumItemRates(
-  buildings: { production: { className: string; currentPerMinute: number; maxPerMinute: number }[] }[],
-  atMs: number,
-): ItemSampleRow[] {
-  const totals = new Map<string, { current: number; max: number }>();
-  for (const building of buildings) {
-    for (const rate of building.production) {
-      const total = totals.get(rate.className) ?? { current: 0, max: 0 };
-      total.current += rate.currentPerMinute;
-      total.max += rate.maxPerMinute;
-      totals.set(rate.className, total);
-    }
-  }
-  return [...totals].map(([item, total]) => ({ item, atMs, currentPerMinute: total.current, maxPerMinute: total.max }));
-}
 
 /**
  * Compares this snapshot's machine states with the last and returns the transitions, updating `known` in place.
  * A building whose state cannot be decided keeps its last state (no transition, no guess). The first snapshot, and
- * one where most buildings are new, only set the baseline.
+ * one where most buildings are new, only set the baseline (`diffDecidedStates`, factoryStates.ts).
  */
 export function diffStates(
   known: Map<string, string>,
@@ -74,43 +53,6 @@ export function diffStates(
     }
   }
   return diffDecidedStates(known, current, new Set(buildings.map((building) => building.id)), atMs, cap);
-}
-
-/**
- * The comparison itself, for states that are already decided: the pollers classify the adapter's buildings, an agent's
- * snapshot carries each building's state (ADR-0031 PR 5a). `current` holds only buildings whose state is decided;
- * `present` is every building in the snapshot.
- */
-export function diffDecidedStates(
-  known: Map<string, string>,
-  current: Map<string, { state: string; className: string }>,
-  present: Set<string>,
-  atMs: number,
-  cap = MAX_TRANSITIONS_PER_POLL,
-): TransitionRow[] {
-  let newIds = 0;
-  for (const id of current.keys()) {
-    if (!known.has(id)) newIds++;
-  }
-  const rebaseline = known.size === 0 || (current.size > 0 && newIds / current.size > NEW_IDS_BASELINE_SHARE);
-  const transitions: TransitionRow[] = [];
-  if (!rebaseline) {
-    for (const [id, { state, className }] of current) {
-      const previous = known.get(id);
-      if (previous !== state && transitions.length < cap) {
-        transitions.push({ atMs, buildingId: id, className, fromState: previous ?? null, toState: state });
-      }
-    }
-  }
-  // Forget buildings that are gone, but keep the last state of ones that are present with an undecidable state.
-  for (const id of known.keys()) {
-    if (!present.has(id)) known.delete(id);
-  }
-  if (rebaseline) known.clear();
-  for (const [id, { state }] of current) {
-    known.set(id, state);
-  }
-  return transitions;
 }
 
 /**

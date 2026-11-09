@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Logger } from "pino";
-import type { FactoryBuilding, ServerStatus } from "../../gameserver/index.js";
-import { diffStates, FactoryHistoryPoller, MAX_TRANSITIONS_PER_POLL, sumItemRates } from "./factoryHistoryPoller.js";
+import type { ServerStatus } from "../../gameserver/index.js";
+import type { FactoryBuilding } from "../domain.js";
+import { MAX_TRANSITIONS_PER_POLL, sumItemRates } from "../factoryStates.js";
+import { diffStates, FactoryHistoryPoller } from "./factoryHistoryPoller.js";
 import type { HistoryRecorder } from "./historyRecorder.js";
 import { ObservationBoard } from "./observationBoard.js";
 import { createMetricsAggregator, type MetricsSink } from "../../../platform/metrics/index.js";

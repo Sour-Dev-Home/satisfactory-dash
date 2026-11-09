@@ -18,13 +18,13 @@ import type { PlayersAdapterLike } from "./services/playersService.js";
 import { ServerStatusService } from "./services/serverStatusService.js";
 import type { ServerStatusAdapterLike } from "./services/serverStatusService.js";
 import { ProductionService } from "./services/productionService.js";
-import type { UnitResolver } from "./services/productionService.js";
+import type { UnitResolver } from "./itemForms.js";
 import { createUnitResolver } from "./itemForms.js";
 import type { ProductionAdapterLike } from "./services/productionService.js";
 import { PowerService } from "./services/powerService.js";
 import type { PowerAdapterLike } from "./services/powerService.js";
 import { PowerHistoryPoller } from "./services/powerHistoryPoller.js";
-import type { BackgroundWorker } from "./services/powerHistoryPoller.js";
+import type { BackgroundWorker } from "./services/backgroundWorker.js";
 import { PowerHistoryService } from "./services/powerHistoryService.js";
 import {
   InMemoryPowerHistoryStore,
@@ -54,7 +54,7 @@ import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 
 export type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
 export { createDesignationBuildings } from "./services/designationBuildings.js";
-export type { BackgroundWorker } from "./services/powerHistoryPoller.js";
+export type { BackgroundWorker } from "./services/backgroundWorker.js";
 export type {
   MachineObservation,
   ObservationSnapshot,

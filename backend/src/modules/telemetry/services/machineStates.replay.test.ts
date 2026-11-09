@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { SatisfactoryServerAdapter } from "../../gameserver/index.js";
 import { classifyBuilding } from "./classifyBuilding.js";
-import { isBackedUp } from "./productionService.js";
+import { isBackedUp } from "../factoryStates.js";
 
 const CAPTURES = new URL("../../../../../docs-vault/raw-sources/captured-responses/", import.meta.url);
 const GOLDEN = new URL("./__golden__/machineStates.golden.json", import.meta.url);

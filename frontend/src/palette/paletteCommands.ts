@@ -3,7 +3,7 @@ import { PLANNER_IN_NAV } from "../shell/tabs";
 import { formatMW } from "../format";
 import { circuitLink, factorySearchLink, itemHistoryLink } from "../lib/deepLinks";
 import { labelFor, type ItemLabel } from "../factory/itemLabels";
-import { offersDevAgent, senderWords } from "../agent/agentText";
+import { SENDER_WORDS } from "../agent/agentText";
 
 /** One thing the command bar can do: go somewhere, or run an action. */
 export interface PaletteCommand {
@@ -95,7 +95,7 @@ export function paletteGroups({
       { id: "settings-auto-pause", label: "Auto-pause", keywords: ["pause", "players"], to: "/app/settings" },
       {
         id: "settings-agent",
-        label: senderWords(offersDevAgent(isOperator)).heading,
+        label: SENDER_WORDS.heading,
         keywords: ["enrol", "enroll", "code", "revoke", "mod", "agent", "connect"],
         to: "/app/settings#agent",
       },

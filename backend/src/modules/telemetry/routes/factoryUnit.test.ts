@@ -5,13 +5,12 @@ import { factoryMixed, factoryUnknownItem } from "@satisfactory-dash/shared/fixt
 import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
 import { InMemoryServerDirectory } from "../../servers/index.js";
-import { SatisfactoryServerAdapter } from "../../gameserver/index.js";
 import {
   capturedBackedUpAssembler,
   capturedFuelRefinery,
   capturedTrippedGridRefinery,
   capturedUnassignedAssembler,
-} from "@satisfactory-dash/game-adapter/fixtures";
+} from "../../../../test-support/capturedFactory.js";
 import { ProductionService } from "../services/productionService.js";
 import { createFactoryRouter } from "./factory.js";
 
@@ -27,14 +26,10 @@ function appWith(production: { getFactoryOverview: () => Promise<any> }) {
 }
 
 describe("factory response carries unit (ADR-0015)", () => {
-  it("real captured FRM data via adapter + ProductionService + Express: units come from the catalog and it validates", async () => {
-    const adapter = new SatisfactoryServerAdapter(
-      { call: async () => undefined as never },
-      {
-        get: async () =>
-          [capturedBackedUpAssembler, capturedFuelRefinery, capturedTrippedGridRefinery, capturedUnassignedAssembler] as never,
-      },
-    );
+  it("real captured data (as the adapter maps it) via ProductionService + Express: units come from the catalog and it validates", async () => {
+    const adapter = {
+      getFactoryBuildings: async () => [capturedBackedUpAssembler, capturedFuelRefinery, capturedTrippedGridRefinery, capturedUnassignedAssembler],
+    };
     const res = await request(appWith(new ProductionService(adapter))).get(endpoints.factory.path("default"));
     expect(res.status).toBe(200);
     expect(FactoryResponseSchema.parse(res.body)).toEqual(res.body);

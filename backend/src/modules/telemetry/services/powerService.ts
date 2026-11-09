@@ -1,5 +1,5 @@
 import type { Power } from "@satisfactory-dash/shared";
-import type { PowerCircuit } from "../../gameserver/index.js";
+import type { PowerCircuit } from "../domain.js";
 import { mapPowerCircuit } from "../../gameserver/index.js";
 import { classifyPowerCircuit } from "./classifyPower.js";
 import { derivePower } from "./snapshotDerive.js";

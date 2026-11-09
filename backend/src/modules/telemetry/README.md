@@ -12,9 +12,12 @@ output.
 - `index.ts` — the public API: `createTelemetryServices(ports)` and
   `createTelemetryRouters(directory)`.
 - `serverStatusService.ts` — merges `ServerHealth` + `ServerStatus` into one response.
-- `productionService.ts` — maps `FactoryBuilding[]`, computes `isBackedUp` (the
+- `domain.ts` — telemetry's own `FactoryBuilding`, `PowerCircuit`, `BuildingPowerUsage` and
+  `InventorySlot` (ADR-0066 Decision 5); the gameserver adapter's output has the same shape.
+- `factoryStates.ts` — the pure helpers the agent and polled paths share: `isBackedUp` (the
   overflow proxy — see `docs-vault/wiki/frm-api.md`, no direct "belt full" field
-  exists in either API).
+  exists in either API), `areInputsFull`, `sumItemRates` and `diffDecidedStates`.
+- `productionService.ts` — maps `FactoryBuilding[]` to the factory overview.
 - `powerService.ts` — maps `PowerCircuit[]`, classifies each as `ok`/`at_risk`/
   `outage` via a fixed threshold (`classifyPowerCircuit`). The `at_risk` battery-%
   threshold is our own choice, not sourced from docs-vault — see the comment at its

@@ -31,6 +31,15 @@ describe("pairing: start", () => {
     expect(PairingStartRequestSchema.safeParse({ serverName: "x" }).success).toBe(false);
   });
 
+  it("accepts the mod's version as it sends it everywhere else (\"mod/0.4.0\"), and the Node agent's, but no spaces or other marks", () => {
+    for (const ok of ["mod/0.4.0", "mod/0.3.0-rc.1", "0.1.0", "0.1.0+build.7"]) {
+      expect(PairingStartRequestSchema.safeParse({ agentVersion: ok }).success, ok).toBe(true);
+    }
+    for (const bad of ["mod 0.4.0", "mod\\0.4.0", "mod/0.4.0;rm", "mod/0.4.0\n"]) {
+      expect(PairingStartRequestSchema.safeParse({ agentVersion: bad }).success, bad).toBe(false);
+    }
+  });
+
   it("is strict: no machine detail, and no secret or code can be smuggled in", () => {
     for (const extra of [{ hostname: "pc" }, { pairingSecret: fixtures.pairingStartResponse.pairingSecret }, { userCode: "AB3D-7XQ2-K5MN" }]) {
       expect(PairingStartRequestSchema.safeParse({ ...fixtures.pairingStartRequest, ...extra }).success).toBe(false);

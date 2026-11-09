@@ -128,9 +128,10 @@ The same system as the [Architecture](#architecture) diagram, part by part:
   with RDS PostgreSQL private to the VPC, reached through the Cloudflare Tunnel at
   `api.satis-manager.com`. See [`docs-vault/wiki/runbooks/aws.md`](docs-vault/wiki/runbooks/aws.md)
   and the cutover issue #217.
-- **Game-server PC** → runs only the edge agent (`agent/`), which reads the game server over
-  loopback and posts its snapshots to `https://api.satis-manager.com`; see
-  [`docs-vault/wiki/runbooks/agent-app.md`](docs-vault/wiki/runbooks/agent-app.md).
+- **Game-server PC** → runs only the SatisDashAgent mod, which reads the game natively and
+  posts its snapshots to `https://api.satis-manager.com` (ADR-0066; the Node edge agent is
+  retired). The backend side is in
+  [`docs-vault/wiki/runbooks/agents.md`](docs-vault/wiki/runbooks/agents.md).
 
 ## License
 

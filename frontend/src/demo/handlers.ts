@@ -5,7 +5,6 @@ import {
   UpdatePlannerDesignationRequestSchema,
   type SessionResponse,
   type SetAutoPauseRequest,
-  type TestConnectionResponse,
 } from "@satisfactory-dash/shared";
 import * as alerts from "./alerts";
 import { demoNow } from "./clock";
@@ -49,14 +48,7 @@ function guarded(params: Params, respond: () => Response): Response {
   return respond();
 }
 
-/** The demo's stand-in for the backend's loopback check (ADR-0030 amendment 1). */
-const onThisMachine = (host: unknown) =>
-  typeof host === "string" && /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?)$/i.test(host.trim());
-
-const LAN_REFUSED = () => error(422, "lan_requires_cert_pinning", "Only loopback servers can be used for now.");
-
-// Server management (ADR-0030) in the demo: the screens work and the connection test is simulated
-// (nothing is contacted), but nothing is saved, and a LAN server is refused like the real backend.
+// Server management (ADR-0030; ADR-0066: rename and remove only) in the demo: the screens work, but nothing is saved.
 const NOT_SAVED = () => error(403, "forbidden", "The demo doesn't change servers.");
 const BAD_DESIGNATION = () => error(400, "bad_request", "Invalid request");
 const newDemoId = () => crypto.randomUUID();
@@ -69,7 +61,6 @@ function written(out: { ok: true; next: StoredDesignation[] } | WriteFailure, su
   setDemoDesignations(out.next);
   return success();
 }
-const TEST_PASSED: TestConnectionResponse = { ok: true, api: { ok: true }, frm: { ok: true } };
 
 async function bodyOf(request: Request): Promise<Record<string, unknown>> {
   try {
@@ -116,19 +107,6 @@ export const demoHandlers = [
       return Response.json(demoMetricsOverview(demoNow(), query.data.window));
     }),
   ),
-  post(endpoints.serverManagement.testConnection.route, async ({ params, request }) => {
-    const body = await bodyOf(request);
-    return guarded(params, () => (onThisMachine(body.host) ? Response.json(TEST_PASSED) : LAN_REFUSED()));
-  }),
-  post(endpoints.serverManagement.testSaved.route, ({ params }) => guarded(params, () => Response.json(TEST_PASSED))),
-  post(endpoints.serverManagement.create.route, async ({ params, request }) => {
-    const body = await bodyOf(request);
-    return guarded(params, () => (onThisMachine(body.host) ? NOT_SAVED() : LAN_REFUSED()));
-  }),
-  patch(endpoints.serverManagement.update.route, async ({ params, request }) => {
-    const body = await bodyOf(request);
-    return guarded(params, () => (body.host === undefined || onThisMachine(body.host) ? NOT_SAVED() : LAN_REFUSED()));
-  }),
   del(endpoints.serverManagement.remove.route, ({ params }) => guarded(params, NOT_SAVED)),
   // ADR-0046: the demo's list never says `selfServeEnabled`, so no screen offers "Add your server"; the route is
   // refused like every other server change, should something call it.
@@ -151,9 +129,8 @@ export const demoHandlers = [
       body.userCode === DEMO_PAIR_CODE && ownTarget ? Response.json({ serverId: world.DEMO_SERVER_ID }) : error(404, "not_found", "No such pairing."),
     );
   }),
-  // ADR-0031: an agent server's rename and switch back to local are server changes too, refused alike.
+  // ADR-0031: renaming a server is a server change too, refused alike.
   patch(endpoints.serverManagement.renameAgent.route, ({ params }) => guarded(params, NOT_SAVED)),
-  post(endpoints.serverManagement.switchToLocal.route, ({ params }) => guarded(params, NOT_SAVED)),
   // ADR-0047: the demo visitor has no stored account (the session names no sign-in methods, so Settings offers no
   // deletion), and owns the demo server, so leaving it is refused as the real backend refuses an owner. Nothing changes.
   del(endpoints.account.remove.route, ({ params }) =>

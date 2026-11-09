@@ -87,12 +87,17 @@ export function ServerGate({ children, initialId }: { children: ReactNode; initi
   };
 
   if (list.length === 0) {
-    // The operator can add the first one here (ADR-0030). Stored servers the backend can't serve
-    // (unreadable, refused) aren't in this list, so the management list is where they show.
+    // The operator sees the managed list here (ADR-0030; ADR-0066: the servers the mod connects), and adds a server
+    // the way everyone does, with "Add your server", while self-serve is on.
     if (servers.data.canManageServers) {
       return (
         <div className="mx-auto mt-6 grid w-full max-w-3xl gap-4">
           <h2 className="mb-0">Set up a game server</h2>
+          {servers.data.selfServeEnabled && (
+            <section className="grid gap-4 rounded-card border border-line bg-surface p-6">
+              <AddServer onCreated={pick} />
+            </section>
+          )}
           <ServerManagementView />
         </div>
       );

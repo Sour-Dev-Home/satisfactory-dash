@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { PowerSchema } from "@satisfactory-dash/shared";
 import { PowerService, classifyPowerCircuit } from "./powerService.js";
 import type { PowerAdapterLike } from "./powerService.js";
-import type { PowerCircuit } from "../../gameserver/index.js";
+import type { PowerCircuit } from "../domain.js";
 
 function circuit(overrides: Partial<PowerCircuit> = {}): PowerCircuit {
   return {

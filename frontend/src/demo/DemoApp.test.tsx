@@ -92,7 +92,7 @@ describe("the demo app", () => {
     expect(firstRule).toBe(target("settings-alerts"));
     expect(firstRule).toHaveAccessibleName(/Power outage/);
     expect(document.querySelectorAll('[data-tour="settings-alerts"]')).toHaveLength(1);
-    const agent = screen.getByRole("region", { name: "Game PC agent" });
+    const agent = screen.getByRole("region", { name: "Satis Manager mod" });
     expect(target("settings-connection")?.tagName).toBe("DL");
     expect(agent).toContainElement(target("settings-connection") as HTMLElement);
   });

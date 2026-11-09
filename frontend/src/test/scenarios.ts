@@ -41,8 +41,6 @@ import {
   commandSent,
   commandSucceeded,
   deleteServerDone,
-  errorImportRequired,
-  errorLanRequiresCertPinning,
   errorLoginFailed,
   errorRateLimited,
   errorUnknownCode,
@@ -62,7 +60,6 @@ import {
   historyItems7d,
   historyPower24h,
   historyTransitions24h,
-  managedServersAllStates,
   productionGraphEmpty,
   productionGraphFactories,
   productionGraphStaleEnd,
@@ -72,9 +69,7 @@ import {
   plannerDesignationIronLine,
   plannerDesignationReplaceResponse,
   plannerDesignationStaleError,
-  managedServersWithAgent,
   renameAgentServerResponse,
-  managedServersEmpty,
   playersAvailable,
   playersUnavailable,
   powerAtRisk,
@@ -99,7 +94,6 @@ import {
   railsWorldResponseTruncated,
   resourceNodesWorldResponse,
   resourceNodesWorldResponseEmpty,
-  serverConnectionOk,
   serversMultiple,
   serversNone,
   serversRoleOwner,
@@ -117,8 +111,6 @@ import {
   statusSlow,
   statusStale,
   statusUnreachable,
-  testConnectionApiUnauthorized,
-  testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
 import { mapLiveResponse, mapLiveResponseEmpty, mapLiveResponseStale } from "./mapLiveResponses";
 import { mapMarkersWorldResponseEmpty, mapMarkersWorldResponseTruncated } from "./mapMarkersResponses";
@@ -139,6 +131,7 @@ import {
   listSelfServeOff,
   listSelfServeOn,
 } from "./selfServeMocks";
+import { managedAgentNone, managedAgentOne, managedAgentSeveral } from "./managedMocks";
 import { compatPolicy, compatQuiet, reporting } from "./updateMocks";
 import { treeGraphResponse, treeWorld } from "./plannerTree";
 import { factoryForGraph, graphResponse, groupedFactoriesWorld, manyPlateConstructorsWorld } from "./factoryGroups";
@@ -201,19 +194,14 @@ export const ROUTES = {
   setAutoPause: endpoints.settings.setAutoPause,
   // ADR-0030, operator only.
   managedServers: endpoints.serverManagement.list,
-  testConnection: endpoints.serverManagement.testConnection,
-  testSaved: endpoints.serverManagement.testSaved,
-  createServer: endpoints.serverManagement.create,
-  updateServer: endpoints.serverManagement.update,
   removeServer: endpoints.serverManagement.remove,
   // ADR-0046: any signed-in user adds a server of their own.
   createAgentServer: endpoints.selfServe.createAgentServer,
   // ADR-0051 section 1: the /pair page.
   pairingLookup: endpoints.pairings.lookup,
   pairingApprove: endpoints.pairings.approve,
-  // ADR-0031: an agent server's only edits (#266 rename, #273 switch back to local).
+  // ADR-0031: an agent server's rename (#266); ADR-0066 retired the switch back to local.
   renameAgent: endpoints.serverManagement.renameAgent,
-  switchToLocal: endpoints.serverManagement.switchToLocal,
   // ADR-0027 stored history (the query string doesn't change the route).
   historyPower: endpoints.history.power,
   historyItems: endpoints.history.items,
@@ -325,17 +313,12 @@ const BASE: Record<RouteKey, MockResponse> = {
   metrics: ok(metricsOverviewWithCharts),
   settings: ok(settingsEditable),
   setAutoPause: ok(settingsEditable),
-  managedServers: ok(managedServersAllStates),
-  testConnection: ok(testConnectionPassed),
-  testSaved: ok(testConnectionPassed),
-  createServer: ok(serverConnectionOk),
-  updateServer: ok(serverConnectionOk),
+  managedServers: ok(managedAgentSeveral),
   removeServer: ok(deleteServerDone),
   createAgentServer: { status: 201, body: createdAgentServer },
   pairingLookup: ok(lookedUp),
   pairingApprove: ok(approved),
   renameAgent: ok(renameAgentServerResponse),
-  switchToLocal: ok(serverConnectionOk),
   historyPower: ok(historyPower24h),
   // Two hours only: "Since yesterday" says there isn't enough history yet (ADR-0027 PR 8b).
   historyItems: ok(historyItems7d),
@@ -1039,29 +1022,8 @@ export const SCENARIOS = {
   "metrics-forbidden": { metrics: fail(403, errorForbidden) },
   "metrics-slow": { servers: operatorSingle, metrics: { ...ok(metricsFull), delay: 800 } },
   "metrics-loading": { servers: operatorSingle, metrics: { ...BASE.metrics, delay: "never" } },
-  // ADR-0031: a stored connection plus a server read through the game PC's agent.
-  // Its switch back answers for that same server, so the success notice names it (ui review).
-  "servers-with-agent": {
-    servers: operatorSingle,
-    managedServers: ok(managedServersWithAgent),
-    switchToLocal: ok({
-      server: {
-        ...serverConnectionOk.server,
-        id: managedServersWithAgent.agentServers[0].id,
-        displayName: managedServersWithAgent.agentServers[0].displayName,
-      },
-    }),
-  },
-  // No server the backend can serve yet: the operator sets one up from the server gate.
-  "servers-first": { servers: ok({ ...serversNone, canManageServers: true }), managedServers: ok(managedServersEmpty) },
-  // Adding a LAN server is refused until certificate pinning exists (ADR-0030 amendment 1).
-  "servers-lan-refused": {
-    servers: operatorSingle,
-    testConnection: fail(422, errorLanRequiresCertPinning),
-    createServer: fail(422, errorLanRequiresCertPinning),
-  },
-  "servers-import-required": { servers: operatorSingle, createServer: fail(409, errorImportRequired) },
-  "servers-test-failed": { servers: operatorSingle, testSaved: ok(testConnectionApiUnauthorized) },
+  // No server yet: the operator's server gate shows the empty managed list (ADR-0066: agent servers only).
+  "servers-first": { servers: ok({ ...serversNone, canManageServers: true }), managedServers: ok(managedAgentNone) },
   // Alerts (ADR-0027 PR 9), in the bell's dropdown: the shadow week, muted, one alert firing (the
   // bell's badge shows on every page), and a log with an older page.
   "alerts": { alertStatus: ok(alertStatusShadowMutedFiring), alertEvents: ok(alertEventsPage) },
@@ -1078,7 +1040,7 @@ export const SCENARIOS = {
   "push-enabled": { pushConfig: ok(pushConfigEnabled) },
   "push-opted-in": { pushConfig: ok(pushConfigEnabled), pushOptIn: ok(pushOptInOn) },
   "push-viewer": { servers: ok(serversRoleViewer), pushConfig: ok(pushConfigEnabled), pushOptIn: ok(pushOptInOn) },
-  // ADR-0031 PR 7, Settings → Game PC agent. The operator on a server reached directly (can enrol);
+  // ADR-0031 PR 7, Settings → Satis Manager mod. The operator on a server reached directly (can enrol);
   // an owner of a server with a reporting agent (can revoke or enrol again); one enrolled but never
   // heard from; and a viewer, who reads it with no controls.
   "agent-local-operator": { servers: operatorSingle },
@@ -1100,7 +1062,7 @@ export const SCENARIOS = {
   "update-advisory": { servers: ok(serversRoleOwner), agentStatus: ok(reporting("mod/1.0.5")), compat: ok(compatPolicy) },
   "update-servers": {
     servers: operatorSingle,
-    managedServers: ok(managedServersWithAgent),
+    managedServers: ok(managedAgentOne),
     agentStatus: ok(reporting("0.3.5")),
     compat: ok(compatPolicy),
   },
