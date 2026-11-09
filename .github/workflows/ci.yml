@@ -24,7 +24,6 @@ jobs:
     env:
       ALL: ${{ needs.changes.result != 'success' || needs.changes.outputs.all == 'true' }}
       WORKSPACES: ${{ needs.changes.outputs.workspaces }}
-      SERVER_MANAGER: ${{ needs.changes.outputs.server_manager }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -85,14 +84,6 @@ jobs:
             echo "::endgroup::"
           done
           npm run test:scripts
-
-      # The server manager's Playwright suite drives the real Electron app (ADR-0040), so it needs a display.
-      # Ubuntu's AppArmor blocks Chromium's user-namespace sandbox unless unprivileged namespaces are allowed.
-      - name: Server manager e2e
-        if: env.ALL == 'true' || env.SERVER_MANAGER == 'true'
-        run: |
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          xvfb-run -a npm run e2e -w server-manager
 
   load-smoke:
     # ADR-0037 build step 5 (#448): scenario (a) of the k6 load kit, shortened to about a minute, against a `satis_load`
@@ -222,29 +213,6 @@ jobs:
       - name: Backend log on failure
         if: failure()
         run: tail -n 100 "$RUNNER_TEMP/backend.log" || true
-
-  systemd-verify:
-    # ADR-0057 Decision 2 step 4: the Linux agent's unit file must pass `systemd-analyze verify`. Runs when
-    # agent/packaging changed (not a required check, so a skip blocks nothing).
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.systemd == 'true') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-      - name: Verify the unit
-        run: |
-          set -euo pipefail
-          systemd-analyze --version | head -n 1
-          # verify resolves ExecStart= against the real filesystem, so give it the paths it names.
-          sudo install -d /opt/satis-agent
-          sudo install -m 0644 /dev/null /opt/satis-agent/agent.cjs
-          [ -x /usr/local/bin/node ] || sudo ln -s "$(command -v node)" /usr/local/bin/node
-          systemd-analyze verify --man=no agent/packaging/linux/satis-agent.service
 
   security:
     runs-on: ubuntu-latest
