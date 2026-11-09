@@ -1,11 +1,11 @@
 import type { Cadence, Factory, SnapshotRequest } from "@satisfactory-dash/shared";
-import { diffDecidedStates, sumItemRates } from "./factoryHistoryPoller.js";
+import { diffDecidedStates, sumItemRates } from "../factoryStates.js";
 import { sessionKey, type HistoryRecorder } from "./historyRecorder.js";
 import type { MachineObservation, ObservationSink } from "./observationBoard.js";
 import type { PowerHistoryStore, PowerSampleCircuit } from "./powerHistoryStore.js";
 import type { LatestSnapshotStore } from "./agentSnapshotStore.js";
 import { deriveFactory, deriveGenerators, derivePower, fuseByCircuit, fuseFromCircuits } from "./snapshotDerive.js";
-import type { UnitResolver } from "./productionService.js";
+import type { UnitResolver } from "../itemForms.js";
 
 /**
  * ADR-0031 PR 5a: what the backend does with one snapshot from an edge agent, so a server reached through an agent feeds

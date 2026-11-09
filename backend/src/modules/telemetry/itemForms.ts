@@ -41,6 +41,9 @@ export function isCatalogedItem(className: string, forms: Record<string, ItemFor
   return Object.hasOwn(forms, className);
 }
 
+/** className -> the contract's `unit`, or null for an item not in the catalog: what `createUnitResolver` returns. */
+export type UnitResolver = (className: string) => ProductionUnit | null;
+
 /**
  * className -> the contract's `unit`, or null for an item that isn't in the catalog (a
  * modded item, or one newer than the catalog). Each unknown className is reported through
@@ -50,7 +53,7 @@ export function isCatalogedItem(className: string, forms: Record<string, ItemFor
 export function createUnitResolver(
   onUnknown: (className: string) => void,
   forms: Record<string, ItemForm> = itemFormCatalog.forms,
-): (className: string) => ProductionUnit | null {
+): UnitResolver {
   const reported = new Set<string>();
   return (className) => {
     // Own keys only: a className like "constructor" or "__proto__" must not resolve.

@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { ProductionService, isBackedUp } from "./productionService.js";
+import { isBackedUp } from "../factoryStates.js";
+import { ProductionService } from "./productionService.js";
 import { createUnitResolver } from "../itemForms.js";
 import type { ProductionAdapterLike } from "./productionService.js";
-import { SatisfactoryServerAdapter } from "../../gameserver/index.js";
-import type { FactoryBuilding } from "../../gameserver/index.js";
+import type { FactoryBuilding } from "../domain.js";
 import {
   capturedBackedUpAssembler,
   capturedFuelRefinery,
   capturedUnassignedAssembler,
-} from "@satisfactory-dash/game-adapter/fixtures";
+} from "../../../../test-support/capturedFactory.js";
 
 function building(overrides: Partial<FactoryBuilding> = {}): FactoryBuilding {
   return {
@@ -81,14 +81,10 @@ describe("isBackedUp", () => {
   });
 });
 
-// End to end from real captured getFactory entries through the real adapter mapping.
+// From real captured getFactory entries, as the adapter maps them (backend/test-support/capturedFactory.ts).
 describe("isBackedUp on live-captured buildings", () => {
-  async function overviewOf(...raw: unknown[]) {
-    const adapter = new SatisfactoryServerAdapter(
-      { call: async () => undefined as never },
-      { get: async () => raw as never },
-    );
-    return new ProductionService(adapter).getFactoryOverview();
+  async function overviewOf(...buildings: FactoryBuilding[]) {
+    return new ProductionService({ getFactoryBuildings: async () => buildings }).getFactoryOverview();
   }
 
   it("flags the captured backed-up assembler (output 100/100, IsProducing false)", async () => {

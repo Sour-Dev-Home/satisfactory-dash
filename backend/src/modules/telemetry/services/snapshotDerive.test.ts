@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { AgentFactorySchema, AgentPowerSchema, FactorySchema, PowerSchema } from "@satisfactory-dash/shared";
-import type { FactoryBuilding, PowerCircuit } from "../../gameserver/index.js";
+import type { FactoryBuilding, PowerCircuit } from "../domain.js";
 import { deriveFactory, deriveGenerators, derivePower, fuseByCircuit, fuseFromCircuits } from "./snapshotDerive.js";
 import { PowerService } from "./powerService.js";
 import { ProductionService } from "./productionService.js";
-import type { UnitResolver } from "./productionService.js";
+import type { UnitResolver } from "../itemForms.js";
 
 /**
  * ADR-0031: an agent sends raw readings and the backend derives status, state, counts and units at ingest. The strongest

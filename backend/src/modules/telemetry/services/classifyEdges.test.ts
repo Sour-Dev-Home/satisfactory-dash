@@ -1,6 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
-import { SatisfactoryServerAdapter } from "../../gameserver/index.js";
-import { factoryBuildingFixture } from "@satisfactory-dash/game-adapter/fixtures";
+import { describe, it, expect } from "vitest";
 import { classifyBuilding } from "./classifyBuilding.js";
 import type { ClassifiableBuilding } from "./classifyBuilding.js";
 
@@ -21,28 +19,7 @@ const base = (o: Partial<ClassifiableBuilding> = {}): ClassifiableBuilding => ({
   ...o,
 });
 
-async function mapFuse(powerInfo: Record<string, unknown>) {
-  const raw = { ...factoryBuildingFixture, PowerInfo: { CircuitID: 1, PowerConsumed: 0, MaxPowerConsumed: 0, ...powerInfo } };
-  const adapter = new SatisfactoryServerAdapter(
-    { call: vi.fn() },
-    { get: vi.fn().mockResolvedValue([raw]) as never },
-  );
-  return (await adapter.getFactoryBuildings())[0];
-}
-
-describe("adapter fuseTriggered mapping on getFactoryBuildings", () => {
-  it("passes true through", async () => {
-    expect((await mapFuse({ CircuitGroupID: 0, FuseTriggered: true })).fuseTriggered).toBe(true);
-  });
-  it("passes false through", async () => {
-    expect((await mapFuse({ CircuitGroupID: 0, FuseTriggered: false })).fuseTriggered).toBe(false);
-  });
-  it("leaves it absent (unknown, not false) when FRM sends none", async () => {
-    const b = await mapFuse({ CircuitGroupID: 0 });
-    expect("fuseTriggered" in b).toBe(false);
-  });
-});
-
+// The adapter's fuseTriggered mapping cases moved to gameserver/frmFactoryMapping.test.ts (ADR-0066 PR 3).
 describe("classifyBuilding edge cases", () => {
   it("does not treat Infinity as a usable percent", () => {
     expect(classifyBuilding(base({ production: [rate("A", Infinity)] }), false)).toBeUndefined();

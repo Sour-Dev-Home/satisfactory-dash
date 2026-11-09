@@ -3,7 +3,7 @@ import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import { FailureStreak, failuresForWindow } from "../../../platform/failureStreak.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { purgeExpired, rollUp, RAW_RETENTION_MS } from "../repositories/historyRepository.js";
-import type { BackgroundWorker } from "./powerHistoryPoller.js";
+import type { BackgroundWorker } from "./backgroundWorker.js";
 
 export interface HistoryMaintenanceOptions {
   logger: Logger;

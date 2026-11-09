@@ -1,23 +1,13 @@
 import type { Factory } from "@satisfactory-dash/shared";
-import type { FactoryBuilding } from "../../gameserver/index.js";
-import { isBackedUp, mapFactoryBuilding } from "../../gameserver/index.js";
+import { mapFactoryBuilding } from "../../gameserver/index.js";
+import type { FactoryBuilding } from "../domain.js";
 import { createUnitResolver } from "../itemForms.js";
-import type { ProductionUnit } from "../itemForms.js";
+import type { UnitResolver } from "../itemForms.js";
 import { deriveFactory } from "./snapshotDerive.js";
-
-export type UnitResolver = (className: string) => ProductionUnit | null;
 
 export interface ProductionAdapterLike {
   getFactoryBuildings(): Promise<FactoryBuilding[]>;
 }
-
-/**
- * A building is treated as backed up (an output slot at capacity, the closest available overflow signal, see
- * docs-vault/wiki/frm-api.md). ADR-0031: this raw fact needs the output inventory, so it is computed where the inventory
- * is (the game-adapter package's shape mapping, shared with the edge agent); re-exported here for the services and tests
- * that read it from the production service.
- */
-export { isBackedUp };
 
 export class ProductionService {
   /** `resolveUnit` maps an item className to the contract's `unit` (ADR-0015). The

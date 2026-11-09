@@ -4,25 +4,30 @@ import { PowerResponseSchema, endpoints } from "@satisfactory-dash/shared";
 import { createApp } from "../../../app.js";
 import { ApiFailure } from "../../../platform/errorResponse.js";
 import { createLogger } from "../../../platform/logger.js";
-import { SatisfactoryServerAdapter } from "../../gameserver/index.js";
-import { powerCircuitFixture } from "@satisfactory-dash/game-adapter/fixtures";
+import { documentedPowerCircuit as powerCircuitFixture } from "../../../../test-support/capturedFactory.js";
 import { InMemoryServerDirectory } from "../../servers/index.js";
-import { createTelemetryRouters, createTelemetryServices } from "../index.js";
+import type { PowerCircuit } from "../domain.js";
+import { createTelemetryRouters, createTelemetryServices, type TelemetryPorts } from "../index.js";
 
-/** ADR-0052 1.3 through the real adapter, service and route: a request-through server serves its last good power
- *  reading stale while the game is down. Only the FRM client is scripted. */
-function appWithFrm(steps: Array<unknown>, now: () => number) {
+/** ADR-0052 1.3 through the real service and route: a request-through server serves its last good power reading stale
+ *  while the game is down. Only the server's circuits are scripted, domain-shaped (ADR-0066 PR 3: no FRM data here);
+ *  nothing else is read. */
+function appWithFrm(steps: Array<PowerCircuit[] | Error>, now: () => number) {
   let i = 0;
-  const adapter = new SatisfactoryServerAdapter(
-    { call: async () => undefined as never },
-    {
-      get: async () => {
-        const step = steps[Math.min(i++, steps.length - 1)];
-        if (step instanceof Error) throw step;
-        return step as never;
-      },
+  const unused = async (): Promise<never> => {
+    throw new Error("not read by the power route");
+  };
+  const adapter: TelemetryPorts = {
+    getPowerCircuits: async () => {
+      const step = steps[Math.min(i++, steps.length - 1)]!;
+      if (step instanceof Error) throw step;
+      return step;
     },
-  );
+    getServerStatus: unused,
+    getServerHealth: unused,
+    getFactoryBuildings: unused,
+    getPlayers: unused,
+  };
   const directory = new InMemoryServerDirectory([
     { id: "default", displayName: "Test server", services: { telemetry: createTelemetryServices(adapter, undefined, { now }) } },
   ]);

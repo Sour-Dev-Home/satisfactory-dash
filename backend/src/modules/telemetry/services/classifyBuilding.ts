@@ -1,4 +1,4 @@
-import type { FactoryBuilding } from "../../gameserver/index.js";
+import type { FactoryBuilding } from "../domain.js";
 
 /**
  * The state constants, in one place (ADR-0027 decision 2). PROVISIONAL: the evidence is two trimmed

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PowerHistoryService, STALE_AFTER_INTERVALS } from "./powerHistoryService.js";
-import type { PollerHealth } from "./powerHistoryPoller.js";
+import type { PollerHealth } from "./backgroundWorker.js";
 import { InMemoryPowerHistoryStore } from "./powerHistoryStore.js";
 
 const T0 = 1_700_000_000_000;
