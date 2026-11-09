@@ -1,4 +1,3 @@
-import { PlayerNotice } from "./PlayerNotice";
 import { CODE_LIFETIME } from "./selfServeText";
 
 /**
@@ -6,10 +5,9 @@ import { CODE_LIFETIME } from "./selfServeText";
  * the player can make one). Prominent (open) while the server is waiting for its first connection;
  * collapsed once it is enrolled, where it is only a reminder for enrolling again.
  *
- * The mod is the way a player connects (owner, 2026-11-03, ADR-0058). `devAgent` (the operator only, see
- * `offersDevAgent`) adds the Node agent's step and the player-names notice, which only the agent needs.
+ * The mod is the only way a server connects (ADR-0058, ADR-0066).
  */
-export function EnrolmentGuide({ enrolled, devAgent = false }: { enrolled: boolean; devAgent?: boolean }) {
+export function EnrolmentGuide({ enrolled }: { enrolled: boolean }) {
   return (
     <details open={!enrolled} className="grid gap-2 text-sm">
       <summary className="cursor-pointer text-base font-semibold text-fg-strong">Connect your game server</summary>
@@ -22,10 +20,8 @@ export function EnrolmentGuide({ enrolled, devAgent = false }: { enrolled: boole
           <code>FactoryGame/Configs/SatisDashAgent.cfg</code>, paste the code as the value of <code>enrollmentCode</code> and
           save the file. The Satis Manager mod picks it up while the server runs, so there is no need to restart it.
         </li>
-        {devAgent && <li>For development, with the agent app instead: run the command shown with the code.</li>}
         <li>This page shows the server as enrolled once the mod has connected. If the code expires first, create a new one.</li>
       </ol>
-      {devAgent && <PlayerNotice />}
     </details>
   );
 }

@@ -56,11 +56,10 @@ describe("AgentSettings", () => {
     expect(within(code).getByRole("time")).toHaveAttribute("dateTime", agentEnrollmentCodeResponse.expiresAt);
     // #328: the code can be copied in one click.
     expect(within(code).getByRole("button", { name: "Copy the enrolment code" })).toBeInTheDocument();
-    // The agent app's own command (runbooks/agent-app.md), with this code filled in.
-    expect(
-      within(code).getByText(`node agent.cjs enroll ${agentEnrollmentCodeResponse.code} --url https://<your backend>`),
-    ).toBeInTheDocument();
-    expect(within(code).getByText("--replace")).toBeInTheDocument();
+    // ADR-0066: the mod's config steps only, the operator too; the Node agent's command is gone.
+    expect(within(code).getByText("FactoryGame/Configs/SatisDashAgent.cfg")).toBeInTheDocument();
+    expect(within(code).queryByText(/node agent\.cjs/)).not.toBeInTheDocument();
+    expect(within(code).queryByText("--replace")).not.toBeInTheDocument();
     // Shown once: the create button is gone while the code is on screen.
     expect(screen.queryByRole("button", { name: /Create/ })).not.toBeInTheDocument();
   });
@@ -107,7 +106,7 @@ describe("AgentSettings", () => {
 
   it("offers nothing but says who can, for a server reached directly and a user who isn't the operator", async () => {
     renderSection(owner);
-    expect(await screen.findByText("Only the dashboard's operator can enrol an agent for this server.")).toBeInTheDocument();
+    expect(await screen.findByText("Only the dashboard's operator can enrol the mod for this server.")).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -339,28 +338,28 @@ describe("AgentSettings", () => {
     expect(within(code).queryByText(/agent app/)).not.toBeInTheDocument();
   });
 
-  it("keeps the agent's wording, command and revoke for the operator, next to the mod's steps", async () => {
+  it("gives the operator the mod's wording and steps too, with no agent command (ADR-0066)", async () => {
     asOperator();
     agentIs({ ...agentStatusEnrolled, connectionKind: "agent" });
     renderSection(owner);
-    expect(await screen.findByRole("heading", { name: "Game PC agent" })).toBeInTheDocument();
-    expect(screen.getByText("Through the game PC's agent")).toBeInTheDocument();
-    expect(screen.getByText("Agent version")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Satis Manager mod" })).toBeInTheDocument();
+    expect(await screen.findByText("Through the Satis Manager mod")).toBeInTheDocument();
+    expect(screen.getByText("Mod version")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create a code to enrol again" }));
     const code = await screen.findByRole("group", { name: "Enrolment code" });
     expect(within(code).getByText("FactoryGame/Configs/SatisDashAgent.cfg")).toBeInTheDocument();
-    expect(within(code).getByText(/For development, with the agent app instead/)).toBeInTheDocument();
-    expect(within(code).getByText(new RegExp(`node agent\\.cjs enroll ${agentEnrollmentCodeResponse.code}`))).toBeInTheDocument();
+    expect(within(code).queryByText(/agent app/)).not.toBeInTheDocument();
+    expect(within(code).queryByText(/node agent\.cjs/)).not.toBeInTheDocument();
   });
 
-  it("names the agent in the operator's revoke confirm", async () => {
+  it("names the mod in the operator's revoke confirm", async () => {
     asOperator();
     agentIs(agentStatusEnrolled);
     renderSection(owner);
     fireEvent.click(await screen.findByRole("button", { name: "Revoke…" }));
-    const confirm = screen.getByRole("group", { name: "Confirm revoking the agent" });
-    expect(within(confirm).getByText(/The agent stops working at once/)).toBeInTheDocument();
-    expect(within(confirm).getByRole("button", { name: "Revoke the agent" })).toBeInTheDocument();
+    const confirm = screen.getByRole("group", { name: "Confirm revoking the mod's access" });
+    expect(within(confirm).getByText(/The mod's access ends at once/)).toBeInTheDocument();
+    expect(within(confirm).getByRole("button", { name: "Revoke the mod's access" })).toBeInTheDocument();
   });
 
   // Fail safe: when the server list has not answered (or failed), nobody is known to be the operator, so the

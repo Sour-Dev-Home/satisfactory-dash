@@ -1,14 +1,13 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { useQuery } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import { endpoints, type ServerListResponse } from "@satisfactory-dash/shared";
 import {
   deleteServerDone,
   errorServerNotFound,
   errorUpstreamUnreachable,
-  managedServersEmpty,
-  serverConnectionOk,
   serversMultiple,
   serversNone,
   serversSingle,
@@ -16,7 +15,9 @@ import {
 } from "@satisfactory-dash/shared/fixtures";
 import { queries } from "../api/queries";
 import { ServerManagementView } from "../serverManagement/ServerManagementView";
+import { managedAgentNone } from "../test/managedMocks";
 import { renderWithClient } from "../test/render";
+import { createdAgentServer } from "../test/selfServeMocks";
 import { server } from "../test/server";
 import { useSelectedServer } from "./ServerContext";
 import { ServerGate } from "./ServerGate";
@@ -87,13 +88,14 @@ describe("ServerGate", () => {
     expect(screen.queryByRole("button", { name: "Add a server" })).not.toBeInTheDocument();
   });
 
-  it("lets the operator set up the first server instead (ADR-0030), listing stored ones it can't serve", async () => {
+  it("shows the operator the managed list instead (ADR-0030), with no direct-poll Add a server (ADR-0066)", async () => {
     listServers({ ...serversNone, canManageServers: true });
     renderGate();
     expect(await screen.findByRole("heading", { name: "Set up a game server" })).toBeInTheDocument();
-    // The default managed list has an unreadable and a refused server: they show here to be fixed.
     expect(await screen.findByRole("list", { name: "Game servers" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add a server" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add a server" })).not.toBeInTheDocument();
+    // Self-serve is off in this list, so there is no "Add your server" either.
+    expect(screen.queryByRole("button", { name: "Add server" })).not.toBeInTheDocument();
     expect(screen.queryByText("No game servers are configured.")).not.toBeInTheDocument();
   });
 
@@ -133,28 +135,38 @@ describe("ServerGate", () => {
     expect(statusCalls).toBe(1);
   });
 
-  it("moves from the empty state into the app once the operator adds the first server (ADR-0030)", async () => {
+  it("moves from the empty state into the app once the operator adds the first server with Add your server", async () => {
     let added = false;
+    const created = { ...serversSingle.servers[0], id: createdAgentServer.server.id, displayName: createdAgentServer.server.displayName };
     server.use(
       http.get(endpoints.servers.route, () =>
-        HttpResponse.json(added ? { ...serversSingle, canManageServers: true } : { ...serversNone, canManageServers: true }),
+        HttpResponse.json(
+          added
+            ? { servers: [created], canManageServers: true, selfServeEnabled: true }
+            : { ...serversNone, canManageServers: true, selfServeEnabled: true },
+        ),
       ),
-      http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedServersEmpty)),
-      http.post(endpoints.serverManagement.create.route, () => {
+      http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedAgentNone)),
+      http.post(endpoints.selfServe.createAgentServer.route, () => {
         added = true;
-        return HttpResponse.json(serverConnectionOk);
+        return HttpResponse.json(createdAgentServer, { status: 201 });
       }),
+      http.get(endpoints.status.route, ({ params }) => HttpResponse.json({ ...statusRunning, serverId: String(params.serverId) })),
     );
-    renderGate();
-    fireEvent.click(await screen.findByRole("button", { name: "Add a server" }));
-    fireEvent.change(screen.getByLabelText("Server id"), { target: { value: "default" } });
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Satisfactory server" } });
-    fireEvent.change(screen.getByLabelText("Game API token"), { target: { value: "some-token" } });
+    // Add your server goes on to Settings, so this one needs a router.
+    renderWithClient(
+      <MemoryRouter>
+        <ServerGate>
+          <ServerSwitcher />
+          <SelectedStatus />
+        </ServerGate>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/No game servers yet\./)).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText("Server name"), { target: { value: createdAgentServer.server.displayName } });
     fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-    // The empty-state screen (and its "Added ..." notice) is replaced by the normal app once the
-    // server list refetches with one server: this is the whole gate re-rendering, not the form's
-    // own close/notice transition.
-    expect(await screen.findByText("status for default")).toBeInTheDocument();
+    // The empty-state screen is replaced by the normal app once the server list refetches with the new server.
+    expect(await screen.findByText(`status for ${createdAgentServer.server.id}`)).toBeInTheDocument();
   });
 
   it("falls back to the empty state after the operator removes the last server (ADR-0030)", async () => {
@@ -164,7 +176,11 @@ describe("ServerGate", () => {
         HttpResponse.json(removed ? { ...serversNone, canManageServers: true } : { ...serversSingle, canManageServers: true }),
       ),
       http.get(endpoints.serverManagement.list.route, () =>
-        HttpResponse.json(removed ? managedServersEmpty : { servers: [serverConnectionOk.server] }),
+        HttpResponse.json(
+          removed
+            ? managedAgentNone
+            : { servers: [], agentServers: [{ id: serversSingle.servers[0].id, displayName: serversSingle.servers[0].displayName, kind: "agent" }] },
+        ),
       ),
       http.delete(endpoints.serverManagement.remove.route, () => {
         removed = true;

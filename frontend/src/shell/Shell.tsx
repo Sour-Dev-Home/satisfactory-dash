@@ -48,7 +48,7 @@ import { navFadeClass, revealActiveTab } from "./navFade";
 import { whenIdle } from "../lib/idle";
 import { pageQueries, paletteQueries, prefetchFresh } from "./pageQueries";
 import { visibleTabs } from "./tabs";
-import { offersDevAgent, senderWords } from "../agent/agentText";
+import { SENDER_WORDS } from "../agent/agentText";
 import { IS_DEMO } from "../demo/mode";
 import { tabTarget, TOUR_PIN_CLASS } from "../demo/tour/tabTarget";
 import { tour } from "../demo/tour/target";
@@ -518,7 +518,7 @@ export function Shell() {
                     the user to another server. */}
                 <AutoPauseView key={server.id} />
               </Section>
-              <Section label={senderWords(offersDevAgent(canManageServers)).heading} probe="agent">
+              <Section label={SENDER_WORDS.heading} probe="agent">
                 {/* Keyed by server: an enrolment code is for one server and must never follow the user. */}
                 <AgentSettings key={server.id} />
               </Section>

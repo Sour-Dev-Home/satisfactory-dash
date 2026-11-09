@@ -139,7 +139,7 @@ const kindByCode = {
   upstream_invalid_response: "upstream",
   upstream_error: "upstream",
   // ADR-0030: managing servers. The server-management screen words these itself
-  // (serverManagement/messages.ts); anywhere else they are handled generically, like any unknown code.
+  // (until ADR-0066 retired its forms); now they are handled generically, like any unknown code.
   address_not_allowed: "unknown",
   connection_test_failed: "unknown",
   connection_unreadable: "unknown",

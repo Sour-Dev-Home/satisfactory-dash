@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { managedAgentSeveral } from "./managedMocks";
 import { compatQuiet } from "./updateMocks";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
@@ -23,7 +24,6 @@ import {
   historyItems7d,
   historyPower24h,
   historyTransitions24h,
-  managedServersAllStates,
   metricsOverviewWithCharts,
   playersUnavailable,
   powerHistoryNormal,
@@ -34,13 +34,11 @@ import {
   pushUnsubscribeResponse,
   alertSendTestOk,
   renameAgentServerResponse,
-  serverConnectionOk,
   serversSingle,
   sessionAnonymous,
   sessionAuthenticated,
   settingsEditable,
   statusRunning,
-  testConnectionPassed,
 } from "@satisfactory-dash/shared/fixtures";
 import { accountDeleted, serverLeft } from "./accountMocks";
 import { mapLiveResponse } from "./mapLiveResponses";
@@ -85,22 +83,17 @@ export const handlers = [
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
   http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),
   // ADR-0030, operator only (the default server list doesn't offer it; tests opt in).
-  http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedServersAllStates)),
+  http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedAgentSeveral)),
   // ADR-0056: the operator's metrics page (whatever `?window=` asks).
   http.get(endpoints.metrics.overview.route, () => HttpResponse.json(metricsOverviewWithCharts)),
-  http.post(endpoints.serverManagement.testConnection.route, () => HttpResponse.json(testConnectionPassed)),
-  http.post(endpoints.serverManagement.testSaved.route, () => HttpResponse.json(testConnectionPassed)),
-  http.post(endpoints.serverManagement.create.route, () => HttpResponse.json(serverConnectionOk)),
-  http.patch(endpoints.serverManagement.update.route, () => HttpResponse.json(serverConnectionOk)),
   http.delete(endpoints.serverManagement.remove.route, () => HttpResponse.json(deleteServerDone)),
   // ADR-0046: any signed-in user adds a server of their own.
   http.post(endpoints.selfServe.createAgentServer.route, () => HttpResponse.json(createdAgentServer, { status: 201 })),
   // ADR-0051 section 1: the /pair page.
   http.post(endpoints.pairings.lookup.route, () => HttpResponse.json(lookedUp)),
   http.post(endpoints.pairings.approve.route, () => HttpResponse.json(approved)),
-  // ADR-0031: an agent server's two edits.
+  // ADR-0031: an agent server rename (ADR-0066: rename and remove are the only edits left).
   http.patch(endpoints.serverManagement.renameAgent.route, () => HttpResponse.json(renameAgentServerResponse)),
-  http.post(endpoints.serverManagement.switchToLocal.route, () => HttpResponse.json(serverConnectionOk)),
   // Alerts (ADR-0027 PR 9). The header bell reads the status on every page: quiet by default, so
   // no badge shows unless a test asks for one.
   http.get(endpoints.alerts.status.route, () => HttpResponse.json(alertStatusQuiet)),

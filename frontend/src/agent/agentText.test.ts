@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  agentBackendUrl,
   agentVersionLine,
   canCreateCode,
   canRevoke,
   connectionText,
   gameConnectionView,
   lastSeenText,
-  offersDevAgent,
-  senderWords,
+  SENDER_WORDS,
   versionText,
 } from "./agentText";
 
@@ -29,13 +27,13 @@ describe("gameConnectionView (#740 follow-up)", () => {
 
   it("not reachable: warn, with how long ago it last read, or that it never has since starting", () => {
     expect(gameConnectionView({ ...enrolled, gameReachable: false, lastGameReadAt: ago(12 * 60_000) }, NOW)).toEqual({ tone: "warn", label: "Not reachable", lastRead: "last read 12 m ago" });
-    expect(gameConnectionView({ ...enrolled, gameReachable: false }, NOW)).toEqual({ tone: "warn", label: "Not reachable", lastRead: "not read since the agent started" });
+    expect(gameConnectionView({ ...enrolled, gameReachable: false }, NOW)).toEqual({ tone: "warn", label: "Not reachable", lastRead: "not read since the mod started" });
   });
 
   it("unknown while the agent is offline (its last word may be stale), still with the last read", () => {
     expect(gameConnectionView({ enrolled: true, online: false, gameReachable: true, lastGameReadAt: ago(3_600_000) }, NOW)).toEqual({
       tone: "unknown",
-      label: "Unknown while the agent is offline",
+      label: "Unknown while the mod is offline",
       lastRead: "last read 1 h 0 m ago",
     });
   });
@@ -79,18 +77,6 @@ describe("versionText", () => {
   });
 });
 
-describe("agentBackendUrl", () => {
-  it("uses the configured API origin, without a trailing slash, so the command pastes as is", () => {
-    expect(agentBackendUrl("https://api.example.test")).toBe("https://api.example.test");
-    expect(agentBackendUrl(" https://api.example.test/ ")).toBe("https://api.example.test");
-  });
-
-  it("keeps the placeholder when there's no https origin (development, the demo)", () => {
-    expect(agentBackendUrl(undefined)).toBe("https://<your backend>");
-    expect(agentBackendUrl("")).toBe("https://<your backend>");
-    expect(agentBackendUrl("http://localhost:3001")).toBe("https://<your backend>");
-  });
-});
 
 const at = "2026-09-26T12:00:05.000Z";
 const t = Date.parse(at);
@@ -114,25 +100,15 @@ describe("lastSeenText", () => {
 
 describe("connectionText", () => {
   it("names the two known kinds and passes an unknown one through", () => {
-    expect(connectionText("local", true)).toBe("Directly, from the dashboard's backend");
-    expect(connectionText("agent", true)).toBe("Through the game PC's agent");
-    expect(connectionText("relay", true)).toBe("relay");
-  });
-
-  it("says the mod for a player, who is offered nothing else (owner, 2026-11-03)", () => {
-    expect(connectionText("agent", false)).toBe("Through the Satis Manager mod");
-    expect(connectionText("local", false)).toBe("Directly, from the dashboard's backend");
+    expect(connectionText("local")).toBe("Directly, from the dashboard's backend");
+    expect(connectionText("agent")).toBe("Through the Satis Manager mod");
+    expect(connectionText("relay")).toBe("relay");
   });
 });
 
-describe("offersDevAgent and senderWords (owner, 2026-11-03: the mod for players, the agent for development)", () => {
-  it("offers the Node agent to the operator only", () => {
-    expect(offersDevAgent(true)).toBe(true);
-    expect(offersDevAgent(false)).toBe(false);
-  });
-
-  it("words the section for the mod, or for the agent where it is offered", () => {
-    expect(senderWords(false)).toEqual({
+describe("SENDER_WORDS (ADR-0066: the mod for everyone)", () => {
+  it("words the section for the mod", () => {
+    expect(SENDER_WORDS).toEqual({
       heading: "Satis Manager mod",
       label: "Mod",
       versionLabel: "Mod version",
@@ -141,18 +117,10 @@ describe("offersDevAgent and senderWords (owner, 2026-11-03: the mod for players
       revokeConfirm: "Confirm revoking the mod's access",
       revokeWarning: "The mod's access ends at once. This server then shows no data, and can't be changed, until the mod is enrolled again.",
     });
-    expect(senderWords(true)).toMatchObject({ heading: "Game PC agent", label: "Agent", noun: "the agent", revoke: "Revoke the agent" });
   });
 
-  it("puts no agent wording in front of a player", () => {
-    for (const text of Object.values(senderWords(false))) expect(text).not.toMatch(/agent/i);
-  });
-
-  it("feeds the noun into the game line", () => {
-    const now = Date.parse("2026-10-27T12:00:00.000Z");
-    const base = { enrolled: true, online: false, gameReachable: true } as const;
-    expect(gameConnectionView(base, now, "the mod")?.label).toBe("Unknown while the mod is offline");
-    expect(gameConnectionView({ enrolled: true, online: true, gameReachable: false }, now, "the mod")?.lastRead).toBe("not read since the mod started");
+  it("puts no agent wording in front of anyone", () => {
+    for (const text of Object.values(SENDER_WORDS)) expect(text).not.toMatch(/agent/i);
   });
 });
 
