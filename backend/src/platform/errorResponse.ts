@@ -266,6 +266,19 @@ export class RouteNotFoundError extends Error {
   }
 }
 
+/**
+ * ADR-0066 build PR 5: a route that existed and is retired answers HTTP 410 for one release, then is deleted (404, build
+ * PR 6). The contract has no `gone` code and adding one is a contract change of its own (ground rule 6), so the body
+ * carries the closest existing code, `not_found`, and this class is the one place the status is not the code's.
+ */
+export class RouteGoneError extends Error {
+  static readonly STATUS = 410;
+  constructor(message: string) {
+    super(message);
+    this.name = "RouteGoneError";
+  }
+}
+
 /** A client-side problem with OUR request (e.g. express.json() rejecting a malformed,
  *  oversized or wrongly encoded body). Those errors come from http-errors with
  *  `expose: true` and a 4xx `statusCode`. They must be caught before describeFailure,
@@ -311,6 +324,9 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   }
   if (err instanceof RouteNotFoundError) {
     return { code: "not_found", message: "No such API endpoint" };
+  }
+  if (err instanceof RouteGoneError) {
+    return { code: "not_found", message: err.message };
   }
   if (err instanceof ApiFailure) {
     return {
@@ -403,7 +419,8 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
     }
     const { code, message, reason, servers, other } = classifyRequestFailure(err);
     const detail = detailFor(err);
-    const status = ownValue(HTTP_STATUS_BY_CODE, code) ?? 500;
+    // RouteGoneError is the one exception to "the code alone decides the status" (see its comment).
+    const status = err instanceof RouteGoneError ? RouteGoneError.STATUS : (ownValue(HTTP_STATUS_BY_CODE, code) ?? 500);
     const log = req.log ?? fallbackLogger;
     const requestId = typeof req.id === "string" ? req.id : String(req.id ?? "unknown");
     // Only real failures are errors (a 401 is routine while signed out, other 4xx are warnings).

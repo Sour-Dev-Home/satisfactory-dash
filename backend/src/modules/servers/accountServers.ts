@@ -1,7 +1,7 @@
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { timedQuery } from "../../platform/db/timedQuery.js";
 import { Mutex } from "../../platform/mutex.js";
-import { TAKE_SERVER_MANAGEMENT_LOCK } from "./importServers.js";
+import { TAKE_SERVER_MANAGEMENT_LOCK } from "./managementLock.js";
 import { lockOwnedServers, softDeleteServerInTransaction } from "./repositories/serverRepository.js";
 
 /**

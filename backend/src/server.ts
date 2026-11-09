@@ -8,30 +8,16 @@ import { loadSecretsKeyringFromEnv } from "./platform/secrets/secrets.js";
 import { bootSequence } from "./platform/bootSequence.js";
 import { Mutex } from "./platform/mutex.js";
 import { orderedShutdown } from "./platform/shutdown.js";
-import { environmentServerEntries, warnEnvServersNotServed } from "./platform/envServers.js";
 import { createEventLoopMonitor, loadEventLoopStallMs } from "./platform/eventLoopMonitor.js";
 import { createReadinessRouter, healthRouter } from "./platform/health.js";
-import { recordUpstreamCall } from "./platform/requestTiming.js";
 import { createBackgroundRecorder, createMetricsAggregator, createSeriesFlushWorker } from "./platform/metrics/index.js";
 import { buildCommit } from "./platform/buildInfo.js";
 import { writeRunFile } from "./platform/runFile.js";
 import { formatErrorDetail } from "./platform/formatErrorDetail.js";
-import { Database, LeaderLock, createLeaderLockClient, databasePortOf, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
+import { parsePortEnv } from "./platform/portEnv.js";
+import { Database, LeaderLock, createLeaderLockClient, errorCode, loadDatabaseConfig } from "./platform/db/index.js";
 import { LeaderWorkerGroup } from "./platform/leaderWorkers.js";
-import {
-  configuredServerEnvNamesInUse,
-  createGameServerConnection,
-  createSatisfactoryServerConfig,
-  createServerOptionsPort,
-  ignoredSingleServerEnvNames,
-  loadConfiguredServersFromFile,
-  loadSatisfactoryServerConfigFromEnv,
-  nonLoopbackServerIds,
-  parsePortEnv,
-  testGameServerConnection,
-} from "./modules/gameserver/index.js";
-import type { SatisfactoryServerConfig } from "./modules/gameserver/index.js";
-import { createSettingsRouters, createSettingsServices } from "./modules/settings/index.js";
+import { createSettingsRouters } from "./modules/settings/index.js";
 import {
   ServerRuntime,
   findServerByPublicId,
@@ -46,14 +32,10 @@ import {
   createAccountServers,
   createDbMemberSelfService,
   createMembersRouter,
-  addressVerdict,
   loadSelfServeConfigFromEnv,
-  connectionSource,
   loadDatabaseServers,
-  loadServerRegistryFromEnv,
   reconcileDatabaseServers,
 } from "./modules/servers/index.js";
-import type { ServerConnection } from "./modules/servers/index.js";
 import {
   createAlertDelivery,
   createAlertEvaluator,
@@ -70,7 +52,6 @@ import {
   createDesignationBuildings,
   createHistoryMaintenance,
   createTelemetryRouters,
-  createTelemetryServices,
   createUnitResolver,
 } from "./modules/telemetry/index.js";
 import {
@@ -79,7 +60,6 @@ import {
   createAgentApiRouters,
   createAgentAuth,
   createAgentSettingsServices,
-  releaseAgentServer,
   enrolledServerIds,
   createAgentUserRouters,
   createAgentsService,
@@ -101,7 +81,7 @@ import {
   insertDeliverySnapshot,
   loadDeliveryIngestConfig,
 } from "./modules/metrics/index.js";
-import { MapLiveStore, LocalWorldPoller, WorldIngestService, observeFactoryReads, createAgentWorldRouter, createDbDesignationStore, createDesignationRoutes, createWorldRoutes } from "./modules/map/index.js";
+import { MapLiveStore, WorldIngestService, createAgentWorldRouter, createDbDesignationStore, createDesignationRoutes, createWorldRoutes } from "./modules/map/index.js";
 
 // ADR-0013: the backend is reached only through the Cloudflare Tunnel on this machine,
 // so it listens on loopback by default. Binding anywhere else (e.g. 0.0.0.0 in a
@@ -126,7 +106,7 @@ if (process.env.NODE_ENV !== "test") {
   installFatalHandlers({ logger, exit: (code) => process.exit(code), target: process });
 }
 
-/** A ConfigError means the backend must not start (e.g. a public game-server host, or
+/** A ConfigError means the backend must not start (e.g. a malformed setting, or
  *  missing login settings, ADR-0011): log it and exit instead of crashing. */
 function orExit<T>(load: () => T): T {
   try {
@@ -146,16 +126,6 @@ const port = orExit(() => parsePortEnv("PORT", process.env.PORT, 3001));
 const enrollmentCodesPerHour = orExit(() => loadEnrollmentCodesPerHour(process.env));
 // ADR-0056 PR 6b: the delivery ingest's secret hash. Unset = the ingest is off (404); a malformed value stops startup.
 const deliveryIngestConfig = orExit(() => loadDeliveryIngestConfig(process.env));
-
-// A servers file replaces the single-server variables; naming any that are still set (names
-// only, never values) keeps a half-migrated .env from being confusing.
-const ignoredEnvNames = ignoredSingleServerEnvNames();
-if (ignoredEnvNames.length > 0) {
-  logger.warn(
-    { ignored: ignoredEnvNames },
-    "SATISFACTORY_SERVERS_FILE is set, so these single-server variables are ignored",
-  );
-}
 
 // ADR-0015: one resolver for the whole process, so each unknown item (a modded item, or
 // one newer than the committed catalog) is logged once, not once per request or server.
@@ -180,46 +150,11 @@ const gameConnections = database ? createGameConnectionStore(database.pool) : un
 const mapLiveStore = new MapLiveStore();
 const worldIngest = database ? new WorldIngestService(database.pool, logger.child({ module: "map" })) : undefined;
 
-// ADR-0001: one connection and one bundle of module services per registered game server.
 // This file is the composition root (ADR-0014): the only place that knows every module.
-function buildServer(id: string, displayName: string, untimedConfig: SatisfactoryServerConfig) {
-  // ADR-0054 D3: its pollers run only on the leader, and are one-shot: stepping down swaps in a fresh build (ServerRuntime).
-  return { ...buildPolledServer(id, displayName, untimedConfig), rebuild: (name: string) => buildPolledServer(id, name, untimedConfig) };
-}
 
-function buildPolledServer(id: string, displayName: string, untimedConfig: SatisfactoryServerConfig) {
-  // ADR-0032: every call to the game server reports how long it took, so a request's time splits into app and upstream.
-  const config: SatisfactoryServerConfig = { ...untimedConfig, onUpstreamCall: recordUpstreamCall };
-  const connection = createGameServerConnection(config);
-  // ADR-0038 M3: a LOCAL server has no edge agent, so the backend reads its own world layers and
-  // mapLive directly (`connection` satisfies LocalWorldPollerPorts structurally: getRails,
-  // getResourceNodes, getTrains, getTrainStations). Needs the database (world layers are stored).
-  const mapPoller = worldIngest
-    ? new LocalWorldPoller(connection, {
-        logger: logger.child({ worker: "map-world", serverId: id }),
-        serverPublicId: id,
-        ingest: worldIngest,
-        mapLive: mapLiveStore.sinkFor(id),
-      })
-    : undefined;
-  // #728 step 6: every factory read telemetry makes (the 30 s history poll, the live reads) tells the map poller the
-  // building set, so a changed set reads conveyors sooner instead of up to 10 minutes later.
-  const telemetryPorts = mapPoller ? observeFactoryReads(connection, (ids) => mapPoller.observeFactoryBuildings(ids)) : connection;
-  const telemetry = createTelemetryServices(telemetryPorts, resolveUnit, {
-    logger: logger.child({ worker: "power-history", serverId: id }),
-    // ADR-0027: history is written for every server, including ones added at runtime (they come through here).
-    history: database ? { db: database.pool, serverPublicId: id } : undefined,
-  });
-  return {
-    id,
-    displayName,
-    services: { telemetry, settings: createSettingsServices(createServerOptionsPort(config)) },
-    workers: mapPoller ? [...telemetry.workers, mapPoller] : telemetry.workers,
-  };
-}
-
-/** ADR-0031 PR 5a: a server reached through an edge agent. No game connection and no pollers: its live reads serve the
- *  agent's last snapshot and its history is fed by the snapshots. Only built with a database (an agent needs one). */
+/** ADR-0031 PR 5a, ADR-0066: every server is reached through the mod (the agent protocol). No game connection and no
+ *  pollers: its live reads serve the mod's last snapshot and its history is fed by the snapshots. Only built with a
+ *  database: without one the backend serves no game server (ADR-0066 Decision 3). */
 function buildAgentServer(id: string, displayName: string) {
   if (!database || !agentCommands) throw new Error("an agent server needs a database");
   const telemetry = createAgentTelemetryServices({
@@ -233,42 +168,18 @@ function buildAgentServer(id: string, displayName: string) {
   return { id, displayName, services: { telemetry, settings: createAgentSettingsServices(agentCommands, id, telemetry.agentAutoPause) }, workers: telemetry.workers, kind: "agent" as const };
 }
 
-// Issue #196 (architect, option A): with a database the servers come ONLY from it, so nothing is built from the environment
-// (no placeholder runtime whose pollers could fire without credentials); without one the environment's servers are the servers.
-const entries = environmentServerEntries(database !== undefined, () => orExit(() => {
-  // ADR-0025 PR 1: SATISFACTORY_SERVERS_FILE names any number of servers, each with its own
-  // connection config. Without it, single-server mode: a registry of one that uses the
-  // SATISFACTORY_* env (unchanged, so the running deploy needs no new config).
-  const configured =
-    loadConfiguredServersFromFile() ??
-    (() => {
-      const config = loadSatisfactoryServerConfigFromEnv();
-      return loadServerRegistryFromEnv().map(({ id, displayName }) => ({ id, displayName, config }));
-    })();
-  // ADR-0030 amendment 1: servers configured in the environment are outside the LAN gate (they are the operator's own
-  // configuration), but a LAN host has no certificate verification: say so once, by id, never naming the address.
-  const lanServerIds = nonLoopbackServerIds(configured);
-  if (lanServerIds.length > 0) {
-    logger.warn(
-      { servers: lanServerIds },
-      "an environment-configured server is not on loopback: its API certificate is unverified on the LAN (ADR-0030 amendment 1)",
-    );
-  }
-  return configured.map(({ id, displayName, config }) => buildServer(id, displayName, config));
-}));
-// ADR-0030: the servers this process serves. Built from the config now; with a database, the servers
-// stored in it replace these once it is up (see loadDatabaseServers). The runtime starts and stops each
-// server's pollers (ADR-0022), also for servers added or removed while the backend runs.
-const directory = new ServerRuntime(entries, {
+// The servers this process serves: empty until the database is up, then the servers stored in it (loadDatabaseServers).
+// Nothing is built from the environment (issue #196; ADR-0066 retired the environment and servers-file loaders). The
+// runtime starts and stops each server's workers (ADR-0022), also for servers added or removed while the backend runs.
+// An agent server's workers run on every instance (they only hold what reached this one), so nothing is leader-gated
+// (ADR-0054 D3 gated only the polled servers' pollers).
+const directory = new ServerRuntime<ReturnType<typeof buildAgentServer>["services"]>([], {
   onWorkerStartError: (serverId, err) =>
     logger.error({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a server's background worker failed to start"),
   onWorkerStopError: (serverId, err) =>
     logger.warn({ serverId, error: err instanceof Error ? err.name : "unknown" }, "a server's background worker failed to stop"),
   // #516: a removed server's live map reading must not be served to a server re-created under the same id.
   onRemoved: (serverId) => mapLiveStore.forget(serverId),
-  // ADR-0054 D3: with a database, a polled server's pollers run only on the leader instance (an agent server's workers run
-  // everywhere: they only hold what reached this instance). Without one this process is always the leader.
-  leaderGated: database !== undefined,
 });
 // Process-wide workers. Started once the server is listening, and stopped on shutdown.
 const workers: { start(): void; stop(): Promise<void> }[] = [];
@@ -276,8 +187,8 @@ const workers: { start(): void; stop(): Promise<void> }[] = [];
 // exceeds EVENT_LOOP_STALL_MS, to tell a machine-wide stall from our own loop being blocked.
 workers.push(createEventLoopMonitor({ logger, thresholdMs: orExit(() => loadEventLoopStallMs()) }));
 
-// ADR-0030: the key that encrypts stored game-server tokens. Unset is fine while no server is stored in
-// the database; a set-but-malformed key stops the backend here rather than at the first use.
+// ADR-0030: the key that seals stored secrets (alert webhooks and web-push data; since ADR-0066 no game-server token is
+// read). Unset is fine without those; a set-but-malformed key stops the backend here rather than at the first use.
 const secretsKeyring = orExit(() => loadSecretsKeyringFromEnv());
 
 // ADR-0011: every /api route except health and the auth endpoints needs a session.
@@ -351,14 +262,12 @@ const leaderLock =
         onAcquired: async () => {
           // ADR-0054 D3.10: the old task releases the lock only once it can take no more requests, so every server
           // write it handled during the deploy overlap is in the database, though not in this runtime. Catch up first, so
-          // the pollers start on the right list.
+          // the leader workers (the alert evaluator among them) start on the right list.
           await reloadServersOnLeadership();
-          await directory.setLeader(true);
           leaderWorkers.start();
         },
         onLost: async () => {
           await leaderWorkers.stop();
-          await directory.setLeader(false);
         },
       })
     : undefined;
@@ -375,24 +284,6 @@ let serversRegistered = database === undefined;
 // ADR-0030: the seeded operator account, known once the database is up. Only this account may manage servers.
 let operatorUserId: string | undefined;
 
-/** A stored connection becomes a running server that connects to its PINNED address. The address is
- *  re-checked here as well (defence in depth): nothing but a loopback or private address is ever built. */
-function buildFromConnection(c: ServerConnection) {
-  if (addressVerdict(c.pinnedIp) !== "ok") {
-    throw new Error("refusing to build a server whose address is not usable (not loopback while LAN servers wait for certificate pinning)");
-  }
-  return {
-    ...buildServer(
-      c.publicId,
-      c.displayName,
-      createSatisfactoryServerConfig({ host: c.pinnedIp, apiPort: c.apiPort, apiToken: c.apiToken, frmPort: c.frmPort, frmToken: c.frmToken }),
-    ),
-    // ADR-0054 D3: what the leadership reload compares, so an unchanged server keeps its pollers.
-    source: connectionSource(c),
-  };
-}
-
-const databasePort = databasePortOf(databaseConfig?.url);
 // #526 (L1): one mutex for every runtime change that follows a server write (the operator's management service, the
 // self-serve owner's rename and remove, the pending sweep), so their post-commit runtime changes run one at a time.
 const serverWriteMutex = new Mutex();
@@ -422,17 +313,14 @@ async function reconcileOnLeadership(): Promise<void> {
     const changes = await serverWriteMutex.run(() =>
       reconcileDatabaseServers({
         db: database.pool,
-        ring: secretsKeyring,
         runtime: directory,
-        build: buildFromConnection,
         buildAgent: ({ publicId, displayName }) => buildAgentServer(publicId, displayName),
-        emptyMeansNone: true, // database mode serves nothing from the environment (#196), so an empty database is an empty list
       }),
     );
-    const changed = changes.added.length + changes.removed.length + changes.replaced.length + changes.renamed.length;
+    const changed = changes.added.length + changes.removed.length + changes.renamed.length;
     if (changed > 0) {
       logger.info(
-        { added: changes.added, removed: changes.removed, replaced: changes.replaced, renamed: changes.renamed },
+        { added: changes.added, removed: changes.removed, renamed: changes.renamed },
         "servers reloaded from the database on becoming leader",
       );
     }
@@ -445,17 +333,8 @@ const serverManagement = database
   ? createServerManagementService({
       db: database.pool,
       mutex: serverWriteMutex,
-      ring: secretsKeyring,
       runtime: directory,
-      build: buildFromConnection,
-      testConnection: ({ pinnedIp, apiPort, frmPort, apiToken, frmToken }) =>
-        testGameServerConnection(createSatisfactoryServerConfig({ host: pinnedIp, apiPort, apiToken, frmPort, frmToken })),
       getOperatorUserId: () => operatorUserId,
-      configuredServerEnvNames: () => configuredServerEnvNamesInUse(),
-      // Issue #195: a loopback "game server" may not be this backend or its database.
-      forbiddenPorts: databasePort === undefined ? [port] : [port, databasePort],
-      // ADR-0031 amendment: what the agent side lets go of when a server is switched back to local (in the same transaction).
-      releaseAgent: releaseAgentServer,
     })
   : undefined;
 // ADR-0046: self-serve agent servers, shipped dark. SELF_SERVE_ENABLED (default false) and the caps are validated here; a bad
@@ -502,14 +381,11 @@ if (database) {
     }),
   );
 }
-// ADR-0030: false when a stored connection cannot be opened (no key, an unknown key id, a modified
-// value). The backend stays up and serves the readable servers, but reports not-ready.
-let connectionsReadable = true;
 const serverAccess = database ? createDbServerAccess(database.pool) : undefined;
 
-// ADR-0031 PR 5a: makes sure a server has its agent-backed running entry. Called after an enrolment commits (the server
-// was a local one: its entry, with its pollers, is replaced and the pollers stop) and by the first snapshot of a server
-// that has none. Idempotent, and one swap at a time per server so two callers cannot build two entries.
+// ADR-0031 PR 5a: makes sure a server has its agent-backed running entry. Called after an enrolment commits and by the
+// first snapshot of a server that has none (a self-serve create's attach that failed). Idempotent, and one swap at a time
+// per server so two callers cannot build two entries.
 const attaching = new Map<string, Promise<void>>();
 function attachAgentRuntime(publicId: string): Promise<void> {
   if (!database || directory.get(publicId)?.telemetry.agentIngest !== undefined) {
@@ -563,7 +439,7 @@ export const app = createApp({
   metricsAggregator,
   routers: [
     healthRouter,
-    createReadinessRouter(async () => (database ? (await database.isReady()) && serversRegistered && connectionsReadable : true)),
+    createReadinessRouter(async () => (database ? (await database.isReady()) && serversRegistered : true)),
     identity.authRouter,
     // ADR-0056 PR 6b: POST /api/internal/metrics/delivery, before the session guard (a bearer secret, not a session).
     // Always mounted, so "off" (no secret hash or no database) is a 404, not the guard's 401.
@@ -698,43 +574,19 @@ if (process.env.NODE_ENV !== "test") {
           throw new Error("identity has no operator account in database mode");
         }
         operatorUserId = ownerId;
-        // ADR-0030 precedence: servers stored in the database win over the config. With none stored,
-        // the configured servers are registered exactly as before.
+        // The servers stored in the database are the servers (ADR-0030, #196). ADR-0066: each loads as a server reached
+        // through the mod, a leftover `local` row included (it awaits the mod; its stored connection is never read).
         const stored = await loadDatabaseServers({
           db: database.pool,
-          ring: secretsKeyring,
           runtime: directory,
           operatorUserId: ownerId,
-          build: buildFromConnection,
           buildAgent: ({ publicId, displayName }) => buildAgentServer(publicId, displayName),
         });
-        if (stored.usingDatabase) {
-          logger.info({ servers: stored.loaded }, "servers loaded from the database");
-          for (const serverPublicId of stored.ownershipSeeded) {
-            logger.info({ serverPublicId, source: "startup_seed" }, "ownership seeded");
-          }
-          if (stored.unreadable.length > 0) {
-            connectionsReadable = false;
-            logger.error(
-              { code: "SERVER_CONNECTIONS_UNREADABLE", servers: stored.unreadable.map(({ publicId, keyId }) => ({ publicId, keyId })) },
-              "stored server connections cannot be opened (missing or wrong SERVER_SECRETS_KEY, or a modified value); they are not served",
-            );
-          }
-          if (stored.refused.length > 0) {
-            connectionsReadable = false;
-            logger.error(
-              { code: "SERVER_CONNECTIONS_REFUSED", servers: stored.refused.map(({ publicId }) => ({ publicId })) },
-              "stored server connections have an address that is not usable (not loopback: LAN servers wait for certificate pinning); they are not served",
-            );
-          }
-          serversRegistered = true;
-        } else {
-          // Nothing is stored: the backend serves no server (create and import-servers add them). Servers configured in the
-          // environment are NOT served in database mode (#196); say so once, by variable name only.
-          warnEnvServersNotServed(logger, configuredServerEnvNamesInUse());
-          serversRegistered = true;
-          logger.info({ servers: 0 }, "no servers are stored in the database yet");
+        logger.info({ servers: stored.loaded }, stored.loaded.length > 0 ? "servers loaded from the database" : "no servers are stored in the database yet");
+        for (const serverPublicId of stored.ownershipSeeded) {
+          logger.info({ serverPublicId, source: "startup_seed" }, "ownership seeded");
         }
+        serversRegistered = true;
       },
     });
   });

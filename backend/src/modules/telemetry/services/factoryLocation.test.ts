@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { capturedBackedUpAssembler, capturedFuelRefinery } from "../../../../test-support/capturedFactory.js";
 import type { FactoryBuilding } from "../domain.js";
-import { ProductionService } from "./productionService.js";
+// ADR-0066: the polled ProductionService is gone; the harness runs the same mapping and derivation over these buildings.
+import { FactoryOverviewHarness as ProductionService } from "../../../../test-support/factoryOverview.js";
 
 // ADR-0023: a building's location (metres, rotation in [0, 360)) and its circuit group id reach the contract. The
 // adapter's centimetre-to-metre and rotation cases moved to gameserver/frmFactoryMapping.test.ts (ADR-0066 PR 3). The

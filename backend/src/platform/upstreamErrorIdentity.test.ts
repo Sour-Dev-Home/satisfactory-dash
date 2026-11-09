@@ -2,9 +2,7 @@ import { describe, it, expect } from "vitest";
 import { UpstreamError as PackageUpstreamError } from "@satisfactory-dash/game-adapter";
 import { UpstreamError as PlatformUpstreamError } from "./errors.js";
 import { describeFailure } from "./errorResponse.js";
-import { DEFAULT_REQUEST_TIMEOUT_MS } from "@satisfactory-dash/game-adapter";
 import { VanillaApiClient, FrmApiClient } from "../modules/gameserver/index.js";
-import { loadSatisfactoryServerConfigFromEnv } from "../modules/gameserver/connectionConfig.js";
 
 // ADR-0031 PR 2: the adapter (in the game-adapter package) throws the package's UpstreamError; the backend classifies
 // it with platform/errors.ts's. They must be the very same class or every upstream failure would become a 500.
@@ -31,12 +29,5 @@ describe("UpstreamError identity across the package boundary", () => {
     const frmErr = await frm.get("getSessionInfo").catch((e: unknown) => e);
     expect(frmErr).toBeInstanceOf(PlatformUpstreamError);
     expect(describeFailure(frmErr).code).toBe("upstream_unreachable");
-  });
-});
-
-describe("connection config defaults after the move", () => {
-  it("the env loader still defaults the timeout to the package's default (5000 ms)", () => {
-    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBe(5000);
-    expect(loadSatisfactoryServerConfigFromEnv({}).requestTimeoutMs).toBe(5000);
   });
 });

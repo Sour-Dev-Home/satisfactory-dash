@@ -1,95 +1,30 @@
-import type {
-  AgentServer,
-  SwitchToLocalRequest,
-  CreateServerRequest,
-  ServerConnection as ServerConnectionView,
-  TestConnectionRequest,
-  TestConnectionResponse,
-  UpdateServerRequest,
-} from "@satisfactory-dash/shared";
-import { withTransaction } from "../../platform/db/transaction.js";
+import type { AgentServer } from "@satisfactory-dash/shared";
+import type { withTransaction } from "../../platform/db/transaction.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
-import { ApiFailure, ForbiddenError, ServerNotFoundError } from "../../platform/errorResponse.js";
-import { timedQuery } from "../../platform/db/timedQuery.js";
+import { ServerNotFoundError } from "../../platform/errorResponse.js";
 import { Mutex } from "../../platform/mutex.js";
-import { SecretsError } from "../../platform/secrets/secrets.js";
-import type { SecretsKeyring } from "../../platform/secrets/secrets.js";
-import { recordAuditEvent } from "../../platform/audit/auditRepository.js";
-import {
-  AddressRefusedError,
-  DEFAULT_ADDRESS_POLICY,
-  LanRequiresPinningError,
-  addressVerdict,
-  isLoopbackAddress,
-  resolveAllowedAddress,
-} from "./addressGuard.js";
-import type { AddressLookup, AddressPolicy } from "./addressGuard.js";
-import { MAX_LOCAL_SERVERS, TAKE_SERVER_MANAGEMENT_LOCK } from "./importServers.js";
-import { addMember } from "./repositories/memberRepository.js";
-import {
-  countConnections,
-  createConnection,
-  getConnection,
-  getConnectionMetaByPublicId,
-  listConnectionMetas,
-  updateConnection,
-} from "./repositories/connectionRepository.js";
-import type { ConnectionMeta, ConnectionPatch, ServerConnection } from "./repositories/connectionRepository.js";
-import { findServerByPublicId, isSelfServeServer, listOperatorAgentServers, lockServerByPublicId, renameServer, softDeleteServer, switchToLocalKind, upsertConfiguredServer } from "./repositories/serverRepository.js";
-import type { RuntimeServer, ServerRuntime } from "./serverRuntime.js";
+import { findServerByPublicId, listOperatorAgentServers, renameServer, softDeleteServer } from "./repositories/serverRepository.js";
+import type { ServerRuntime } from "./serverRuntime.js";
 
 /**
- * ADR-0030 phase 1: the operator adds, edits and removes the game servers this backend connects to.
- * This is the service behind the routes; it knows nothing about HTTP. The rules it enforces:
+ * ADR-0030's server management, as it stands since ADR-0066 (build PR 5): every server is reached through the mod, so the
+ * operator lists, renames and removes servers here (an agent server is created by `POST /api/servers/agent`, the self-serve
+ * create). Adding, editing, testing and switching a direct-poll server are gone: their routes answer 410 until build PR 6
+ * deletes them. This is the service behind the routes; it knows nothing about HTTP.
  *
- * - The host is resolved and EVERY address must be loopback or private (`resolveAllowedAddress`), on
- *   every create, every edit that touches the connection, and every test. The pinned address is what
- *   the backend connects to. A refusal never names the address.
- * - A test connection must pass before anything is saved.
- * - Tokens are write-only: a view carries "set" and the last 4 characters, never a token.
- * - At most MAX_LOCAL_SERVERS. The count and the insert are serialised by an in-process mutex AND a
- *   transaction-scoped Postgres advisory lock, so concurrent creates cannot pass the cap together.
- * - Every mutation of the runtime (add, replace, remove) runs under the same mutex, one at a time.
- * - Remove wipes the encrypted tokens and the memberships and stops the pollers.
+ * - Every mutation of the runtime (rename, remove) runs under one mutex, one at a time, after its commit.
+ * - Remove soft-deletes the server (its memberships, any stored connection and every recorded row go in the same
+ *   transaction) and stops its workers.
  */
 
 /** The Postgres side of the service: a pool that can also open a transaction. */
 export type ManagementDb = Queryable & Parameters<typeof withTransaction>[0];
 
-/** What a test connection needs: the address to use and the tokens. Never a hostname (no re-resolving). */
-export interface ConnectionCandidate {
-  pinnedIp: string;
-  apiPort: number;
-  frmPort: number;
-  apiToken: string;
-  frmToken?: string;
-}
-
 export interface ServerManagementDeps<TServices> {
   db: ManagementDb;
-  ring: SecretsKeyring | null;
   runtime: ServerRuntime<TServices>;
-  /** Builds a running server (services and pollers) from an opened connection. */
-  build: (connection: ServerConnection) => RuntimeServer<TServices>;
-  /** Runs the two reads against the candidate (composition root: the gameserver module). */
-  testConnection: (candidate: ConnectionCandidate) => Promise<TestConnectionResponse>;
-  /** Issue #195: ports that belong to this process's own machine services (the backend's listen port, the database's port). A
-   *  loopback game server may not use them: a test would otherwise probe the backend or Postgres. The composition root supplies them. */
-  forbiddenPorts?: readonly number[];
-  /** ADR-0031 amendment: releases the agent side of a server inside the caller's transaction (revoke the credential, drop
-   *  unspent enrolment codes, end waiting commands); the composition root supplies the agents module's function. Without it,
-   *  switching back to local is unavailable. */
-  releaseAgent?: (db: Queryable, serverUuid: string) => Promise<{ credentialRevoked: boolean; commandsEnded: number }>;
   /** The seeded operator account's id; undefined until the database is up. */
   getOperatorUserId: () => string | undefined;
-  /** Names of the environment variables that still configure servers (composition root: the gameserver module).
-   *  While any is set and no connection is stored, create is refused with `import_required`. */
-  configuredServerEnvNames?: () => string[];
-  /** DNS lookup, injectable for tests. */
-  lookup?: AddressLookup;
-  /** For tests and the future certificate-pinning change only. Production never passes one: the default is the
-   *  LAN_ALLOWED constant in the address guard (ADR-0030 amendment 1), which is not an environment setting. */
-  policy?: AddressPolicy;
   /** One mutex per process; tests may pass their own. */
   mutex?: Mutex;
 }
@@ -97,160 +32,15 @@ export interface ServerManagementDeps<TServices> {
 export interface ServerManagementService {
   /** True only for the operator account. */
   canManage(userId: string): boolean;
-  create(actorUserId: string, input: CreateServerRequest): Promise<ServerConnectionView>;
-  get(publicId: string): Promise<ServerConnectionView>;
-  /** Every stored connection, including unreadable and refused ones (the operator's management list). */
-  list(): Promise<ServerConnectionView[]>;
-  /** ADR-0031: the servers reached through an edge agent (no stored connection), for the managed list. */
+  /** ADR-0031: the servers reached through the mod that the operator created, for the managed list. */
   listAgentServers(): Promise<AgentServer[]>;
-  /** ADR-0031 amendment: an agent server becomes a server this backend reads itself again. `server_not_agent` (409) for one that is not. */
-  switchToLocal(actorUserId: string, publicId: string, input: SwitchToLocalRequest): Promise<ServerConnectionView>;
-  /** ADR-0031: renames an agent server, the one edit it has. Not found for a `local` server or an unknown id. */
+  /** ADR-0031: renames a server. Not found for an unknown or removed id. */
   renameAgentServer(actorUserId: string, publicId: string, displayName: string): Promise<AgentServer>;
-  update(actorUserId: string, publicId: string, patch: UpdateServerRequest): Promise<ServerConnectionView>;
   remove(actorUserId: string, publicId: string): Promise<void>;
-  testCandidate(input: TestConnectionRequest): Promise<TestConnectionResponse>;
-  testSaved(publicId: string): Promise<TestConnectionResponse>;
-}
-
-/** Long enough that the last 4 characters reveal little; shorter tokens show no suffix. */
-const LAST4_MIN_LENGTH = 12;
-const last4 = (token: string): string | null => (token.length >= LAST4_MIN_LENGTH ? token.slice(-4) : null);
-
-const TAKE_ADVISORY_LOCK = TAKE_SERVER_MANAGEMENT_LOCK;
-
-function refusedAddress(): ApiFailure {
-  return new ApiFailure(
-    "address_not_allowed",
-    "That host is not a private address, or it could not be resolved.",
-  );
-}
-
-function notAnAgentServer(): ApiFailure {
-  return new ApiFailure("server_not_agent", "That server is not reached through an agent, so there is nothing to switch back from.");
-}
-
-/** #526 (L1): a self-serve server is agent-only by design (ADR-0046 section 1.2); it is never read by this backend. */
-function selfServeIsAgentOnly(): ForbiddenError {
-  return new ForbiddenError("A server its player added is reached only through its agent; it cannot be switched to local.");
-}
-
-function refusedPort(): ApiFailure {
-  return new ApiFailure(
-    "address_not_allowed",
-    "That port is used by this backend or its database, so it cannot be a game server's.",
-  );
-}
-
-function lanRequiresPinning(): ApiFailure {
-  return new ApiFailure(
-    "lan_requires_cert_pinning",
-    "Only loopback servers can be used for now: LAN servers wait for certificate pinning (ADR-0030, amendment 1).",
-  );
-}
-
-function importRequired(): ApiFailure {
-  return new ApiFailure(
-    "import_required",
-    "Servers are still configured in the environment and none is stored yet. Import them first (npm run admin -- import-servers; see the servers runbook) or remove those variables, then add more.",
-  );
-}
-
-function testFailure(result: TestConnectionResponse): ApiFailure {
-  const side = (check: TestConnectionResponse["api"]) => (check.ok ? "ok" : (check.error ?? "failed"));
-  return new ApiFailure(
-    "connection_test_failed",
-    `The game server did not pass the connection test (API: ${side(result.api)}, FRM: ${side(result.frm)}). Nothing was saved.`,
-  );
-}
-
-const UNREADABLE_MESSAGE =
-  "The stored tokens cannot be read with this backend's key. Send both tokens again (the FRM token may be null).";
-
-function viewOf(
-  meta: Pick<ConnectionMeta, "publicId" | "displayName" | "host" | "pinnedIp" | "apiPort" | "frmPort" | "frmTokenSet">,
-  tokens: { apiToken: string; frmToken?: string } | undefined,
-  policy: AddressPolicy,
-): ServerConnectionView {
-  const verdict = addressVerdict(meta.pinnedIp, policy);
-  return {
-    id: meta.publicId,
-    displayName: meta.displayName,
-    host: meta.host,
-    apiPort: meta.apiPort,
-    frmPort: meta.frmPort,
-    apiTokenSet: true,
-    apiTokenLast4: tokens ? last4(tokens.apiToken) : null,
-    frmTokenSet: meta.frmTokenSet,
-    frmTokenLast4: tokens?.frmToken === undefined ? null : last4(tokens.frmToken),
-    // "refused" wins: a stored address that is not usable (not loopback or private, or a LAN address while LAN servers
-    // wait for certificate pinning) is never connected to, whatever the tokens are.
-    state: verdict !== "ok" ? "refused" : tokens ? "ok" : "unreadable",
-    plainHttpOverLan: !isLoopbackAddress(meta.pinnedIp),
-  };
 }
 
 export function createServerManagementService<TServices>(deps: ServerManagementDeps<TServices>): ServerManagementService {
   const mutex = deps.mutex ?? new Mutex();
-  const policy = deps.policy ?? DEFAULT_ADDRESS_POLICY;
-
-  const ringOrUnavailable = (): SecretsKeyring => {
-    if (deps.ring === null) {
-      // Not configured: management needs SERVER_SECRETS_KEY (the runbook's first step).
-      throw new ApiFailure("service_unavailable", "Server management is not set up on this backend.");
-    }
-    return deps.ring;
-  };
-
-  const pin = async (host: string): Promise<string> => {
-    try {
-      return await resolveAllowedAddress(host, deps.lookup, policy);
-    } catch (err) {
-      if (err instanceof LanRequiresPinningError) throw lanRequiresPinning();
-      if (err instanceof AddressRefusedError) throw refusedAddress();
-      throw err;
-    }
-  };
-
-  /**
-   * Issue #195: a "game server" on THIS machine must not be this backend or its database. A test connection sends the entered
-   * API token to `pinnedIp:port`, so a loopback address with the backend's own port (or Postgres's) would make the backend probe
-   * and talk to its own internals, and the answer (a test result) would map them. Only loopback matters: a LAN address is a
-   * different machine, and LAN servers are refused anyway (amendment 1).
-   */
-  const assertPortsAllowed = (pinnedIp: string, ports: readonly number[]): void => {
-    const forbidden = deps.forbiddenPorts ?? [];
-    if (forbidden.length > 0 && isLoopbackAddress(pinnedIp) && ports.some((port) => forbidden.includes(port))) throw refusedPort();
-  };
-
-  const requireMeta = async (publicId: string): Promise<ConnectionMeta> => {
-    const meta = await getConnectionMetaByPublicId(deps.db, publicId);
-    if (meta === undefined) throw new ServerNotFoundError();
-    return meta;
-  };
-
-  /** The opened tokens, or undefined when this backend cannot open them. */
-  const openTokens = async (ring: SecretsKeyring, meta: ConnectionMeta) => {
-    try {
-      const connection = await getConnection(deps.db, ring, meta.serverId);
-      return connection === undefined ? undefined : { apiToken: connection.apiToken, frmToken: connection.frmToken };
-    } catch (err) {
-      if (err instanceof SecretsError) return undefined;
-      throw err;
-    }
-  };
-
-  /** The view of a stored connection, from metadata. Tokens are opened only to show their last 4 characters, and
-   *  never for a refused address or without a key (then the row is "unreadable"). */
-  const viewFor = async (meta: ConnectionMeta): Promise<ServerConnectionView> => {
-    const openable = deps.ring !== null && addressVerdict(meta.pinnedIp, policy) === "ok";
-    return viewOf(meta, openable ? await openTokens(deps.ring as SecretsKeyring, meta) : undefined, policy);
-  };
-
-  const connectionOf = (
-    meta: Pick<ConnectionMeta, "serverId" | "publicId" | "displayName">,
-    fields: { host: string; pinnedIp: string; apiPort: number; frmPort: number; apiToken: string; frmToken?: string },
-  ): ServerConnection => ({ serverId: meta.serverId, publicId: meta.publicId, displayName: meta.displayName, ...fields });
 
   return {
     canManage(userId) {
@@ -258,248 +48,30 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
       return operator !== undefined && operator === userId;
     },
 
-    async testCandidate(input) {
-      const pinnedIp = await pin(input.host);
-      assertPortsAllowed(pinnedIp, [input.apiPort, input.frmPort]);
-      return deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
-    },
-
-    async testSaved(publicId) {
-      const ring = ringOrUnavailable();
-      const meta = await requireMeta(publicId);
-      // The host must still resolve to allowed addresses; the test then uses the STORED pinned address
-      // (what the backend really connects to), never a fresh answer for the name.
-      // A stored address that is not allowed is never connected to, not even to test it (checked before any lookup).
-      const storedVerdict = addressVerdict(meta.pinnedIp, policy);
-      if (storedVerdict === "lan") throw lanRequiresPinning();
-      if (storedVerdict === "refused") throw refusedAddress();
-      await pin(meta.host);
-      assertPortsAllowed(meta.pinnedIp, [meta.apiPort, meta.frmPort]); // a row stored before this rule (or edited in the database) is not tested either
-      const tokens = await openTokens(ring, meta);
-      if (tokens === undefined) throw new ApiFailure("connection_unreadable", UNREADABLE_MESSAGE);
-      return deps.testConnection({ pinnedIp: meta.pinnedIp, apiPort: meta.apiPort, frmPort: meta.frmPort, ...tokens });
-    },
-
-    async get(publicId) {
-      return viewFor(await requireMeta(publicId));
-    },
-
     async listAgentServers() {
-      // ADR-0046 section 6: operator-created only (the startup load still loads every agent server).
+      // ADR-0046 section 6: operator-created only (the startup load still loads every agent server). A leftover `local` row
+      // is listed too: it is served as an agent server awaiting the mod (ADR-0066).
       return (await listOperatorAgentServers(deps.db)).map(({ publicId, displayName }) => ({ id: publicId, displayName, kind: "agent" as const }));
     },
 
-    /** Renames a server reached through an edge agent. Only for those: a `local` server has a connection and is renamed
-     *  through `update`; for anything else (or an unknown id) the answer is the same "no such server". */
+    /** Renames a server. A leftover `local` row is an agent server awaiting the mod (ADR-0066), so it is renamed the same
+     *  way; an unknown id is "no such server". */
     renameAgentServer(actorUserId, publicId, displayName) {
       return mutex.run(async () => {
         const server = await findServerByPublicId(deps.db, publicId);
-        if (server === undefined || server.connectionKind !== "agent") throw new ServerNotFoundError();
+        if (server === undefined) throw new ServerNotFoundError();
         if (!(await renameServer(deps.db, publicId, displayName, { actorUserId }))) throw new ServerNotFoundError();
         deps.runtime.rename(publicId, displayName);
         return { id: publicId, displayName, kind: "agent" as const };
       });
     },
 
-    async list() {
-      const metas = await listConnectionMetas(deps.db);
-      // One at a time: at most MAX_LOCAL_SERVERS rows, each opened only to show the last 4 characters.
-      const views: ServerConnectionView[] = [];
-      for (const meta of metas) views.push(await viewFor(meta));
-      return views;
-    },
-
-    create(actorUserId, input) {
-      return mutex.run(async () => {
-        const ring = ringOrUnavailable();
-        // While the servers still come from the environment and none is stored, adding one would make the
-        // database win at the next restart and silently drop them: the import comes first.
-        // Checked here for an early answer, and again under the advisory lock below (the import CLI takes the same lock).
-        const envConfigured = (deps.configuredServerEnvNames?.() ?? []).length > 0;
-        if (envConfigured && (await countConnections(deps.db)) === 0) throw importRequired();
-        const pinnedIp = await pin(input.host);
-        assertPortsAllowed(pinnedIp, [input.apiPort, input.frmPort]);
-        const test = await deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
-        if (!test.ok) throw testFailure(test);
-
-        const serverId = await withTransaction(deps.db, async (client) => {
-          // Serialises the count and the insert across processes and instances; released at COMMIT.
-          await timedQuery(client, "servers.create.takeAdvisoryLock", TAKE_ADVISORY_LOCK);
-          const stored = await countConnections(client);
-          if (envConfigured && stored === 0) throw importRequired();
-          if (stored >= MAX_LOCAL_SERVERS) {
-            throw new ApiFailure("server_limit_reached", `At most ${MAX_LOCAL_SERVERS} servers can be added.`);
-          }
-          if ((await findServerByPublicId(client, input.id)) !== undefined) {
-            throw new ApiFailure("server_exists", "A server with that id already exists.");
-          }
-          // Creates the row, or revives a removed one under this id (its memberships were deleted at removal).
-          const row = await upsertConfiguredServer(client, { publicId: input.id, displayName: input.displayName });
-          const outcome = await createConnection(client, ring, row.id, {
-            host: input.host,
-            pinnedIp,
-            apiPort: input.apiPort,
-            frmPort: input.frmPort,
-            apiToken: input.apiToken,
-            frmToken: input.frmToken,
-          });
-          if (outcome !== "created") {
-            throw new ApiFailure("server_exists", "A server with that id already exists.");
-          }
-          // The operator owns what they add. actorUserId null: the audit event below records who did it.
-          const member = await addMember(client, { serverId: row.id, userId: actorUserId, role: "owner", actorUserId: null });
-          if (member === "unknown_server_or_user") throw new Error("could not seed the owner of a new server");
-          await recordAuditEvent(client, { action: "server.created", actorUserId, serverId: row.id });
-          return row.id;
-        });
-
-        const connection = connectionOf(
-          { serverId, publicId: input.id, displayName: input.displayName },
-          { host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken },
-        );
-        await deps.runtime.replace(deps.build(connection));
-        return viewOf(
-          { publicId: input.id, displayName: input.displayName, host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, frmTokenSet: input.frmToken !== undefined },
-          { apiToken: input.apiToken, frmToken: input.frmToken },
-          policy,
-        );
-      });
-    },
-
-    /**
-     * ADR-0031 amendment, "Rollback: switch back to local". Order (the architect's rules):
-     *  1. Checks that need no lock: the server exists and is an agent server, the address gate, the own-port rule, and the
-     *     connection TEST (network I/O), all BEFORE the management lock is taken.
-     *  2. One transaction under the management lock: the server row is locked and its kind re-read (a concurrent change is
-     *     seen); the connection is stored (sealed tokens), the kind becomes `local`, the agent side is released (credential
-     *     revoked, unspent codes dropped, waiting commands ended), and one audit event records it. Members and history are
-     *     untouched: they are the server's, keyed on its internal id.
-     *  3. After the commit, the runtime entry is REMOVED and a polled one ADDED (an explicit switch of kind, which the runtime's
-     *     agent-to-polled `replace` guard deliberately allows only this way). The database is the truth: if `add` throws, the
-     *     error propagates (a 500 the request logger records with the request id) and the next startup rebuilds the runtime
-     *     from the database.
-     */
-    async switchToLocal(actorUserId, publicId, input) {
-      const ring = ringOrUnavailable();
-      if (deps.releaseAgent === undefined) throw new ApiFailure("service_unavailable", "Switching back to local is not set up on this backend.");
-      const before = await findServerByPublicId(deps.db, publicId);
-      if (before === undefined) throw new ServerNotFoundError();
-      if (before.connectionKind !== "agent") throw notAnAgentServer();
-      if (await isSelfServeServer(deps.db, before.id)) throw selfServeIsAgentOnly();
-      const pinnedIp = await pin(input.host);
-      assertPortsAllowed(pinnedIp, [input.apiPort, input.frmPort]);
-      const test = await deps.testConnection({ pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken });
-      if (!test.ok) throw testFailure(test);
-
-      // The runtime swap is inside the management lock too: otherwise a removal or edit of this server could run between the
-      // commit and the swap (a removed server re-added to the runtime, or a duplicate-id error on the add).
-      return mutex.run(async () => {
-        const server = await withTransaction(deps.db, async (client) => {
-          await timedQuery(client, "servers.switchToLocal.takeAdvisoryLock", TAKE_ADVISORY_LOCK);
-          const locked = await lockServerByPublicId(client, publicId);
-          if (locked === undefined) throw new ServerNotFoundError();
-          if (locked.connectionKind !== "agent") throw notAnAgentServer(); // changed since the first look (another switch, or a removal and re-add)
-          if (await isSelfServeServer(client, locked.id)) throw selfServeIsAgentOnly(); // re-checked under the row lock (#526)
-          if ((await countConnections(client)) >= MAX_LOCAL_SERVERS) {
-            throw new ApiFailure("server_limit_reached", `At most ${MAX_LOCAL_SERVERS} servers can be added.`);
-          }
-          // The kind flips first: `createConnection` only inserts for a 'local' server. Both are in this one transaction.
-          if (!(await switchToLocalKind(client, locked.id))) throw notAnAgentServer();
-          const outcome = await createConnection(client, ring, locked.id, {
-            host: input.host,
-            pinnedIp,
-            apiPort: input.apiPort,
-            frmPort: input.frmPort,
-            apiToken: input.apiToken,
-            frmToken: input.frmToken,
-          });
-          if (outcome !== "created") throw new ApiFailure("server_exists", "That server already has a stored connection.");
-          const released = await deps.releaseAgent!(client, locked.id);
-          await recordAuditEvent(client, {
-            action: "server.switched_to_local",
-            actorUserId,
-            serverId: locked.id,
-            // Counts and a flag only: never a secret, a code or a host.
-            detail: { credentialRevoked: released.credentialRevoked, commandsEnded: released.commandsEnded },
-          });
-          return locked;
-        });
-
-        const connection = connectionOf(
-          { serverId: server.id, publicId: server.publicId, displayName: server.displayName },
-          { host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, apiToken: input.apiToken, frmToken: input.frmToken },
-        );
-        await deps.runtime.remove(publicId);
-        deps.runtime.add(deps.build(connection));
-        return viewOf(
-          { publicId, displayName: server.displayName, host: input.host, pinnedIp, apiPort: input.apiPort, frmPort: input.frmPort, frmTokenSet: input.frmToken !== undefined },
-          { apiToken: input.apiToken, frmToken: input.frmToken },
-          policy,
-        );
-      });
-    },
-
-    update(actorUserId, publicId, patch) {
-      return mutex.run(async () => {
-        const meta = await requireMeta(publicId);
-        const touchesConnection =
-          patch.host !== undefined ||
-          patch.apiPort !== undefined ||
-          patch.frmPort !== undefined ||
-          patch.apiToken !== undefined ||
-          patch.frmToken !== undefined;
-
-        // A rename alone changes nothing about how the backend connects: no lookup, no test, pollers keep running.
-        if (!touchesConnection) {
-          const displayName = patch.displayName ?? meta.displayName;
-          if (!(await renameServer(deps.db, publicId, displayName, { actorUserId }))) throw new ServerNotFoundError();
-          deps.runtime.rename(publicId, displayName);
-          // viewFor, not openTokens: a refused address's tokens are never opened.
-          return viewFor({ ...meta, displayName });
-        }
-
-        // Anything that touches the connection re-seals the tokens, so it needs the key.
-        const ring = ringOrUnavailable();
-        const host = patch.host ?? meta.host;
-        const pinnedIp = await pin(host);
-        assertPortsAllowed(pinnedIp, [patch.apiPort ?? meta.apiPort, patch.frmPort ?? meta.frmPort]);
-        const opened = await openTokens(ring, meta);
-        let apiToken: string;
-        let frmToken: string | undefined;
-        if (opened === undefined) {
-          // The repair path: the stored tokens cannot be opened, so the operator sends both again.
-          if (patch.apiToken === undefined || patch.frmToken === undefined) {
-            throw new ApiFailure("connection_unreadable", UNREADABLE_MESSAGE);
-          }
-          apiToken = patch.apiToken;
-          frmToken = patch.frmToken ?? undefined;
-        } else {
-          apiToken = patch.apiToken ?? opened.apiToken;
-          frmToken = patch.frmToken === undefined ? opened.frmToken : (patch.frmToken ?? undefined);
-        }
-        const apiPort = patch.apiPort ?? meta.apiPort;
-        const frmPort = patch.frmPort ?? meta.frmPort;
-
-        const test = await deps.testConnection({ pinnedIp, apiPort, frmPort, apiToken, frmToken });
-        if (!test.ok) throw testFailure(test);
-
-        const connectionPatch: ConnectionPatch = { ...patch, pinnedIp };
-        const updated = await updateConnection(deps.db, ring, meta.serverId, connectionPatch, { actorUserId });
-        if (!updated) throw new ServerNotFoundError();
-
-        const displayName = patch.displayName ?? meta.displayName;
-        await deps.runtime.replace(
-          deps.build(connectionOf({ serverId: meta.serverId, publicId, displayName }, { host, pinnedIp, apiPort, frmPort, apiToken, frmToken })),
-        );
-        return viewOf({ publicId, displayName, host, pinnedIp, apiPort, frmPort, frmTokenSet: frmToken !== undefined }, { apiToken, frmToken }, policy);
-      });
-    },
-
     remove(actorUserId, publicId) {
       return mutex.run(async () => {
-        // No keyring needed: an unreadable or keyless row must still be removable.
-        await requireMeta(publicId);
-        // The row and its tokens and memberships go in one transaction; then the pollers stop.
+        // ADR-0066: any live server, whatever its kind. It used to look the server up by its stored connection, so an agent
+        // server the operator created could not be removed here (a 404).
+        if ((await findServerByPublicId(deps.db, publicId)) === undefined) throw new ServerNotFoundError();
+        // The row's memberships, any stored connection and its recorded data go in one transaction; then its workers stop.
         const removed = await softDeleteServer(deps.db, publicId, { actorUserId });
         if (!removed) throw new ServerNotFoundError();
         await deps.runtime.remove(publicId);

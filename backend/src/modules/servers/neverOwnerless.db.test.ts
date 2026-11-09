@@ -5,12 +5,10 @@ import { createTestDatabase, dbTestsAvailable } from "../../../test-support/test
 import type { TestDatabase } from "../../../test-support/testDb.js";
 import { createSecretsKeyring } from "../../platform/secrets/secrets.js";
 import { createUser } from "../identity/repositories/userRepository.js";
-import { Mutex } from "../../platform/mutex.js";
 import { loadDatabaseServers } from "./loadDatabaseServers.js";
 import { addMember, getMemberRole, removeMember, setMemberRole, transferOwnership } from "./repositories/memberRepository.js";
 import { saveConnection } from "./repositories/connectionRepository.js";
 import { softDeleteServer, upsertConfiguredServer } from "./repositories/serverRepository.js";
-import { createServerManagementService } from "./serverManagement.js";
 import { ServerRuntime } from "./serverRuntime.js";
 
 // #311: the database refuses to leave a live server without an owner, wherever the write comes from.
@@ -121,27 +119,9 @@ describe.skipIf(!available)("a live server is never ownerless (database trigger)
     expect(await getMemberRole(app, { publicId: server.publicId, userId: owner })).toBe("admin");
   });
 
-  it("a server created by server management gets its owner in the same transaction, so the check passes", async () => {
-    const operator = await user();
-    const service = createServerManagementService({
-      db: app,
-      ring,
-      runtime: new ServerRuntime<string>(),
-      build: (c) => ({ id: c.publicId, displayName: c.displayName, services: c.apiToken, workers: [] }),
-      testConnection: async () => ({ ok: true, api: { ok: true }, frm: { ok: true } }),
-      getOperatorUserId: () => operator,
-      lookup: async () => ["192.168.1.20"],
-      policy: { allowLan: true },
-      mutex: new Mutex(),
-    });
-    const view = await service.create(operator, {
-      id: "nov-created", displayName: "Created", host: "192.168.1.20", apiPort: 7777, frmPort: 8080,
-      apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678",
-    });
-    expect(view.id).toBe("nov-created");
-    expect(await getMemberRole(app, { publicId: "nov-created", userId: operator })).toBe("owner");
-    await expect(admin.query("DELETE FROM identity.users WHERE id = $1", [operator])).rejects.toMatchObject(OWNERLESS);
-  });
+  // ADR-0066: the startup seed loads every stored server as one awaiting (or running) the mod; these rows are leftover
+  // `local` ones with a stored connection, which is never read.
+  const buildAgent = ({ publicId, displayName }: { publicId: string; displayName: string }) => ({ id: publicId, displayName, services: "agent", workers: [] });
 
   it("the startup seed only adds owners, still works, and reports each seeded server with source startup_seed", async () => {
     const operator = await user();
@@ -150,11 +130,7 @@ describe.skipIf(!available)("a live server is never ownerless (database trigger)
       host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080,
       apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678",
     });
-    const load = () =>
-      loadDatabaseServers({
-        db: app, ring, runtime: new ServerRuntime<string>(), operatorUserId: operator, policy: { allowLan: true },
-        build: (c) => ({ id: c.publicId, displayName: c.displayName, services: c.apiToken, workers: [] }),
-      });
+    const load = () => loadDatabaseServers({ db: app, runtime: new ServerRuntime<string>(), operatorUserId: operator, buildAgent });
     expect((await load()).ownershipSeeded).toEqual(["nov-seeded"]);
     expect(await getMemberRole(app, { publicId: "nov-seeded", userId: operator })).toBe("owner");
     const audit = (await admin.query("SELECT detail FROM audit.audit_events WHERE server_id = $1 AND action = 'member_added'", [server.id])).rows;
@@ -204,10 +180,7 @@ describe.skipIf(!available)("a live server is never ownerless (database trigger)
       host: "192.168.1.21", pinnedIp: "192.168.1.21", apiPort: 7777, frmPort: 8080,
       apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678",
     });
-    const res = await loadDatabaseServers({
-      db: app, ring, runtime: new ServerRuntime<string>(), operatorUserId: operator, policy: { allowLan: true },
-      build: (c) => ({ id: c.publicId, displayName: c.displayName, services: c.apiToken, workers: [] }),
-    });
+    const res = await loadDatabaseServers({ db: app, runtime: new ServerRuntime<string>(), operatorUserId: operator, buildAgent });
     expect(res.ownershipSeeded).not.toContain("nov-owned");
     expect(await getMemberRole(app, { publicId: "nov-owned", userId: realOwner })).toBe("owner");
   });

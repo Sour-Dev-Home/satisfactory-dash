@@ -6,7 +6,7 @@ import { timedQuery } from "../../platform/db/timedQuery.js";
 import { withTransaction } from "../../platform/db/transaction.js";
 import { ApiFailure, ForbiddenError, RateLimitedError, ServerNotFoundError } from "../../platform/errorResponse.js";
 import { Mutex } from "../../platform/mutex.js";
-import { TAKE_SERVER_MANAGEMENT_LOCK } from "./importServers.js";
+import { TAKE_SERVER_MANAGEMENT_LOCK } from "./managementLock.js";
 import { addMember } from "./repositories/memberRepository.js";
 import {
   countRecentSelfServeCreations,

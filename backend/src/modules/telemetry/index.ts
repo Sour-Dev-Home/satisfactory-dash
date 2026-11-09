@@ -1,8 +1,7 @@
 /**
- * The telemetry module's public API (ADR-0014): status, factory, power and power history
- * for one game server. Its services depend on narrow port interfaces (the *AdapterLike
- * types), which the gameserver module's adapter satisfies; it never imports the adapter
- * itself.
+ * The telemetry module's public API (ADR-0014): status, factory, power and power history for one game server. Since
+ * ADR-0066 every server is reached through the mod: its live reads serve the mod's last snapshot and its history is fed
+ * by the snapshots (`createAgentTelemetryServices`). Nothing here calls a game server.
  */
 import type { Router } from "express";
 import type { Logger } from "pino";
@@ -13,27 +12,12 @@ import { createFactoryRouter } from "./routes/factory.js";
 import { createPowerRouter } from "./routes/power.js";
 import { createPowerHistoryRouter } from "./routes/powerHistory.js";
 import { createPlayersRouter } from "./routes/players.js";
-import { PlayersService } from "./services/playersService.js";
-import type { PlayersAdapterLike } from "./services/playersService.js";
-import { ServerStatusService } from "./services/serverStatusService.js";
-import type { ServerStatusAdapterLike } from "./services/serverStatusService.js";
-import { ProductionService } from "./services/productionService.js";
 import type { UnitResolver } from "./itemForms.js";
 import { createUnitResolver } from "./itemForms.js";
-import type { ProductionAdapterLike } from "./services/productionService.js";
-import { PowerService } from "./services/powerService.js";
-import type { PowerAdapterLike } from "./services/powerService.js";
-import { PowerHistoryPoller } from "./services/powerHistoryPoller.js";
 import type { BackgroundWorker } from "./services/backgroundWorker.js";
 import { PowerHistoryService } from "./services/powerHistoryService.js";
-import {
-  InMemoryPowerHistoryStore,
-  POWER_HISTORY_INTERVAL_SECONDS,
-  POWER_HISTORY_WINDOW_SECONDS,
-} from "./services/powerHistoryStore.js";
-import { BufferedHistoryRecorder, noopHistoryRecorder } from "./services/historyRecorder.js";
-import type { HistoryRecorder } from "./services/historyRecorder.js";
-import { FactoryHistoryPoller } from "./services/factoryHistoryPoller.js";
+import { InMemoryPowerHistoryStore } from "./services/powerHistoryStore.js";
+import { BufferedHistoryRecorder } from "./services/historyRecorder.js";
 import { HistoryMaintenanceWorker } from "./services/historyMaintenanceWorker.js";
 import { HistoryQueryService } from "./services/historyQueryService.js";
 import { ObservationBoard } from "./services/observationBoard.js";
@@ -47,7 +31,6 @@ import type { Cadence } from "@satisfactory-dash/shared";
 import { AgentIngest } from "./services/agentIngest.js";
 import type { MapLiveSink } from "./services/agentIngest.js";
 import { LatestSnapshotStore } from "./services/agentSnapshotStore.js";
-import { withLastGood } from "./services/lastGood.js";
 import { createLatestSnapshotRepository } from "./repositories/latestSnapshotRepository.js";
 import { LatestSnapshotWriter, loadLatestSnapshot } from "./services/latestSnapshotWriter.js";
 import type { TelemetryScope, TelemetryServices } from "./telemetryServices.js";
@@ -64,80 +47,8 @@ export type { AgentSnapshotSink, MapLiveSink } from "./services/agentIngest.js";
 export type { AutoPauseReading } from "./services/agentSnapshotStore.js";
 export { createUnitResolver } from "./itemForms.js";
 
-export type TelemetryPorts = ServerStatusAdapterLike & ProductionAdapterLike & PowerAdapterLike & PlayersAdapterLike;
-
-export interface TelemetryOptions {
-  /** Where the background workers log; silent when omitted. */
-  logger?: Logger;
-  /** Injectable clock, for tests on fake time. */
-  now?: () => number;
-  /** History window and sampling cadence; ADR-0022's 5 minutes at 5 seconds by default. */
-  powerHistory?: { windowSeconds?: number; intervalSeconds?: number };
-  /** ADR-0027: with a database, this server's samples are also written to durable history. Omitted: memory only. */
-  history?: { db: Queryable & HistoryDb; serverPublicId: string };
-}
-
 /** The services plus the background workers the composition root must start and stop. */
 export type TelemetryBundle = TelemetryServices & { workers: BackgroundWorker[] };
-
-/**
- * ADR-0001: one set of services per registered game server. The power history poller is
- * created here but NOT started: the composition root starts every worker once the server
- * is listening, and stops them on shutdown (ADR-0022).
- */
-export function createTelemetryServices(
-  ports: TelemetryPorts,
-  resolveUnit?: UnitResolver,
-  options: TelemetryOptions = {},
-): TelemetryBundle {
-  const windowSeconds = options.powerHistory?.windowSeconds ?? POWER_HISTORY_WINDOW_SECONDS;
-  const intervalSeconds = options.powerHistory?.intervalSeconds ?? POWER_HISTORY_INTERVAL_SECONDS;
-  const store = new InMemoryPowerHistoryStore({ windowSeconds, intervalSeconds });
-  const logger = options.logger ?? createLogger({ level: "silent" });
-  const workers: BackgroundWorker[] = [];
-  let history: HistoryRecorder = noopHistoryRecorder;
-  // ADR-0027 (alerts): with a database, the pollers also publish their last readings to this in-memory board.
-  let observations: ObservationBoard | undefined;
-  if (options.history) {
-    const recorder = new BufferedHistoryRecorder(options.history.db, options.history.serverPublicId, { logger });
-    history = recorder;
-    observations = new ObservationBoard();
-    workers.push(
-      recorder,
-      new FactoryHistoryPoller(ports, { logger, history: recorder, observations, now: options.now, serverPublicId: options.history.serverPublicId }),
-    );
-  }
-  // ADR-0037: the pollers label their metrics with the server's public id, known only with a database (which is also
-  // what flushes the metrics); without one they record none.
-  const poller = new PowerHistoryPoller(ports, store, {
-    logger,
-    intervalSeconds,
-    now: options.now,
-    history,
-    observations,
-    serverPublicId: options.history?.serverPublicId,
-  });
-  workers.unshift(poller);
-  // ADR-0052: each live read remembers its last success (memory only) and serves it stale while the game is unreachable.
-  const clock = options.now ?? Date.now;
-  const statusService = new ServerStatusService(ports);
-  const productionService = new ProductionService(ports, resolveUnit);
-  const powerService = new PowerService(ports);
-  const playersService = new PlayersService(ports);
-  return {
-    status: { getStatus: withLastGood(() => statusService.getStatus(), clock) },
-    production: { getFactoryOverview: withLastGood(() => productionService.getFactoryOverview(), clock) },
-    power: { getPowerOverview: withLastGood(() => powerService.getPowerOverview(), clock) },
-    powerHistory: new PowerHistoryService(store, poller, { intervalSeconds, now: options.now }),
-    players: { getPlayers: withLastGood(() => playersService.getPlayers(), clock) },
-    // ADR-0027: the same server's stored history, for the history routes (absent without a database).
-    ...(observations ? { observations } : {}),
-    ...(options.history
-      ? { history: new HistoryQueryService(options.history.db, options.history.serverPublicId, { now: options.now }) }
-      : {}),
-    workers,
-  };
-}
 
 export interface AgentTelemetryOptions {
   logger?: Logger;

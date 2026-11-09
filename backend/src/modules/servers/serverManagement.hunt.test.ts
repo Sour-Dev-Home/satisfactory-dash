@@ -15,18 +15,18 @@ const guard: RequestHandler = (req, res, next) => {
 };
 
 function app() {
+  // ADR-0066: create and update are retired (410) and no longer on the service; these spies prove nothing reaches it.
   const service = {
     canManage: (id: string) => id === "op",
     create: vi.fn(async () => {
       throw new Error("must not be reached");
     }),
-    get: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
-    testCandidate: vi.fn(),
-    testSaved: vi.fn(),
-  } as unknown as ServerManagementService;
-  const m = createServerManagementRouters(service);
+    listAgentServers: vi.fn(),
+    renameAgentServer: vi.fn(),
+  };
+  const m = createServerManagementRouters(service as ServerManagementService);
   const directory = new InMemoryServerDirectory([{ id: "home", displayName: "Home", services: {} }]);
   const access = {
     getRole: async (id: string) => (id === "home" ? ("viewer" as const) : undefined),
@@ -67,15 +67,15 @@ describe("management request validation holes", () => {
     expect(JSON.stringify(res.body)).not.toContain("a".repeat(50));
   });
 
-  it("a validation error never echoes a token value", async () => {
+  it("the retired create (410, ADR-0066) never echoes a token value", async () => {
     const { app: a } = app();
     const res = await request(a)
       .post("/api/servers")
       .set("x-test-user", "op")
       .set("Content-Type", "application/json")
       .send(JSON.stringify({ ...good, apiToken: "SECRET TOKEN WITH SPACES", extra: "SECRET-EXTRA" }));
-    expect(res.status).toBe(400);
-    expect(JSON.stringify(res.body)).not.toContain("SECRET TOKEN");
+    expect(res.status).toBe(410);
+    expect(JSON.stringify(res.body)).not.toContain("SECRET");
   });
 
   it("a malformed JSON body does not echo its content", async () => {

@@ -10,11 +10,7 @@ import { createUser } from "../identity/repositories/userRepository.js";
 import { enrolledServerIds } from "../agents/index.js";
 import { addMember, getMemberRole, transferOwnership } from "./repositories/memberRepository.js";
 import { PURGED_TABLES, findServerByPublicId, softDeleteServer, upsertConfiguredServer } from "./repositories/serverRepository.js";
-import { randomBytes } from "node:crypto";
 import { Mutex } from "../../platform/mutex.js";
-import { createSecretsKeyring } from "../../platform/secrets/secrets.js";
-import { releaseAgentServer } from "../agents/services/releaseAgent.js";
-import { createServerManagementService } from "./serverManagement.js";
 import { ServerRuntime } from "./serverRuntime.js";
 import { addUnlessRemoved } from "./runtimeGuard.js";
 import { createPendingServerSweeper } from "./pendingServerSweeper.js";
@@ -250,34 +246,7 @@ describe.skipIf(!available)("self-serve owner actions, creator caps and the pend
   });
 
   describe("runtime races (#526 security review L1, L2)", () => {
-    const ring = createSecretsKeyring("k1", new Map([["k1", randomBytes(32)]]));
-    const management = (operatorId: string, mutex: Mutex, runtime: ServerRuntime<string>) =>
-      createServerManagementService({
-        db: pool,
-        ring,
-        runtime,
-        build: (c) => ({ id: c.publicId, displayName: c.displayName, services: "polled", workers: [] }),
-        testConnection: async () => ({ ok: true, api: { ok: true }, frm: { ok: true } }),
-        getOperatorUserId: () => operatorId,
-        lookup: async () => ["127.0.0.1"],
-        mutex,
-        releaseAgent: releaseAgentServer,
-      });
-    const localBody = { host: "localhost", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678" };
-
-    it("L1: the operator cannot switch a self-serve server to local (agent-only), even one they own; nothing changes", async () => {
-      const operatorId = await user();
-      const runtime = new ServerRuntime<string>();
-      const created = await service({}, { isOperator: (id) => id === operatorId }).create(operatorId, { displayName: "Mine" });
-      runtime.add({ id: created.id, displayName: "Mine", services: "agent", workers: [], kind: "agent" });
-      const err = await failureOf(management(operatorId, new Mutex(), runtime).switchToLocal(operatorId, created.id, localBody));
-      expect(err).toBeInstanceOf(ForbiddenError);
-      const uuid = await uuidOf(created.id);
-      expect((await admin.query("SELECT connection_kind FROM servers.servers WHERE id = $1", [uuid])).rows[0]).toEqual({ connection_kind: "agent" });
-      expect((await admin.query("SELECT 1 FROM servers.server_connections WHERE server_id = $1", [uuid])).rowCount).toBe(0);
-      expect(runtime.get(created.id)).toBe("agent");
-    });
-
+    // ADR-0066: "switch to local" is retired (410), so its L1 case went with it.
     it("L1: the owner's remove waits for the shared management mutex, so it never interleaves with an operator change", async () => {
       const owner = await user();
       const mutex = new Mutex();

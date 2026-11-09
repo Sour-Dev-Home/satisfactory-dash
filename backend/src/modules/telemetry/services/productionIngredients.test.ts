@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { FactoryResponseSchema } from "@satisfactory-dash/shared";
-import { ProductionService } from "./productionService.js";
+// ADR-0066: the polled ProductionService is gone; the harness runs the same mapping and derivation over these buildings.
+import { FactoryOverviewHarness as ProductionService } from "../../../../test-support/factoryOverview.js";
 import type { FactoryBuilding } from "../domain.js";
 
 const building: FactoryBuilding = {

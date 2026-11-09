@@ -12,9 +12,6 @@ import type { RuntimeServer } from "./serverRuntime.js";
 const available = dbTestsAvailable();
 
 const buildAgent = ({ publicId, displayName }: { publicId: string; displayName: string }): RuntimeServer<string> => ({ id: publicId, displayName, services: "agent", workers: [] });
-const build = () => {
-  throw new Error("no connection rows exist in these tests");
-};
 
 // #267: startup makes the operator owner of an agent server that has no owner, and never takes one from an existing owner.
 // Runs as satis_app against a real Postgres.
@@ -43,7 +40,7 @@ describe.skipIf(!available)("seeding the operator as owner of agent servers, aga
     await switchToAgentConnection(pool, server.id);
     return { publicId, id: server.id };
   };
-  const load = () => loadDatabaseServers({ db: pool, ring: null, runtime: new ServerRuntime<string>(), operatorUserId: operatorId, build, buildAgent });
+  const load = () => loadDatabaseServers({ db: pool, runtime: new ServerRuntime<string>(), operatorUserId: operatorId, buildAgent });
 
   it("an agent server with no owner gets the operator as owner, and a second startup changes nothing", async () => {
     const { publicId, id } = await agentServer();
@@ -88,7 +85,7 @@ describe.skipIf(!available)("seeding the operator as owner of agent servers, aga
     const { publicId, id } = await agentServer();
     await softDeleteServer(pool, publicId, { actorUserId: null });
     const runtime = new ServerRuntime<string>();
-    await loadDatabaseServers({ db: pool, ring: null, runtime, operatorUserId: operatorId, build, buildAgent });
+    await loadDatabaseServers({ db: pool, runtime, operatorUserId: operatorId, buildAgent });
     expect(runtime.list().some((s) => s.id === publicId)).toBe(false);
     const members = await pool.query("SELECT count(*)::int AS n FROM servers.server_members WHERE server_id = $1", [id]);
     expect(members.rows[0].n).toBe(0);

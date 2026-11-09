@@ -2,7 +2,7 @@ import express from "express";
 import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { ApiErrorResponseSchema, SetAutoPauseResponseSchema, SettingsResponseSchema, endpoints } from "@satisfactory-dash/shared";
-import { commandPending, settingsEditable } from "@satisfactory-dash/shared/fixtures";
+import { commandPending } from "@satisfactory-dash/shared/fixtures";
 import { createApp } from "../../../app.js";
 import { ApiFailure, NotEditableError } from "../../../platform/errorResponse.js";
 import { createLogger } from "../../../platform/logger.js";
@@ -12,7 +12,7 @@ import { InMemoryServerDirectory } from "../../servers/index.js";
 import { createAgentSettingsServices } from "./agentSettings.js";
 import type { CommandsService } from "./commandsService.js";
 
-// ADR-0031 PR 5b: the auto-pause of a server reached through an edge agent is a COMMAND (202); a local server keeps 200.
+// ADR-0031 PR 5b: the auto-pause of a server reached through an edge agent is a COMMAND (202). ADR-0066: the only kind.
 
 const commandsStub = () => ({
   readAutoPause: vi.fn<CommandsService["readAutoPause"]>(async () => ({ autoPause: false, pending: false, editable: true })),
@@ -37,29 +37,27 @@ describe("createAgentSettingsServices", () => {
     expect(commands.readAutoPause.mock.calls).toEqual([["alpha", undefined], ["alpha", { autoPause: true, observedAtMs: 1000, stale: false }]]);
   });
 
-  it("changing it creates a command and returns it, passing who asked, and never calls the write hook (nothing is applied here)", async () => {
+  it("changing it creates a command and returns it, passing who asked", async () => {
     const commands = commandsStub();
-    const onApplied = vi.fn();
-    const result = await createAgentSettingsServices(commands, "alpha").setAutoPause(true, onApplied, { actorUserId: "user-1" });
+    const result = await createAgentSettingsServices(commands, "alpha").setAutoPause(true, { actorUserId: "user-1" });
     expect(result).toEqual({ command: commandPending.command });
     expect(commands.requestAutoPause).toHaveBeenCalledWith("alpha", true, "user-1");
-    expect(onApplied).not.toHaveBeenCalled();
   });
 
   it("works without a context (no actor)", async () => {
     const commands = commandsStub();
-    await createAgentSettingsServices(commands, "alpha").setAutoPause(false, () => undefined);
+    await createAgentSettingsServices(commands, "alpha").setAutoPause(false);
     expect(commands.requestAutoPause).toHaveBeenCalledWith("alpha", false, undefined);
   });
 });
 
-describe("the settings routes, for an agent server and a local one side by side", () => {
+// ADR-0066: every server is reached through the mod, so the PUT always answers 202 with a command (no 200 any more).
+describe("the settings routes", () => {
   function build() {
     const commands = commandsStub();
-    const localSetAutoPause = vi.fn(async (enabled: boolean) => ({ autoPause: enabled, pending: false, editable: true }));
     const directory = new InMemoryServerDirectory<SettingsScope>([
       { id: "alpha", displayName: "Alpha", services: { settings: createAgentSettingsServices(commands, "alpha") } },
-      { id: "bravo", displayName: "Bravo", services: { settings: { getSettings: async () => settingsEditable.data, setAutoPause: localSetAutoPause } } },
+      { id: "bravo", displayName: "Bravo", services: { settings: createAgentSettingsServices(commands, "bravo") } },
     ]);
     const lines: string[] = [];
     const asUser = express.Router().use((_req, res, next) => {
@@ -70,7 +68,7 @@ describe("the settings routes, for an agent server and a local one side by side"
       logger: createLogger({ level: "info" }, { write: (line: string) => lines.push(line) }),
       routers: [asUser, ...createSettingsRouters(directory)],
     });
-    return { app, commands, localSetAutoPause, lines };
+    return { app, commands, lines };
   }
   const put = (app: ReturnType<typeof build>["app"], serverId: string, body: unknown) =>
     request(app).put(endpoints.settings.setAutoPause.path(serverId)).set("Content-Type", "application/json").send(JSON.stringify(body));
@@ -83,13 +81,12 @@ describe("the settings routes, for an agent server and a local one side by side"
     expect(commands.requestAutoPause).toHaveBeenCalledWith("alpha", true, "user-1");
   });
 
-  it("a local server still answers 200 with the new setting", async () => {
-    const { app, localSetAutoPause } = build();
-    const res = await put(app, "bravo", { enabled: true });
-    expect(res.status).toBe(200);
-    expect(SettingsResponseSchema.parse(res.body).data.autoPause).toBe(true);
-    expect(SetAutoPauseResponseSchema.parse(res.body)).toBeDefined(); // a client handles both shapes
-    expect(localSetAutoPause).toHaveBeenCalledWith(true, expect.any(Function), { actorUserId: "user-1" });
+  it("every server answers 202 and a command is created for that server (no direct write, ADR-0066)", async () => {
+    const { app, commands } = build();
+    const res = await put(app, "bravo", { enabled: false });
+    expect(res.status).toBe(202);
+    expect(SetAutoPauseResponseSchema.parse(res.body)).toEqual({ command: commandPending.command });
+    expect(commands.requestAutoPause).toHaveBeenCalledWith("bravo", false, "user-1");
   });
 
   it("logs that a change was sent to the agent, with the command id and the user, and not the target value", async () => {
@@ -124,12 +121,11 @@ describe("the settings routes, for an agent server and a local one side by side"
     expect(ApiErrorResponseSchema.parse(res.body).error.code).toBe("upstream_unreachable");
   });
 
-  it("a body that is not { enabled: boolean } is a 400 for both kinds, and asks nobody", async () => {
-    const { app, commands, localSetAutoPause } = build();
+  it("a body that is not { enabled: boolean } is a 400, and asks nobody", async () => {
+    const { app, commands } = build();
     for (const serverId of ["alpha", "bravo"]) {
       expect((await put(app, serverId, { enabled: "yes" })).status).toBe(400);
     }
     expect(commands.requestAutoPause).not.toHaveBeenCalled();
-    expect(localSetAutoPause).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,8 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { decodeDocsFile, parseItemForms } from "./parseGameDocs.js";
 import { createUnitResolver, itemFormCatalog } from "./itemForms.js";
-import { ProductionService } from "./services/productionService.js";
+// ADR-0066: the polled ProductionService is gone; the harness runs the same mapping and derivation over these buildings.
+import { FactoryOverviewHarness as ProductionService } from "../../../test-support/factoryOverview.js";
 
 const docs = (...classes: object[]) => [{ NativeClass: "x", Classes: classes }];
 
