@@ -26,26 +26,28 @@ function ServersSkeleton() {
  */
 export function ServerManagementView() {
   const managed = useQuery(queries.managedServers());
+  // Only for the empty state's wording: whether "Add your server" exists on this backend.
+  const selfServeEnabled = useQuery(queries.servers()).data?.selfServeEnabled === true;
   const [renaming, setRenaming] = useState<AgentServer | null>(null);
   const [notice, setNotice] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
-  // Opening or closing the form replaces what had focus: land on the heading of what's shown.
-  const moved = useRef(false);
+  // Opening or closing the form, or removing a row, replaces what had focus: land on the heading of what's shown. A
+  // counter, not the `renaming` change: a removal leaves `renaming` null, so only a counter re-runs the effect.
+  const [moves, setMoves] = useState(0);
   useEffect(() => {
-    if (!moved.current) return;
-    moved.current = false;
+    if (moves === 0) return;
     const target = renaming ? document.querySelector<HTMLElement>("#server-form-anchor h3") : heading.current;
     target?.setAttribute("tabindex", "-1");
     target?.focus();
-  }, [renaming]);
+  }, [moves, renaming]);
 
   const open = (server: AgentServer) => {
-    moved.current = true;
+    setMoves((n) => n + 1);
     setNotice("");
     setRenaming(server);
   };
   const close = (message: string) => {
-    moved.current = true;
+    setMoves((n) => n + 1);
     setNotice(message);
     setRenaming(null);
   };
@@ -85,7 +87,9 @@ export function ServerManagementView() {
         )
       ) : servers.length === 0 ? (
         <p className="rounded-card border border-line bg-surface p-5 text-muted">
-          No game servers yet. Servers added with Add your server show here; each connects through the Satis Manager mod.
+          {selfServeEnabled
+            ? "No game servers yet. Add one with the Add your server button; each connects through the Satis Manager mod."
+            : "No game servers yet. Adding servers is turned off on this backend: set SELF_SERVE_ENABLED to true to offer the Add your server button."}
         </p>
       ) : (
         <ul aria-labelledby="servers-heading" className="divide-y divide-line rounded-card border border-line bg-surface">

@@ -2,7 +2,7 @@ import { act, fireEvent, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
-import { errorOperatorOnly, managedServersAllStates, renameAgentServerResponse } from "@satisfactory-dash/shared/fixtures";
+import { errorOperatorOnly, managedServersAllStates, renameAgentServerResponse, serversSelfServe } from "@satisfactory-dash/shared/fixtures";
 import { managedAgentNone, managedAgentOne, managedAgentSeveral } from "../test/managedMocks";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
@@ -64,6 +64,19 @@ describe("ServerManagementView: the list", () => {
     expect(await screen.findByText(/^No game servers yet\./)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add a server" })).not.toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  it("the empty state points at Add your server only while self-serve is on, and otherwise says how to turn it on", async () => {
+    serveManaged(managedAgentNone);
+    const first = renderView();
+    expect(await screen.findByText(/Adding servers is turned off on this backend: set SELF_SERVE_ENABLED to true/)).toBeInTheDocument();
+    expect(screen.queryByText(/Add one with the Add your server button/)).not.toBeInTheDocument();
+    first.unmount();
+
+    server.use(http.get(endpoints.servers.route, () => HttpResponse.json(serversSelfServe)));
+    renderView();
+    expect(await screen.findByText(/Add one with the Add your server button; each connects through the Satis Manager mod\./)).toBeInTheDocument();
+    expect(screen.queryByText(/turned off/)).not.toBeInTheDocument();
   });
 
   it("is the empty state too for an older backend that sends no agentServers (ADR-0007)", async () => {
@@ -189,9 +202,21 @@ describe("ServerManagementView: removing", () => {
     expect(confirm).toHaveTextContent("the mod's connection stops working");
     expect(confirm).not.toHaveTextContent(/delet|token/i);
     expect(removed).toBe("");
+    // Remove unmounted: focus lands on the safe choice, not the page's top.
+    expect(within(confirm).getByRole("button", { name: "Keep it" })).toHaveFocus();
     fireEvent.click(within(confirm).getByRole("button", { name: "Remove server" }));
     expect(await screen.findByText(`Removed ${factoryTwo.displayName}.`)).toBeInTheDocument();
     expect(removed).toBe(factoryTwo.id);
+    // The row is gone: focus goes to the list's heading.
+    expect(screen.getByRole("heading", { name: "Game servers" })).toHaveFocus();
+  });
+
+  it("Keep it hands focus back to the row's Remove button", async () => {
+    serveManaged(managedAgentOne);
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: `Remove ${factoryTwo.displayName}` }));
+    fireEvent.click(screen.getByRole("button", { name: "Keep it" }));
+    expect(screen.getByRole("button", { name: `Remove ${factoryTwo.displayName}` })).toHaveFocus();
   });
 
   it("shows the backend's refusal when removing fails, and keeps the confirmation open", async () => {

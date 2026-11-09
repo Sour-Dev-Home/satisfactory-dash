@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { endpoints, type AgentServer } from "@satisfactory-dash/shared";
 import { apiSend } from "../api/client";
@@ -24,6 +24,20 @@ export function AgentServerRow({
   const headingId = useId();
   const client = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  // Opening the confirm unmounts Remove, and Keep it unmounts itself: focus goes to Keep it (the safe choice) on open
+  // and back to Remove on Keep it, never to the page's top.
+  const keepButton = useRef<HTMLButtonElement>(null);
+  const removeButton = useRef<HTMLButtonElement>(null);
+  const toggled = useRef(false);
+  useEffect(() => {
+    if (!toggled.current) return;
+    toggled.current = false;
+    (confirming ? keepButton.current : removeButton.current)?.focus();
+  }, [confirming]);
+  const setConfirm = (next: boolean) => {
+    toggled.current = true;
+    setConfirming(next);
+  };
   const remove = useMutation({
     mutationFn: () => apiSend(endpoints.serverManagement.remove, undefined, server.id),
     onSuccess: async () => {
@@ -46,7 +60,7 @@ export function AgentServerRow({
         <ServerUpdateLine serverId={server.id} />
       </div>
       {confirming ? (
-        <div role="group" aria-label={`Remove ${server.displayName}?`} className="grid gap-3 rounded-lg border border-line bg-surface-2 p-4">
+        <div role="group" aria-label={`Remove ${server.displayName}?`} className="grid gap-3 rounded-card border border-line bg-surface-2 p-4">
           <p className="mb-0 text-sm text-fg-strong">
             {/* What the backend does (softDeleteServer, #193): memberships, the mod's credential and the recorded history go. */}
             Remove {server.displayName}? Everyone loses access to it, the mod&apos;s connection stops working, and its recorded
@@ -55,7 +69,7 @@ export function AgentServerRow({
           {remove.error && !remove.isPending && <ErrorNotice error={remove.error} />}
           {/* The safe choice first, where a quick tap lands. */}
           <div className="flex flex-wrap gap-3">
-            <button type="button" disabled={remove.isPending} onClick={() => setConfirming(false)}>
+            <button ref={keepButton} type="button" disabled={remove.isPending} onClick={() => setConfirm(false)}>
               Keep it
             </button>
             <button type="button" disabled={remove.isPending} onClick={() => remove.mutate()} className={DANGER_BUTTON}>
@@ -69,10 +83,11 @@ export function AgentServerRow({
             Rename
           </button>
           <button
+            ref={removeButton}
             type="button"
             onClick={() => {
               remove.reset();
-              setConfirming(true);
+              setConfirm(true);
             }}
             className={DANGER_BUTTON_QUIET}
             aria-label={`Remove ${server.displayName}`}
