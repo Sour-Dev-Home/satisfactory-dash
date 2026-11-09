@@ -57,7 +57,7 @@ foreach ($tool in 'node', 'docker', 'age', 'aws') {
 }
 & docker info --format '{{.ServerVersion}}' *> $null
 if ($LASTEXITCODE -ne 0) { Stop-NotRun 'Docker is not running. Start Docker Desktop and try again.' }
-if ($settings.profile -notmatch '^[A-Za-z][A-Za-z0-9_-]*$') {
+if ($settings.profile -cnotmatch '^[A-Za-z][A-Za-z0-9_-]*\z') {
   # An older version of this script asked for the profile name, and a pasted keyID could land there.
   Stop-NotRun "the saved profile name '$($settings.profile)' is not a profile name. Run again with -Reconfigure."
 }
@@ -69,11 +69,11 @@ if ($profiles -notcontains $settings.profile) {
   Write-Host '(Backblaze: App Keys > Add a New Application Key, this bucket only, type Read Only).'
   $keyId = (Read-Host 'B2 keyID').Trim()
   $appKeySecure = Read-Host 'B2 applicationKey (hidden)' -AsSecureString
-  if ($keyId -notmatch '^[0-9a-zA-Z]+$') { Stop-NotRun 'that keyID has unexpected characters.' }
+  if ($keyId -cnotmatch '^[0-9a-zA-Z]+\z') { Stop-NotRun 'that keyID has unexpected characters.' }
   $appKeyBstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($appKeySecure)
   try {
     $appKey = ([Runtime.InteropServices.Marshal]::PtrToStringBSTR($appKeyBstr)).Trim()
-    if ($appKey -notmatch '^[0-9A-Za-z/+]+$') { Stop-NotRun 'that applicationKey has unexpected characters.' }
+    if ($appKey -cnotmatch '^[0-9A-Za-z/+]+\z') { Stop-NotRun 'that applicationKey has unexpected characters.' }
     $awsDir = Join-Path $env:USERPROFILE '.aws'
     New-Item -ItemType Directory -Force $awsDir | Out-Null
     $region = if ($settings.endpoint -match '^https://s3\.([a-z0-9-]+)\.backblazeb2\.com') { $Matches[1] } else { 'us-east-005' }
@@ -93,7 +93,7 @@ $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("satis-restore-key-" + [guid]::
 $exitCode = 2
 try {
   $key = ([Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)).Trim()
-  if ($key -notmatch '^AGE-SECRET-KEY-1[0-9A-Z]+$') { Stop-NotRun 'that does not look like an age private key (AGE-SECRET-KEY-1...).' }
+  if ($key -cnotmatch '^AGE-SECRET-KEY-1[0-9A-Z]+\z') { Stop-NotRun 'that does not look like an age private key (AGE-SECRET-KEY-1...).' }
 
   New-Item -ItemType Directory $tempDir | Out-Null
   # Only the current user may read the folder (inheritance off, every other entry removed).
@@ -119,7 +119,8 @@ try {
 } finally {
   [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
   Remove-Item Env:AGE_IDENTITY_FILE -ErrorAction SilentlyContinue
-  if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
+  # SilentlyContinue so a locked file falls through to the explicit warning below instead of throwing here.
+  if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue }
   if (Test-Path $tempDir) {
     Write-Host "WARNING: could not delete $tempDir, which holds the key. Delete it now." -ForegroundColor Red
     $exitCode = 1
