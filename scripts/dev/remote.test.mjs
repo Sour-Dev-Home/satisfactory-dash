@@ -65,7 +65,7 @@ test("parseTestArgs: --clean takes an optional name; bad input throws one line",
 test("workspacesFor defaults to backend for --db and every workspace otherwise", () => {
   assert.deepEqual(workspacesFor({ workspaces: [], db: true }), ["backend"]);
   assert.ok(workspacesFor({ workspaces: [], db: false }).length > 3);
-  assert.deepEqual(workspacesFor({ workspaces: ["agent"], db: true }), ["agent"]);
+  assert.deepEqual(workspacesFor({ workspaces: ["frontend"], db: true }), ["frontend"]);
 });
 
 test("decideTarget: the box only when a valid host is set, reachable, and --local wasn't given", () => {

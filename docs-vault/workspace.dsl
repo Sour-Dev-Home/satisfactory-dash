@@ -81,7 +81,7 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
             }
 
             gameAdapter = container "game-adapter package" "packages/game-adapter (ADR-0031 PR 2): the vanilla HTTPS API and FRM clients, raw zod schemas and the adapter for ONE game server. Imports only shared, zod and node; the backend uses it through gameserver, and the edge agent uses it directly." "TypeScript"
-            agent = container "Edge agent" "agent/ (ADR-0031 PR 6): runs beside a player's game server on Windows; reads it over loopback with the game-adapter package, pushes snapshots outbound and executes commands. Secrets stored with DPAPI; imports only shared, game-adapter, zod and node." "Node.js, TypeScript"
+            agent = container "Edge agent" "The SatisDashAgent mod (ADR-0058, ADR-0066; the Node agent in agent/ is retired): runs inside a player's game server, reads it natively, pushes snapshots outbound over /agent/v1 and executes commands." "Unreal Engine mod (SML)"
             database = container "Database" "Users, sessions, servers, memberships, audit events (ADR-0025); agents, commands and latest snapshots (ADR-0020); history, world layers, alert log and metrics series." "PostgreSQL 18" "Database"
             provisioning = container "Provisioning service" "Creates and manages paid game servers as async jobs (ADR-0014)." "Node.js, TypeScript" "planned"
         }
@@ -141,7 +141,6 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         satis.api.gameserver -> satis.api.platform "Uses error types" "In-process call" "platform-use"
         satis.api.root -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.gameserver -> satis.gameAdapter "Uses" "In-process call"
-        satis.agent -> satis.gameAdapter "Uses" "In-process call"
         satis.gameAdapter -> game "Calls the game and FRM APIs" "HTTPS :7777, HTTP :8080 (loopback)"
 
         player -> satis.spa "Uses" "HTTPS"
@@ -188,7 +187,7 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                 bucket = infrastructureNode "Backup bucket" "Private; Object Lock, 30 days; encrypted dumps kept up to 37 days." "Backblaze B2"
             }
             pc = deploymentNode "Owner's gaming PC" "Runs only the game and the edge agent; no inbound ports open." "Windows" {
-                agentNode = deploymentNode "Edge agent" "Scheduled Task; outbound only; secrets stored with DPAPI (ADR-0031)." "Node.js" {
+                agentNode = deploymentNode "Edge agent" "The mod, loaded by the game server; outbound only (ADR-0031, ADR-0066)." "Satisfactory dedicated server" {
                     agentInstance = containerInstance satis.agent
                 }
                 gameNode = deploymentNode "Dedicated server process" "Game server with the FRM mod; FRM listens on loopback only." "Satisfactory 1.x" {
