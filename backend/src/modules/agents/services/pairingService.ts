@@ -19,6 +19,7 @@ import { sha256 } from "../repositories/agentRepository.js";
 import {
   approvePairing,
   consumePairing,
+  findApproverName,
   findOpenPairing,
   insertPairing,
   lockPairingBySecret,
@@ -41,7 +42,13 @@ import { installAgentCredential } from "./enrollmentService.js";
  */
 export type PairingPollOutcome =
   | { status: "pending" | "expired" | "slow_down" }
-  | { status: "approved"; agentSecret: string; serverId: string; cadence: Cadence };
+  | { status: "approved"; agentSecret: string; serverId: string; cadence: Cadence; approvedBy?: string };
+
+/** identity's generated display name ("Player-" and 4 or 8 of its alphabet, identity/generatedName.ts). Only such a name
+ *  goes to the game server: it is random, so it says nothing about the person. The operator's (the .env username) never does. */
+const GENERATED_NAME = /^Player-(?:[2-9A-HJKMNP-Z]{4}|[2-9A-HJKMNP-Z]{8})$/;
+export const shareableApprover = (name: string | undefined): string | undefined =>
+  name !== undefined && GENERATED_NAME.test(name) ? name : undefined;
 
 export interface PairingService {
   start(input: PairingStartRequest): Promise<PairingStartResponse>;
@@ -120,7 +127,7 @@ export function createPairingService(deps: PairingServiceDeps): PairingService {
       orUnavailable(async () => {
         const secretHash = sha256(pairingSecret);
         const agentSecret = generateAgentSecret();
-        type Outcome = PairingPollOutcome | { status: "minted"; serverId: string } | { status: "retry" };
+        type Outcome = PairingPollOutcome | { status: "minted"; serverId: string; approvedBy: string | undefined } | { status: "retry" };
         let outcome: Outcome = { status: "retry" };
         // An approval may commit between the unlocked peek and the pairing lock; then the server row was not locked first, so
         // the transaction starts over (at most a few times: an approval happens once).
@@ -157,7 +164,7 @@ export function createPairingService(deps: PairingServiceDeps): PairingService {
           });
           // Cannot happen under the server lock taken above; if it does, nothing of this transaction may stay (the credential row).
           if (publicId === undefined) throw new Error("the paired server disappeared under its lock");
-          return { status: "minted", serverId: publicId };
+          return { status: "minted", serverId: publicId, approvedBy: shareableApprover(await findApproverName(client, pairing.id)) };
         });
         }
 
@@ -169,7 +176,8 @@ export function createPairingService(deps: PairingServiceDeps): PairingService {
           // The credential is valid and the agent must get it: the first snapshot attaches the runtime again.
           deps.logger.error({ serverId: outcome.serverId, error: err instanceof Error ? err.name : "unknown" }, "could not attach the agent's server after pairing");
         }
-        return { status: "approved", agentSecret, serverId: outcome.serverId, cadence: deps.cadence() };
+        const approved: PairingPollOutcome = { status: "approved", agentSecret, serverId: outcome.serverId, cadence: deps.cadence() };
+        return outcome.approvedBy === undefined ? approved : { ...approved, approvedBy: outcome.approvedBy };
         }
       }),
 

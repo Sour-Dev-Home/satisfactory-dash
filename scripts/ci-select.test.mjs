@@ -53,11 +53,9 @@ test("a backend-only change runs the backend and its jobs, not the frontend's", 
     reason: "selected: backend",
     workspaces: "backend",
     frontend: false,
-    server_manager: false,
     backend: true,
     load: true,
     compose: true,
-    systemd: false,
   });
 });
 
@@ -67,35 +65,39 @@ test("a frontend-only change runs the frontend and its e2e, nothing else", () =>
   assert.equal(out.frontend, true);
   assert.equal(out.backend, false);
   assert.equal(out.load, false);
-  assert.equal(out.server_manager, false);
 });
 
 test("a shared-contract change reaches every workspace that depends on it", () => {
   const result = pick("packages/shared/src/factory.ts");
   assert.equal(result.all, false);
   assert.deepEqual(result.workspaces, WORKSPACES);
+  const out = outputs(result);
+  assert.equal(out.frontend, true);
+  assert.equal(out.backend, true);
+});
+
+test("the retired agent and server-manager workspaces (ADR-0066) are gone from the selection", () => {
+  assert.ok(!WORKSPACES.includes("agent") && !WORKSPACES.includes("server-manager"));
+  // No rule maps their old paths any more, so a file reappearing there runs everything rather than nothing.
+  assert.equal(classify("agent/src/main.ts"), "unattributed");
+  assert.equal(classify("server-manager/src/main.ts"), "unattributed");
+  assert.equal(classify("agent/packaging/linux/satis-agent.service"), "unattributed");
+  const out = outputs(pick("backend/src/app.ts"));
+  assert.equal("server_manager" in out, false);
+  assert.equal("systemd" in out, false);
 });
 
 test("dependents follow the package.json graph", () => {
-  assert.deepEqual(pick("agent/src/main.ts").workspaces, ["agent", "server-manager"]);
-  assert.deepEqual(pick("packages/game-adapter/src/index.ts").workspaces, [
-    "packages/game-adapter",
-    "backend",
-    "agent",
-    "server-manager",
-  ]);
-  assert.deepEqual(pick("server-manager/src/main.ts").workspaces, ["server-manager"]);
+  assert.deepEqual(pick("packages/game-adapter/src/index.ts").workspaces, ["packages/game-adapter", "backend"]);
   assert.deepEqual([...withDependents(["x"], new Map([["y", ["x"]], ["z", ["y"]]]))].sort(), ["x", "y", "z"]);
 });
 
 test("inputs outside a workspace select the workspaces that read them", () => {
-  assert.deepEqual(pick("frontend/src/index.css").workspaces, ["frontend", "server-manager"]);
+  assert.deepEqual(pick("frontend/src/index.css").workspaces, ["frontend"]);
   assert.deepEqual(pick("docs-vault/raw-sources/captured-responses/x.json").workspaces, [
     "packages/game-adapter",
     "frontend",
     "backend",
-    "agent",
-    "server-manager",
   ]);
   assert.ok(pick("backend/src/modules/telemetry/itemForms.generated.json").workspaces.includes("frontend"));
   assert.deepEqual(pick("LICENSE").workspaces, ["frontend"]);
@@ -105,10 +107,6 @@ test("inputs outside a workspace select the workspaces that read them", () => {
   const compose = outputs(pick("compose.yaml"));
   assert.equal(compose.compose, true);
   assert.equal(compose.backend, false);
-  const unit = outputs(pick("agent/packaging/linux/satis-agent.service"));
-  assert.equal(unit.systemd, true);
-  assert.equal(unit.backend, false);
-  assert.equal(outputs(pick("agent/src/main.ts")).systemd, false);
 });
 
 test("a docs-only change runs none of the heavy jobs", () => {
@@ -118,11 +116,9 @@ test("a docs-only change runs none of the heavy jobs", () => {
     reason: "nothing to build or test",
     workspaces: "",
     frontend: false,
-    server_manager: false,
     backend: false,
     load: false,
     compose: false,
-    systemd: false,
   });
 });
 
@@ -156,7 +152,7 @@ test("guard: every tracked file is attributed by a rule", () => {
 });
 
 test("guard: every Playwright spec belongs to a workspace whose e2e suite CI runs", () => {
-  const E2E = ["frontend", "server-manager"]; // e2e.yml, and verify's "Server manager e2e" step
+  const E2E = ["frontend"]; // e2e.yml
   const specs = tracked.filter((file) => /\.spec\.[cm]?[jt]sx?$/.test(file) || /(^|\/)playwright\.config\./.test(file));
   assert.ok(specs.length > 0);
   for (const spec of specs) {
@@ -207,12 +203,12 @@ test("readGraph finds undeclared and type-only imports of scoped and unscoped wo
     };
     for (const dir of WORKSPACES) put(`${dir}/package.json`, JSON.stringify({ name: dir === "backend" ? "backend" : `@x/${dir.replace("/", "-")}` }));
     put("frontend/src/a.ts", `import type { T } from "backend/src/types";`); // unscoped, type-only, undeclared
-    put("agent/src/a.ts", "const s = await import(`@x/packages-shared`);"); // template literal
-    put("server-manager/src/a.ts", `export const kind = "backend";`); // a bare word is not an import
+    put("packages/game-adapter/src/a.ts", "const s = await import(`@x/packages-shared`);"); // template literal
+    put("packages/shared/src/a.ts", `export const kind = "backend";`); // a bare word is not an import
     const graph = readGraph(tmp);
     assert.deepEqual(graph.get("frontend"), ["backend"]);
-    assert.deepEqual(graph.get("agent"), ["packages/shared"]);
-    assert.deepEqual(graph.get("server-manager"), []);
+    assert.deepEqual(graph.get("packages/game-adapter"), ["packages/shared"]);
+    assert.deepEqual(graph.get("packages/shared"), []);
     assert.ok(select(["backend/src/x.ts"], graph).workspaces.includes("frontend"));
   } finally {
     rmSync(tmp, { recursive: true, force: true });

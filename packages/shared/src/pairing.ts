@@ -80,7 +80,19 @@ export const PairingPollResponseSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("pending") }),
   z.strictObject({ status: z.literal("expired") }),
   z.strictObject({ status: z.literal("slow_down") }),
-  z.object({ status: z.literal("approved"), ...EnrollResponseSchema.shape }),
+  z.object({
+    status: z.literal("approved"),
+    ...EnrollResponseSchema.shape,
+    // ADR-0051 section 1 point 4: the agent logs who approved, so a server admin can spot a hijacked code. Only ever a
+    // generated name ("Player-4F2K"); omitted for any other account, so an agent must not rely on it.
+    approvedBy: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[^\p{C}\p{Zl}\p{Zp}]+$/u, "No control or invisible characters")
+      .optional()
+      .describe("The approving account's generated display name, when it has one"),
+  }),
 ]);
 
 // ---------------------------------------------------------------------------------------------------------------------

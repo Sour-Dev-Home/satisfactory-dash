@@ -15,16 +15,12 @@ on:
         value: ${{ jobs.select.outputs.workspaces }}
       frontend:
         value: ${{ jobs.select.outputs.frontend }}
-      server_manager:
-        value: ${{ jobs.select.outputs.server_manager }}
       backend:
         value: ${{ jobs.select.outputs.backend }}
       load:
         value: ${{ jobs.select.outputs.load }}
       compose:
         value: ${{ jobs.select.outputs.compose }}
-      systemd:
-        value: ${{ jobs.select.outputs.systemd }}
 
 jobs:
   select:
@@ -36,11 +32,9 @@ jobs:
       all: ${{ steps.select.outputs.all }}
       workspaces: ${{ steps.select.outputs.workspaces }}
       frontend: ${{ steps.select.outputs.frontend }}
-      server_manager: ${{ steps.select.outputs.server_manager }}
       backend: ${{ steps.select.outputs.backend }}
       load: ${{ steps.select.outputs.load }}
       compose: ${{ steps.select.outputs.compose }}
-      systemd: ${{ steps.select.outputs.systemd }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
