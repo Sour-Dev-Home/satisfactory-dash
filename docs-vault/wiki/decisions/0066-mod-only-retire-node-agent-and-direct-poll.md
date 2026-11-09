@@ -1,10 +1,10 @@
 # ADR-0066: The mod is the only way a server connects (retire the Node agent, the Electron app and direct polling)
 
-Status: **Proposed**. Owner decisions, 2026-11-08, given directly: "retire the servers read through an agent, since we wont be
+Status: **Accepted** (owner, 2026-11-09: "yes to all three, accept the ADR", answering the three open questions at the end with
+their recommended answers). Owner decisions, 2026-11-08, given directly: "retire the servers read through an agent, since we wont be
 using one anymore". Asked to choose, the owner picked all three of: (1) retire the Node edge agent and the Electron server
 manager, (2) retire the owner's existing Node-agent server, (3) retire direct-poll servers. This ADR amends ADR-0058 Decision 5,
-ADR-0031, ADR-0057, ADR-0030, ADR-0012, ADR-0014, ADR-0038 (M3, the local poller) and ADR-0032, and supersedes ADR-0040. Nothing
-is built until the owner accepts it. Evidence is cited to this repository (`file:line`) on `origin/main` at `936314b7`, plus PR
+ADR-0031, ADR-0057, ADR-0030, ADR-0012, ADR-0014, ADR-0038 (M3, the local poller) and ADR-0032, and supersedes ADR-0040. Evidence is cited to this repository (`file:line`) on `origin/main` at `936314b7`, plus PR
 #870. Game, FRM and SML facts are not restated here; any needed later is [NEEDS VERIFICATION] unless it cites
 `docs-vault/raw-sources/`.
 
@@ -381,8 +381,8 @@ Files: `packages/shared/src/serverManagement.ts`, `endpoints.ts`, `metrics.ts`, 
 - The mod session confirms the mod never sends `unsupportedFrm`, so its frontend note can go.
 - `SERVER_SECRETS_KEY` might be renamed (it now seals only webhooks and push), if the churn is ever worth it.
 
-## Open questions for the owner (recommended answer first)
+## Owner's answers (2026-11-09: "yes to all three")
 
-1. **Convert `local` servers to `agent` in PR 5, keeping their tokens until PR 10?** Recommended: yes.
-2. **Keep the old Node-agent server and revoke its credential, rather than `remove-server`?** Recommended: yes (Decision 9).
-3. **A backend without a database serves no game servers?** Recommended: yes.
+1. **Convert `local` servers to `agent` in PR 5, keeping their tokens until PR 10?** Yes.
+2. **Keep the old Node-agent server and revoke its credential, rather than `remove-server`?** Yes (Decision 9).
+3. **A backend without a database serves no game servers?** Yes.

@@ -1,5 +1,8 @@
 # ADR-0012: Auto-pause off by default, with a user toggle; paused state is visible
 
+> **Amended by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md) (2026-11-09):** the toggle becomes one command the
+> mod runs. The backend's direct write to the game (`ServerOptionsPort`) is retired. The default (off), visibility and audit stand.
+
 Status: accepted (the project owner), 2026-09-22
 
 ## Context

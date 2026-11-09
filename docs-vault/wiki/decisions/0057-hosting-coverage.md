@@ -1,5 +1,9 @@
 # ADR-0057: Hosting coverage: the dashboard on as many server hosting types as possible, Linux self-hosting first
 
+> **Amended by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md) (2026-11-09):** Decision 1 ("keep the Node
+> agent"), Decision 2 (the Linux agent build steps) and Decision 8 step 3 are superseded. The mod and its zero-touch setup
+> (Decision 6) and updates (Decision 7) stand.
+
 Status: **accepted** (2026-10-25, after the owner answered the questions; amended the same day by this change: owner's
 answers, Decisions 6 and 7, a revised build order). Written at the owner's
 request (2026-10-25): "ideally my board just works with as many hosting types as possible so we need to research how to

@@ -1,5 +1,9 @@
 # ADR-0014: Target architecture: modular monolith now, service-based + edge agent later
 
+> **Amended by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md) (2026-11-09):** the game-server adapter module
+> (`modules/gameserver`, `packages/game-adapter`) is retired. The backend knows a game server only through `/agent/v1`
+> (`modules/agents`).
+
 Status: accepted (project owner), 2026-09-23
 
 ## Context

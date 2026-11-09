@@ -1,5 +1,9 @@
 # ADR-0032: Latency and UX budgets
 
+> **Amended by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md) (2026-11-09):** nothing calls the vanilla API or
+> FRM any more, so upstream call timing (`recordUpstreamCall`, `upstreamP95Ms`) has no producer. Its series leave the metrics
+> contract.
+
 Status: accepted (owner, 2026-09-26: the five steps in order, the public scheduled probe, and tab-switch
 pop-in as the first UX test)
 

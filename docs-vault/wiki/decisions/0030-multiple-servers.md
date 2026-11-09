@@ -1,5 +1,9 @@
 # ADR-0030: Managing multiple servers (operator-managed local servers now, players' own servers via the edge agent)
 
+> **Amended by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md) (2026-11-09):** direct-poll (`local`) servers,
+> the operator's "Add a server" form with its connection test, and the LAN address gate are retired. Servers connect through the
+> mod only, and existing `local` rows convert to `agent`.
+
 Status: accepted (project owner), 2026-09-25. Owner request: "Players need to be able to manage
 multiple servers." Owner decisions at the end: two phases; the edge agent for players (ADR-0031); LAN
 allowed in phase 1; encrypted DB tokens as the single source; caps 8 / 3.
