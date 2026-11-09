@@ -1,7 +1,7 @@
 ---
 title: The Map page and its layers
 description: What each layer on Satis Manager's map shows, from buildings and trains to drone ports and belts, how the filters work, and how to read the tables.
-order: 8
+order: 9
 updated: 2026-11-03
 ---
 The Map page places your factory where it really is in the world. Each machine sits at its in-game position on a grid in metres, over a traced outline of the game's terrain, and layers add rails, trains, resource nodes, markers and more. It's handy for finding a machine the bottleneck list names, checking which resource nodes you still haven't tapped, or seeing at a glance where the trains are.

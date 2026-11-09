@@ -1,7 +1,7 @@
 ---
 title: Reading the Overview and its status summary
 description: What the Overview's status headline means, the exact rules behind Operational, Degraded, Paused and Outage, and when a warning can be hidden.
-order: 3
+order: 4
 updated: 2026-11-03
 ---
 The Overview is the first page you see after signing in. Its job is to answer one question quickly: is the factory all right? It does that with a status summary in the Health card, a Players card and a Power card. This guide explains what each part says and the rules behind the words, so you know when to worry and when not to.

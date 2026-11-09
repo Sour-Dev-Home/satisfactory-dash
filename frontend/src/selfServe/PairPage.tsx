@@ -177,7 +177,7 @@ function CodeStep({ busy, error, onSubmit }: { busy: boolean; error: unknown; on
           aria-describedby={describedBy}
         />
         <span id={helpId} className="text-muted">
-          Twelve letters and digits, like {CODE_EXAMPLE}. Dashes and lower case are fine.
+          Twelve letters and digits, like {CODE_EXAMPLE}. Dashes and lower case are fine. Codes never contain 0, 1, 8 or 9.
         </span>
         {problem && (
           <span id={problemId} role="alert" className="font-medium text-bad-on-soft">

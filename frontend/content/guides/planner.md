@@ -1,7 +1,7 @@
 ---
 title: Reading the Planner
 description: How to read the Planner's graph and outline: factories, groups, links, measured and estimated rates, line widths, moving lines, caps and stalled marks.
-order: 7
+order: 8
 updated: 2026-11-03
 ---
 The Planner draws your production as a map of flows. Each box is a factory or a group of machines, and each line is an item moving from one to the next. Where the Factory page answers "what is each machine doing?", the Planner answers "where does this item come from, and where does it go?"

@@ -1,7 +1,7 @@
 ---
 title: Finding and fixing bottlenecks
 description: What underfed and backed up mean, how Satis Manager's bottleneck finder traces a slow line to its cause, and common ways to fix it.
-order: 6
+order: 7
 updated: 2026-11-03
 ---
 A bottleneck is the one place in a production line that holds everything else back. Fix it and the whole line speeds up. Fix anything else and nothing changes. Finding it by walking the factory can take a long time, so Satis Manager does the walking for you. It reads your machines and the belts and pipes between them, and writes a short sentence for each cause it finds.

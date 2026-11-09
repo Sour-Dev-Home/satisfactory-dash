@@ -41,7 +41,7 @@ If you don't have a server in the dashboard yet, the app asks you to add one. If
 
 A server that hasn't connected within 24 hours of adding it is removed automatically, so you don't collect empty entries. If the code runs out first, create a new one.
 
-Running mod 0.3.0 or later, and it printed a pairing code in your server's console? Use the **Pair it** link next to the form, type the code, check the details and approve it.
+Running mod 0.3.0 or later, and it printed a pairing code in your server's console? Use the **Pair it** link next to the form (or, once you have a server, **Pair a server** in **Settings**, under **Satis Manager mod**), type the code, check the details and approve it.
 
 ## Find your way around
 
@@ -67,6 +67,7 @@ Two things can make the numbers stand still:
 
 ## Where to go next
 
+- No server yet, or no mods on it? [Setting up a server from scratch](/guides/setting-up-from-scratch) goes from nothing to a paired server.
 - New to the setup? Read [Connecting a server](/guides/connecting-a-server).
 - Want to fix a slow production line? Read [Finding and fixing bottlenecks](/guides/bottlenecks).
 - Curious what changed recently? See the [changelog](/changelog).

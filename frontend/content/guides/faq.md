@@ -1,7 +1,7 @@
 ---
 title: Frequently asked questions
 description: Answers about privacy, what Satis Manager reads from your server, whether it changes your game, the Satis Manager mod, and cost.
-order: 9
+order: 10
 updated: 2026-11-09
 ---
 Short answers to the questions people ask most. Each one links to the guide with more detail.
@@ -51,9 +51,9 @@ No. The mod runs inside the game and reads it from there, so it never needs the 
 
 ## What's the Satis Manager mod?
 
-It's how a server connects to Satis Manager: a server-side mod that loads with your dedicated server and reads the game directly. Only the server needs it; players join as usual, with nothing to install. It runs on the Satisfactory Mod Loader, like other mods, and needs no other mod to read your factory.
+It's how a server connects to Satis Manager: a server-side mod that loads with your dedicated server and reads the game directly. Only the server needs it. It runs on the Satisfactory Mod Loader (SML), like other mods, and needs no other mod to read your factory. Players don't install the Satis Manager mod, but they do need SML in their own game, because a server with SML turns away players without it.
 
-The mod isn't published yet. [Connecting a server](/guides/connecting-a-server) covers installing it and will link to its download once it's out.
+Download it from the mod's [releases page on GitHub](https://github.com/Sour-Dev-Home/satisfactory-dash-mod/releases/latest). [Connecting a server](/guides/connecting-a-server) covers installing it, and [Setting up a server from scratch](/guides/setting-up-from-scratch) covers everything from the server to your players.
 
 ## Do I need to restart the server after pasting the code?
 

@@ -79,6 +79,8 @@ describe("Add your server", () => {
     // One heading only: the section's h3 already says it (no repeated h4 inside).
     expect(await screen.findByRole("heading", { name: "Add your server", level: 3 })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { name: "Add your server" })).toHaveLength(1);
+    // On Settings the Satis Manager mod section links to pairing, so the add form doesn't repeat it.
+    expect(screen.queryByRole("link", { name: "Pair it" })).not.toBeInTheDocument();
     submitAdd();
     expect(await screen.findByText("Enter a name for your server.")).toBeInTheDocument();
     expect(screen.getByLabelText("Server name")).toHaveAttribute("aria-invalid", "true");
@@ -182,6 +184,8 @@ describe("Add your server", () => {
     expect(await screen.findByRole("heading", { name: "Add your first server", level: 2 })).toBeInTheDocument();
     expect(screen.getByText(/Name it, get a code, paste it into the mod's config on the game server/)).toBeInTheDocument();
     expect(screen.getByLabelText("Server name")).toHaveAttribute("placeholder", "e.g. Our factory");
+    // The first-server screen has no Settings, so it keeps its own way to pairing.
+    expect(screen.getByRole("link", { name: "Pair it" })).toHaveAttribute("href", "/app/pair");
     // No shell here, so the account menu is: a signed-in player can always sign out.
     expect(screen.getByRole("button", { name: "Account" })).toBeInTheDocument();
     typeName("My new world");

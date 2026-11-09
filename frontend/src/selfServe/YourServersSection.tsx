@@ -17,7 +17,7 @@ export function YourServersSection() {
     <section aria-labelledby="your-servers-heading" className="panel grid gap-4">
       <h3 id="your-servers-heading">{isOwner ? "Your server" : "Add your server"}</h3>
       {isOwner && <OwnedServerPanel key={server.id} server={server} />}
-      {canAdd && <AddServer onCreated={select} heading={isOwner} />}
+      {canAdd && <AddServer onCreated={select} heading={isOwner} pairLink={false} />}
       {pendingName !== undefined && <p className="mb-0 text-sm text-muted">Finish connecting {pendingName} to add another.</p>}
     </section>
   );
