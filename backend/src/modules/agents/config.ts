@@ -125,11 +125,11 @@ export const PAIRING_ENTRY_PER_NETWORK_PER_MINUTE = 30;
 
 /**
  * ADR-0057 D6 to D8, GET /api/compat: the version policy the dashboard compares each server's reported versions with.
- * For now it is this constant (the versions this repo knows: the agent's package version; the mod has no release yet, so it
- * mirrors the agent's). Later it would be read from a table the operator edits, so a security advisory needs no deploy; the
+ * For now it is this constant (the versions this repo knows: the agent's package version, and the mod's latest release,
+ * 0.2.0 on 2026-11-06; raise `mod.current` when a new mod release ships). Later it would be read from a table the operator edits, so a security advisory needs no deploy; the
  * response shape is the contract's and does not change.
  */
 export const COMPAT_POLICY = {
-  mod: { current: "0.1.0", minSupported: "0.1.0", minSafe: "0.1.0", advisories: [] },
+  mod: { current: "0.2.0", minSupported: "0.1.0", minSafe: "0.1.0", advisories: [] },
   agent: { current: "0.1.0", minSupported: "0.1.0", minSafe: "0.1.0", advisories: [] },
 };

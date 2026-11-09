@@ -41,8 +41,6 @@ If you don't have a server in the dashboard yet, the app asks you to add one. If
 
 A server that hasn't connected within 24 hours of adding it is removed automatically, so you don't collect empty entries. If the code runs out first, create a new one.
 
-Already have a pairing code that the mod printed in your server's console? Use the **Pair it** link next to the form, type the code, check the details and approve it.
-
 ## Find your way around
 
 Once a server is connected, the tabs across the top are:
