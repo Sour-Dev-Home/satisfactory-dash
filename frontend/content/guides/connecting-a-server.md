@@ -1,14 +1,14 @@
 ---
 title: Connecting a server
 description: Connect a Satisfactory dedicated server to Satis Manager with its mod: install it, paste the enrolment code, and fix a connection.
-order: 2
+order: 3
 updated: 2026-11-09
 ---
 Satis Manager never reaches into your network. Instead, the Satis Manager mod runs inside your dedicated server, reads the game directly, and sends the readings out to the dashboard over HTTPS. You don't open or forward any port for it, and you don't give the dashboard your game's admin token. This guide covers installing the mod, linking it to your account, and what to check when a server doesn't show up.
 
 ## What the mod is
 
-The mod is a server-side mod for the Satisfactory dedicated server. It loads with the server, like any other mod, so there is no second program to run and nothing to keep open on your PC. It needs nothing on the players' side: only the server has it.
+The mod is a server-side mod for the Satisfactory dedicated server. It loads with the server, like any other mod, so there is no second program to run and nothing to keep open on your PC. Players don't need the Satis Manager mod: only the server has it. They do need the Satisfactory Mod Loader (SML) in their own game, because a server with SML turns away players without it ("cannot connect a modded server to a vanilla client"). [Setting up a server from scratch](/guides/setting-up-from-scratch) shows how players install it.
 
 It reads the game from the inside: the server status, power, machines, trains, belts and the other map layers. It doesn't need any other mod to do that, apart from the Satisfactory Mod Loader (SML) that every mod runs on.
 
@@ -47,11 +47,15 @@ If editing a file on your host is awkward, mod 0.3.0 and later can show you a pa
 
 The code appears in the server console and in its log, `FactoryGame.log`, as a line like "Pairing code ABCD-EFGH-JKLM: sign in at satis-manager.com/pair and enter it (expires in 15 minutes)". The mod also posts it in the in-game chat when a new code starts while exactly one player is on, or when a player joins an empty server while a code is live.
 
-1. Go to [satis-manager.com/pair](/app/pair) and sign in, or use the **Pair it** link beside the add-server form.
-2. Type the code and press **Continue**.
+On a Linux server in a container, such as Docker, the console can lag minutes behind the log, so read the code in `FactoryGame.log` there. The code in the chat can't be copied, so type it: codes never contain 0, 1, 8 or 9, so there's no 0 or 1 to mistake for O or I.
+
+1. Go to [satis-manager.com/pair](/app/pair) and sign in, or use the **Pair a server** link in **Settings**, under **Satis Manager mod**, or the **Pair it** link beside the add-server form.
+2. Type the code and press **Continue**. Lower case and missing dashes are fine.
 3. Check the server name, version and request time under "Is this your server?", choose **A new server** or **One of my servers**, and press **Approve**.
 
 Only approve a server you started pairing yourself. A code lasts about 15 minutes (the console line says exactly how long), and the mod shows a fresh one when it expires, for an hour after the server starts. After the first hour the server goes quiet; restart it, or join it when nobody else is on, to get a new code. A code in the config file always wins: if you paste one, the mod enrols with it instead.
+
+If you paired onto a server that already had data (**One of my servers**), Power and Factory are live within a minute, but the map can show the old factory for up to about 8 to 9 minutes. The mod sends its first map layers a few minutes after it starts reporting, and until then the dashboard keeps the last ones it had.
 
 If you revoke the mod's access in **Settings**, the mod stops until the server restarts. A restart starts pairing again; joining doesn't.
 
@@ -73,5 +77,7 @@ Open **Settings** and look at **Satis Manager mod**. The **Mod** row says whethe
 | "That code isn't valid" on Pair a server | Wrong, expired or used code | Check it, or restart the server for a new one |
 | Shows **Offline** | No reading for a couple of minutes | Is the server running? Did a game update disable mods? |
 | Stopped after you revoked it | The old credential was dropped | Create a new code and paste it, or pair again |
+| A player can't join: "cannot connect a modded server to a vanilla client" | Their game has no mod loader | They install SML in their game; they don't need the Satis Manager mod |
+| The map still shows an old factory after pairing | Map layers arrive a few minutes after the rest | Wait about 9 minutes |
 
 After a game update, a mod can stop loading until a matching version is out. If data stops right after an update, check that the mod and the mod loader are up to date.

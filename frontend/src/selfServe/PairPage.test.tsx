@@ -53,6 +53,8 @@ describe("PairPage: the code step", () => {
     renderPair();
     expect(screen.getByText(/FactoryGame\.log/)).toBeInTheDocument();
     expect(screen.getByText(/pairing\.txt/)).toBeInTheDocument();
+    // The chat code can't be copied, so the hint says which characters never appear (the base32 alphabet A-Z, 2-7).
+    expect(screen.getByLabelText("Pairing code")).toHaveAccessibleDescription(/Codes never contain 0, 1, 8 or 9\./);
     type("ab3d7x");
     expect(screen.getByLabelText("Pairing code")).toHaveValue("AB3D-7X");
     type("ab3d-7xq2 k5mn extra");

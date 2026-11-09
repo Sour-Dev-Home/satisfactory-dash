@@ -1,6 +1,7 @@
 import { Loadable, Skeleton, SkeletonStatus } from "../ui/Skeleton";
 import { useCallback, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router";
 import type { AgentStatusResponse } from "@satisfactory-dash/shared";
 import { useAgentWrites, type EnrollmentCode } from "../api/agentWrites";
 import { queries } from "../api/queries";
@@ -96,6 +97,11 @@ export function AgentSettings() {
         </>
       )}
       </Loadable>
+      {/* A way back to /app/pair after the first visit (mod 0.3.0 prints a pairing code on the server console). Outside
+          the Loadable, so it shows while the status loads or fails too; the page itself says who may approve what. */}
+      <p className="mb-0 text-sm text-muted">
+        Have a pairing code from your server&apos;s console? <Link to="/app/pair">Pair a server</Link>.
+      </p>
     </section>
   );
 }

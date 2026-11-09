@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type AgentStatusResponse, type ServerSummary } from "@satisfactory-dash/shared";
 import {
@@ -23,9 +24,11 @@ const viewer: ServerSummary = { ...base, role: "viewer" };
 
 function renderSection(selected: ServerSummary = base) {
   return renderWithClient(
-    <ServerContext value={selected}>
-      <AgentSettings />
-    </ServerContext>,
+    <MemoryRouter>
+      <ServerContext value={selected}>
+        <AgentSettings />
+      </ServerContext>
+    </MemoryRouter>,
   );
 }
 
@@ -323,6 +326,19 @@ describe("AgentSettings", () => {
     expect(await screen.findByText("Last seen 8 s ago")).toBeInTheDocument();
     expect(screen.getByText("Only a server owner or admin can enrol or revoke the mod.")).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("links every member to the pairing page, a viewer and an owner alike, even before the status answers", async () => {
+    for (const who of [viewer, owner]) {
+      agentIs(agentStatusEnrolled);
+      const { unmount } = renderSection(who);
+      // Outside the status's Loadable: there from the first render, a router Link to /app/pair.
+      expect(screen.getByText(/Have a pairing code from your server's console\?/)).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Pair a server" })).toHaveAttribute("href", "/app/pair");
+      expect(await screen.findByText("Last seen 8 s ago")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Pair a server" })).toHaveAttribute("href", "/app/pair");
+      unmount();
+    }
   });
 
   // Owner, 2026-11-03: only the mod is released; the Node agent is for development, so only the operator is offered it.

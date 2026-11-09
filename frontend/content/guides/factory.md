@@ -1,7 +1,7 @@
 ---
 title: The Factory page
 description: How to read machine states such as producing, underfed and backed up, use the grouped machine table and its filters, and follow production over time.
-order: 5
+order: 6
 updated: 2026-11-03
 ---
 The Factory page lists every production machine on your server: what it's making, how fast, and whether it's running well. It opens with a short bottleneck summary, then a "Since yesterday" panel, then the full machine table, production history and the complete bottleneck list. A bar near the top, **Factory sections**, jumps between **Machines**, **History** and **Bottlenecks**, and stays at the top of the screen while you scroll the table.

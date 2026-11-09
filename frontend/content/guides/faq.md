@@ -1,7 +1,7 @@
 ---
 title: Frequently asked questions
 description: Answers about privacy, what Satis Manager reads from your server, whether it changes your game, the Satis Manager mod, and cost.
-order: 9
+order: 10
 updated: 2026-11-09
 ---
 Short answers to the questions people ask most. Each one links to the guide with more detail.

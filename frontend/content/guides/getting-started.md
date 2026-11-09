@@ -67,6 +67,7 @@ Two things can make the numbers stand still:
 
 ## Where to go next
 
+- No server yet, or no mods on it? [Setting up a server from scratch](/guides/setting-up-from-scratch) goes from nothing to a paired server.
 - New to the setup? Read [Connecting a server](/guides/connecting-a-server).
 - Want to fix a slow production line? Read [Finding and fixing bottlenecks](/guides/bottlenecks).
 - Curious what changed recently? See the [changelog](/changelog).

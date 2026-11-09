@@ -1,7 +1,7 @@
 ---
 title: The Power page
 description: What Satis Manager measures on each power circuit, how it decides OK, At risk and Outage, how to read the charts, and how to get power alerts.
-order: 4
+order: 5
 updated: 2026-11-03
 ---
 The Power page shows every power circuit in your world as its own card, plus charts of how production and consumption moved over time. It's the place to look when the Overview says "Power outage" or "circuits at risk", and also the place to plan ahead before you add a big new line.

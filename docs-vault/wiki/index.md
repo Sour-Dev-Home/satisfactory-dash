@@ -144,3 +144,7 @@ added or removed.
 - [`../raw-sources/cloudflare-workers-htmlrewriter-content-2026-11-01.md`](../raw-sources/cloudflare-workers-htmlrewriter-content-2026-11-01.md)
   — ADR-0021 amendment 3 build step 4: HTMLRewriter's `append`/`prepend` and the `{ html: true }` content option,
   as verbatim excerpt HR-E1.
+- [`../raw-sources/mod-0.3.0-requirements-2026-11-09.md`](../raw-sources/mod-0.3.0-requirements-2026-11-09.md)
+  — the setup guides: mod 0.3.0's plugin descriptor (SML `^3.12.0`, `RequiredOnRemote` false), its release notes
+  (players need SML, not the mod) and its 2026-11-09 end-to-end findings (vanilla client refused, container console
+  lag, chat code typed, map layers up to about 9 minutes behind), as verbatim excerpts E1-E3.
