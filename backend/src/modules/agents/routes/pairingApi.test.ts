@@ -115,6 +115,13 @@ describe("POST /agent/v1/pairings/poll", () => {
     expect(parsed).toEqual({ status: "approved", ...agentEnrollResponse });
   });
 
+  it("passes the approver's generated name through when the service gives one", async () => {
+    const service = fakeService({ poll: vi.fn(async () => ({ status: "approved" as const, ...agentEnrollResponse, approvedBy: "Player-4F2K" })) });
+    const res = await json(request(build(service)).post(POLL), pairingPollRequest);
+    expect(res.status).toBe(201);
+    expect(PairingPollResponseSchema.parse(res.body)).toEqual({ status: "approved", ...agentEnrollResponse, approvedBy: "Player-4F2K" });
+  });
+
   it("reads the secret from the BODY only: a query string or header is ignored", async () => {
     const service = fakeService();
     const res = await json(request(build(service)).post(`${POLL}?pairingSecret=${pairingPollRequest.pairingSecret}`).set("X-Pairing-Secret", pairingPollRequest.pairingSecret), {});

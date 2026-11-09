@@ -166,6 +166,18 @@ export async function approvePairing(db: Queryable, input: { userCode: string; u
   return result.rows.length > 0;
 }
 
+// Who approved, for the agent's log (ADR-0051 section 1 point 4). A read of identity's table, as alerts and push do.
+const APPROVER_NAME = `
+  SELECT u.display_name
+  FROM agents.pairings p JOIN identity.users u ON u.id = p.approved_by
+  WHERE p.id = $1`;
+
+/** The approving user's display name, or undefined when the pairing or the user is gone. */
+export async function findApproverName(db: Queryable, id: string): Promise<string | undefined> {
+  const result = await timedQuery(db, "agents.findApproverName", APPROVER_NAME, [id]);
+  return parseFirst(z.object({ display_name: z.string() }), result.rows, "agents.findApproverName")?.display_name;
+}
+
 // Rows go one hour after they expire. `unused` is those never spent (never approved, or approved and never collected).
 const SWEEP_PAIRINGS = `
   DELETE FROM agents.pairings

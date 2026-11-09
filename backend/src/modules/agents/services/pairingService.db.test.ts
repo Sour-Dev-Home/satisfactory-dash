@@ -139,6 +139,27 @@ describe.skipIf(!available)("device-code pairing (database)", () => {
     });
   });
 
+  describe("who approved (approvedBy)", () => {
+    const approveAndCollect = async (approver: string) => {
+      const started = await start();
+      await service.approve(approver, { userCode: started.userCode, target: { kind: "new" } });
+      return poll(started.pairingSecret);
+    };
+
+    it("a generated name goes to the agent with the credential", async () => {
+      const generated = (await createUser(pool, { displayName: "Player-4F2K9QXZ" })).id;
+      expect(await approveAndCollect(generated)).toMatchObject({ status: "approved", approvedBy: "Player-4F2K9QXZ" });
+    });
+
+    it("any other name (the operator's, a chosen one) never leaves the backend", async () => {
+      for (const approver of [operator, await user()]) {
+        const minted = await approveAndCollect(approver);
+        expect(minted.status).toBe("approved");
+        expect(minted).not.toHaveProperty("approvedBy");
+      }
+    });
+  });
+
   describe("approve a new server, then poll", () => {
     it("pending until approved; the approval creates the owner's self-serve server; the next poll mints the credential once", async () => {
       const owner = await user();

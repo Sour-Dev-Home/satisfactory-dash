@@ -97,6 +97,7 @@ export const QUERY_NAMES = [
   "agents.recentCommandsOfType",
   "agents.approvePairing",
   "agents.consumePairing",
+  "agents.findApproverName",
   "agents.findOpenPairing",
   "agents.insertPairing",
   "agents.lockPairingBySecret",
