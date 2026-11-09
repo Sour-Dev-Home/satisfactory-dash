@@ -107,7 +107,8 @@ describe("Add your server", () => {
     submitAdd();
     expect(await screen.findByText("selected: My new world")).toBeInTheDocument();
     expect(body).toEqual({ displayName: "My new world" });
-    expect(screen.getByTestId("where")).toHaveTextContent("/app/settings#agent");
+    // The selection and the navigation to #agent are separate updates: wait for the second (CI saw it lag once).
+    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/app/settings#agent"));
   });
 
   it("sends one request for a double click", async () => {
