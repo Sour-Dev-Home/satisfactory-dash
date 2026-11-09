@@ -13,11 +13,10 @@ const PASSWORD = "server-test-password";
  *  answered the "game server" with a 404 (Dependabot PR #611's run). The OS never hands out port 1 as ephemeral. */
 const CLOSED_PORT = 1;
 
-// server.ts reads its config when imported, so pin every game-server setting first.
-// These tests used to rely on nothing listening on the defaults (7777/8080) and failed
-// on any machine running a real dedicated server. server.ts also loads backend/.env,
-// but dotenv never overrides a variable that's already set, so setting all of them
-// here keeps a developer's local .env out of the test (found by PR #20's review).
+// server.ts reads its config when imported, so pin every setting first. The retired game-server variables are still set
+// (to a closed port) to prove they are ignored: no server is built from them (ADR-0066). server.ts also loads
+// backend/.env, but dotenv never overrides a variable that's already set, so setting them here keeps a developer's local
+// .env out of the test (found by PR #20's review).
 beforeAll(async () => {
   const port = String(CLOSED_PORT);
   // "localhost" resolves to both ::1 and 127.0.0.1, which is what produces the
@@ -74,57 +73,22 @@ describe("the real wiring requires a session", () => {
   });
 });
 
-// These exercise the *real* wiring in server.ts end to end (real adapter -> real
-// service -> real route), unlike routes/*.test.ts and services/*.test.ts, which each
-// substitute a fixture/fake one layer down. Both game-server ports point at a closed
-// port (see beforeAll above), so every one of these is expected to fail to connect — which is exactly the case this
-// checks: that a real adapter connection failure propagates through the real service
-// and is turned into a clean 503 by the route, rather than the request crashing,
-// hanging, or an unhandled rejection escaping past Express's control flow.
-describe("GET /api/servers/default/{status,factory,power} against an unreachable game server", () => {
-  it("status: resolves 503 with an error body instead of hanging or crashing", async () => {
-    const res = await request(app).get("/api/servers/default/status").set("Cookie", session);
-    expect(res.status).toBe(503);
-    expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
-    expect(res.body.error).toHaveProperty("detail");
+// ADR-0066 build PR 5: the game-server settings above are ignored now. Without a database the backend builds no game
+// server at all (servers come only from the database, and connect through the mod), so nothing is polled and every
+// per-server route answers 404 server_not_found, never a 503 from a connection attempt.
+describe("the real wiring without a database serves no game server", () => {
+  it("lists no servers", async () => {
+    const res = await request(app).get("/api/servers").set("Cookie", session);
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("\"default\"");
   });
 
-  it("factory: resolves 503 with an error body instead of hanging or crashing", async () => {
-    const res = await request(app).get("/api/servers/default/factory").set("Cookie", session);
-    expect(res.status).toBe(503);
-    expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
-    expect(res.body.error).toHaveProperty("detail");
-  });
-
-  it("power: resolves 503 with an error body instead of hanging or crashing", async () => {
-    const res = await request(app).get("/api/servers/default/power").set("Cookie", session);
-    expect(res.status).toBe(503);
-    expect(res.body.error).toMatchObject({ code: "upstream_unreachable" });
-    expect(res.body.error).toHaveProperty("detail");
-  });
-
-  // The vanilla-API path (status route) rejects with a Node `AggregateError` (from
-  // the dual-stack DNS/connect failure inside `https.request`'s happy-eyeballs), which
-  // used to make `detail` degrade to the bare, undiagnostic string "AggregateError"
-  // since `String(err)` doesn't surface an AggregateError's wrapped `.errors` the way
-  // it does a plain Error's `.message`. routes/formatErrorDetail.ts now unwraps it.
-  // The transport now wraps it as the `.cause` of a VanillaApiRequestError tagged
-  // `failureKind: "unreachable"`, so it appears inside a "(caused by: ...)" clause.
-  it("status: detail includes the underlying connect failures, not a bare 'AggregateError' string", async () => {
-    const res = await request(app).get("/api/servers/default/status").set("Cookie", session);
-    expect(res.status).toBe(503);
-    expect(typeof res.body.error.detail).toBe("string");
-    expect(res.body.error.detail).not.toBe("AggregateError");
-    expect(res.body.error.detail).toMatch(/\(caused by: AggregateError \(.*ECONNREFUSED.*\)\)$/);
-  });
-
-  // A real refused connection, not a mock: confirms both transports classify it
-  // as unreachable end to end, so the message isn't the neutral fallback.
   it.each(["/api/servers/default/status", "/api/servers/default/factory", "/api/servers/default/power"])(
-    "%s: a refused connection is reported as unreachable",
+    "%s: answers 404 server_not_found, without trying the configured address",
     async (path) => {
       const res = await request(app).get(path).set("Cookie", session);
-      expect(res.body.error.message).toBe("Could not reach the Satisfactory dedicated server");
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe("server_not_found");
     },
   );
 });

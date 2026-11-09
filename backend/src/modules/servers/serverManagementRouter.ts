@@ -2,23 +2,18 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import type { z } from "zod";
 import {
-  CreateServerRequestSchema,
   DeleteServerResponseSchema,
   ManagedServerListResponseSchema,
   RenameServerRequestSchema,
-  SwitchToLocalRequestSchema,
   RenameServerResponseSchema,
-  ServerConnectionResponseSchema,
   ServerIdSchema,
-  TestConnectionRequestSchema,
-  TestConnectionResponseSchema,
-  UpdateServerRequestSchema,
   endpoints,
 } from "@satisfactory-dash/shared";
 import {
   BadRequestError,
   InvalidServerIdError,
   RateLimitedError,
+  RouteGoneError,
   ServiceUnavailableError,
   UnauthorizedError,
 } from "../../platform/errorResponse.js";
@@ -42,9 +37,10 @@ import type { SelfServeService } from "./selfServe.js";
  * - `scoped`: the routes under /servers/:serverId. Mount AFTER the servers router, so its membership
  *   check runs first (a non-member gets the same 404 as an unknown server, a viewer's write a 403).
  *
- * Tokens are write-only: a request carries them, a response never does, and no body is ever logged.
- * The write routes are rate limited per user, and the test-connection routes more tightly (each one
- * opens outbound connections).
+ * ADR-0066 build PR 5: direct polling is retired. The managed list sends `servers: []` (the field is still required by the
+ * contract) and the direct-poll routes (create, get, update, test-connection, test the saved connection, switch to local)
+ * still pass the operator gate, then answer 410 with a message that servers connect through the mod. Build PR 6 deletes
+ * them. The write routes are rate limited per user.
  *
  * #526 (ADR-0046 section 1.8): the two routes the contract flags `selfServeOwner` (rename an agent server, remove) also
  * accept the OWNER of a self-serve server. For a caller whose role on the server is owner the owner path runs first; it
@@ -58,12 +54,14 @@ export interface ServerManagementRouterOptions {
   selfServeOwner?: Pick<SelfServeService, "renameAsOwner" | "removeAsOwner">;
   /** Injectable for tests. */
   writeLimiter?: UserRateLimiter;
-  testLimiter?: UserRateLimiter;
 }
 
 const WRITE_LIMIT = { max: 30, windowMs: 15 * 60 * 1000 };
-const TEST_LIMIT = { max: 10, windowMs: 60 * 1000 };
 const RATE_LIMITED_MESSAGE = "Too many requests. Try again later.";
+
+/** ADR-0066: what a retired direct-poll route answers (410, code `not_found`; see `RouteGoneError`). */
+export const DIRECT_POLL_GONE_MESSAGE =
+  "Direct connections to game servers are retired: servers connect through the mod. Add a server, then enrol the mod with its code.";
 
 /** A body that fails its schema is a 400 naming the fields, never the values (a token may be among them). */
 export function parseBody<S extends z.ZodType>(schema: S, body: unknown): z.output<S> {
@@ -86,7 +84,6 @@ export function createServerManagementRouters(
   options: ServerManagementRouterOptions = {},
 ): { collection: Router; scoped: Router } {
   const writeLimiter = options.writeLimiter ?? new UserRateLimiter(WRITE_LIMIT);
-  const testLimiter = options.testLimiter ?? new UserRateLimiter(TEST_LIMIT);
 
   // ADR-0056 section 3: the operator gate lives in identity and serves servers and metrics alike; same 401/503/403 as before.
   const operatorRule = { isOperator: (id: string) => service.canManage(id), forbiddenMessage: "Only the operator can manage servers." };
@@ -119,43 +116,26 @@ export function createServerManagementRouters(
 
   const { create, list, testConnection, get, update, renameAgent, switchToLocal, remove, testSaved } = endpoints.serverManagement;
 
+  /** ADR-0066: a retired direct-poll route. Nothing is read, written or tested, and the body is ignored. */
+  const gone: RequestHandler = () => {
+    throw new RouteGoneError(DIRECT_POLL_GONE_MESSAGE);
+  };
+
   const collection = Router();
   // "managed" is a reserved server id, and this router is mounted before the servers router, so the
   // list is never read as GET /servers/:serverId.
   collection.get(routePath(list.route), operatorOnly, async (_req, res) => {
-    // ADR-0031: the servers reached through an edge agent have no stored connection, so they come from a second list.
-    const [servers, agentServers] = await orUnavailable(() => Promise.all([service.list(), service.listAgentServers()]));
-    sendValidated(res, ManagedServerListResponseSchema, { servers, agentServers });
+    // ADR-0066 Decision 8 step A: no server has a stored connection any more; `servers` stays, empty, until the contract PR.
+    const agentServers = await orUnavailable(() => service.listAgentServers());
+    sendValidated(res, ManagedServerListResponseSchema, { servers: [], agentServers });
   });
-  collection.post(routePath(create.route), operatorOnly, limited(writeLimiter), async (req, res) => {
-    const body = parseBody(CreateServerRequestSchema, req.body);
-    const server = await orUnavailable(() => service.create(userId(res), body));
-    res.status(201);
-    sendValidated(res, ServerConnectionResponseSchema, { server });
-  });
-  collection.post(routePath(testConnection.route), operatorOnly, limited(testLimiter), async (req, res) => {
-    const body = parseBody(TestConnectionRequestSchema, req.body);
-    sendValidated(res, TestConnectionResponseSchema, await orUnavailable(() => service.testCandidate(body)));
-  });
+  collection.post(routePath(create.route), operatorOnly, gone);
+  collection.post(routePath(testConnection.route), operatorOnly, gone);
 
   const scoped = Router();
-  scoped.get(routePath(get.route), operatorOnly, async (req, res) => {
-    const server = await orUnavailable(() => service.get(serverId(req.params.serverId)));
-    sendValidated(res, ServerConnectionResponseSchema, { server });
-  });
-  scoped.patch(routePath(update.route), operatorOnly, limited(writeLimiter), async (req, res) => {
-    const id = serverId(req.params.serverId);
-    const body = parseBody(UpdateServerRequestSchema, req.body);
-    const server = await orUnavailable(() => service.update(userId(res), id, body));
-    sendValidated(res, ServerConnectionResponseSchema, { server });
-  });
-  // ADR-0031 amendment: the way back from an agent. Write-limited like create (it stores tokens and runs a connection test).
-  scoped.post(routePath(switchToLocal.route), operatorOnly, limited(writeLimiter), async (req, res) => {
-    const id = serverId(req.params.serverId);
-    const body = parseBody(SwitchToLocalRequestSchema, req.body);
-    const server = await orUnavailable(() => service.switchToLocal(userId(res), id, body));
-    sendValidated(res, ServerConnectionResponseSchema, { server });
-  });
+  scoped.get(routePath(get.route), operatorOnly, gone);
+  scoped.patch(routePath(update.route), operatorOnly, gone);
+  scoped.post(routePath(switchToLocal.route), operatorOnly, gone);
   // ADR-0031: the one edit a server reached through an edge agent has.
   // #526: flagged `selfServeOwner` in the contract, so a self-serve server's owner may rename it too.
   scoped.patch(routePath(renameAgent.route), renameAgent.selfServeOwner ? operatorOrSelfServeOwner : operatorOnly, limited(writeLimiter), async (req, res) => {
@@ -179,9 +159,7 @@ export function createServerManagementRouters(
     await orUnavailable(() => service.remove(userId(res), id));
     sendValidated(res, DeleteServerResponseSchema, { deleted: true });
   });
-  scoped.post(routePath(testSaved.route), operatorOnly, limited(testLimiter), async (req, res) => {
-    sendValidated(res, TestConnectionResponseSchema, await orUnavailable(() => service.testSaved(serverId(req.params.serverId))));
-  });
+  scoped.post(routePath(testSaved.route), operatorOnly, gone);
 
   return { collection, scoped };
 }

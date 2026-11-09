@@ -11,7 +11,8 @@ import {
   capturedTrippedGridRefinery,
   capturedUnassignedAssembler,
 } from "../../../../test-support/capturedFactory.js";
-import { ProductionService } from "../services/productionService.js";
+// ADR-0066: the polled ProductionService is gone; the harness runs the same mapping and derivation over these buildings.
+import { FactoryOverviewHarness as ProductionService } from "../../../../test-support/factoryOverview.js";
 import { createFactoryRouter } from "./factory.js";
 
 function appWith(production: { getFactoryOverview: () => Promise<any> }) {

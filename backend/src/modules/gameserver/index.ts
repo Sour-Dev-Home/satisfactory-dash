@@ -55,11 +55,5 @@ export type {
   ConnectionCheckError,
   ConnectionTestResult,
 } from "@satisfactory-dash/game-adapter";
-
-export {
-  loadSatisfactoryServerConfigFromEnv,
-  nonLoopbackServerIds,
-  parsePortEnv,
-} from "./connectionConfig.js";
-export { configuredServerEnvNamesInUse, ignoredSingleServerEnvNames, loadConfiguredServersFromFile } from "./serversFile.js";
-export type { ConfiguredServer } from "./serversFile.js";
+// ADR-0066 build PR 5: the environment and servers-file loaders are gone (no server is built with a game connection);
+// PORT's parser moved to platform/portEnv.ts. The rest of this module goes in build PR 7.

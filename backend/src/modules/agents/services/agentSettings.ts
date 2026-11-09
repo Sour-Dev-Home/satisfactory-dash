@@ -15,11 +15,7 @@ import type { CommandsService, ReportedAutoPause } from "./commandsService.js";
  */
 export interface AgentSettingsServices {
   getSettings(): Promise<Settings>;
-  setAutoPause(
-    enabled: boolean,
-    onApplied: (change: { from: boolean; to: boolean; confirmedByReread?: boolean }) => void,
-    context?: { actorUserId?: string },
-  ): Promise<{ command: Command }>;
+  setAutoPause(enabled: boolean, context?: { actorUserId?: string }): Promise<{ command: Command }>;
 }
 
 /** The service for the server with this public id. */
@@ -31,7 +27,7 @@ export function createAgentSettingsServices(
 ): AgentSettingsServices {
   return {
     getSettings: () => commands.readAutoPause(serverId, reported()),
-    // `onApplied` is the local write's audit hook: nothing is applied here, and the command's own audit event says who asked.
-    setAutoPause: async (enabled, _onApplied, context) => ({ command: await commands.requestAutoPause(serverId, enabled, context?.actorUserId) }),
+    // Nothing is applied here: the command's own audit event says who asked.
+    setAutoPause: async (enabled, context) => ({ command: await commands.requestAutoPause(serverId, enabled, context?.actorUserId) }),
   };
 }

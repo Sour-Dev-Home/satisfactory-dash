@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AgentFactorySchema, AgentPowerSchema, FactorySchema, PowerSchema } from "@satisfactory-dash/shared";
 import type { FactoryBuilding, PowerCircuit } from "../domain.js";
 import { deriveFactory, deriveGenerators, derivePower, fuseByCircuit, fuseFromCircuits } from "./snapshotDerive.js";
-import { PowerService } from "./powerService.js";
-import { ProductionService } from "./productionService.js";
+import { factoryOverviewOf, powerOverviewOf } from "../../../../test-support/factoryOverview.js";
 import type { UnitResolver } from "../itemForms.js";
 
 /**
@@ -46,8 +45,9 @@ const circuit = (id: number, overrides: Partial<PowerCircuit> = {}): PowerCircui
   ...overrides,
 });
 
-const localFactory = (buildings: FactoryBuilding[]) => new ProductionService({ getFactoryBuildings: async () => buildings }, resolveUnit).getFactoryOverview();
-const localPower = (circuits: PowerCircuit[]) => new PowerService({ getPowerCircuits: async () => circuits }).getPowerOverview();
+// ADR-0066: the polled services are gone; these run the same mapping and derivation the "local path" did.
+const localFactory = async (buildings: FactoryBuilding[]) => factoryOverviewOf(buildings, resolveUnit);
+const localPower = async (circuits: PowerCircuit[]) => powerOverviewOf(circuits);
 
 describe("derivePower", () => {
   const circuits = [

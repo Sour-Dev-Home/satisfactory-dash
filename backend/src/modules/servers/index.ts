@@ -5,14 +5,12 @@
  */
 export { InMemoryServerDirectory } from "./serverDirectory.js";
 export type { ServerDirectory, ServerDirectoryEntry } from "./serverDirectory.js";
-export { loadServerRegistryFromEnv } from "./serverRegistry.js";
-export type { ServerRegistryEntry } from "./serverRegistry.js";
 export { resolveServer } from "./serverScope.js";
 export { createAuthorizeServer, createDbServerAccess } from "./serverAccess.js";
 export type { AuthorizeServerOptions, ServerAccess } from "./serverAccess.js";
 export { createServersRouter } from "./serversRouter.js";
 export { createServerManagementService } from "./serverManagement.js";
-export type { ConnectionCandidate, ManagementDb, ServerManagementDeps, ServerManagementService } from "./serverManagement.js";
+export type { ManagementDb, ServerManagementDeps, ServerManagementService } from "./serverManagement.js";
 export { createServerManagementRouters } from "./serverManagementRouter.js";
 export type { ServerManagementRouterOptions } from "./serverManagementRouter.js";
 // ADR-0046: self-serve agent servers (shipped dark behind SELF_SERVE_ENABLED).
@@ -48,10 +46,8 @@ export type { RuntimeServer, RuntimeWorker, ServerRuntimeOptions } from "./serve
 // ADR-0031 PR 5a: the agents module switches a server to 'agent' in its enrolment transaction and looks servers up.
 export { findServerByPublicId, listAgentServers, lockServerForPairing, switchToAgentConnection } from "./repositories/serverRepository.js";
 export type { ConnectionKind, RegisteredServer } from "./repositories/serverRepository.js";
-export { connectionSource, loadDatabaseServers, reconcileDatabaseServers } from "./loadDatabaseServers.js";
-export type { LoadDatabaseServersResult, ReconcileDatabaseServersResult } from "./loadDatabaseServers.js";
-export { ImportError, MAX_LOCAL_SERVERS, importServers } from "./importServers.js";
-export type { ImportResult, ImportableServer } from "./importServers.js";
+export { loadDatabaseServers, reconcileDatabaseServers } from "./loadDatabaseServers.js";
+export type { BuildAgentServer, LoadDatabaseServersResult, ReconcileDatabaseServersResult } from "./loadDatabaseServers.js";
 export {
   countConnections,
   createConnection,

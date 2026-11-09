@@ -94,32 +94,11 @@ const members: Record<string, Record<string, "owner" | "admin" | "viewer">> = {
   [SELF_SERVE_SERVER]: { [SS_OWNER]: "owner", [SS_ADMIN]: "admin", [SS_VIEWER]: "viewer" },
 };
 
-const connectionView = {
-  id: "alpha",
-  displayName: "Alpha",
-  host: "192.168.1.20",
-  apiPort: 7777,
-  frmPort: 8080,
-  apiTokenSet: true as const,
-  apiTokenLast4: "1234",
-  frmTokenSet: true,
-  frmTokenLast4: "5678",
-  state: "ok" as const,
-  plainHttpOverLan: true,
-};
-const testPassed = { ok: true, api: { ok: true }, frm: { ok: true } };
 const managementService: ServerManagementService = {
   canManage: (userId) => userId === OPERATOR,
-  create: async () => connectionView,
-  get: async () => connectionView,
-  list: async () => [connectionView],
   listAgentServers: async () => [],
   renameAgentServer: async (_actor, id, displayName) => ({ id, displayName, kind: "agent" as const }),
-  switchToLocal: async () => connectionView,
-  update: async () => connectionView,
   remove: async () => undefined,
-  testCandidate: async () => testPassed,
-  testSaved: async () => testPassed,
 };
 
 /** The self-serve owner's actions: the real service re-checks self-serve and ownership under a row lock (selfServeOwner.db.test.ts);
@@ -167,7 +146,7 @@ const services = {
   },
   settings: {
     getSettings: async () => ({ autoPause: false, pending: false, editable: true }),
-    setAutoPause: async (enabled: boolean) => ({ autoPause: enabled, pending: false, editable: true }),
+    setAutoPause: async () => ({ command: commandPending.command }),
   },
 };
 
@@ -278,7 +257,16 @@ const hasBody = (name: string, method: Method) =>
   name !== "members.leave" &&
   name !== "agent.enrollmentCode";
 /** What a successful write answers: 200, except a create (201). */
-const successStatus = (name: string): number => (name === "alerts.rules.create" || name === "agent.enrollmentCode" || name === "plannerDesignations.create" ? 201 : 200);
+// ADR-0066: auto-pause is always a command (202); the direct-poll management routes are retired and answer 410 to the operator.
+const RETIRED_MANAGEMENT = new Set(["serverManagement.get", "serverManagement.update", "serverManagement.switchToLocal", "serverManagement.testSaved"]);
+const successStatus = (name: string): number =>
+  name === "alerts.rules.create" || name === "agent.enrollmentCode" || name === "plannerDesignations.create"
+    ? 201
+    : name === "settings.setAutoPause"
+      ? 202
+      : RETIRED_MANAGEMENT.has(name)
+        ? 410
+        : 200;
 
 const call = (app: ReturnType<typeof buildApp>, name: string, method: Method, url: string, user: string) => {
   const req = request(app)[method.toLowerCase() as "get"](url).set("x-test-user", user);
@@ -385,7 +373,7 @@ describe.each(SCOPED)("$method $route ($name)", ({ name, method, route, operator
 
     it("the operator can use it", async () => {
       const res = await call(app, name, method, urlFor(route, "alpha"), OPERATOR);
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(successStatus(name));
     });
   } else if (method === "GET") {
     it.each([OWNER, ADMIN, VIEWER])("a member (%s) can read it", async (user) => {

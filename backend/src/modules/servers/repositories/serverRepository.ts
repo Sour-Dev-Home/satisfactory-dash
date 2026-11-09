@@ -322,14 +322,16 @@ export async function switchToLocalKind(db: Queryable, serverId: string): Promis
   return (await timedQuery(db, "servers.switchToLocalKind", SWITCH_TO_LOCAL, [serverId])).rows.length > 0;
 }
 
+// ADR-0066 Decision 7: a leftover 'local' row (a backup restored from before the migration that converted them) is
+// served as an agent server awaiting the mod. Direct polling is retired, so no other kind of server exists.
 const LIST_AGENT_SERVERS = `
   SELECT id, public_id, display_name
   FROM servers.servers
-  WHERE connection_kind = 'agent' AND deleted_at IS NULL
+  WHERE connection_kind IN ('agent', 'local') AND deleted_at IS NULL
   ORDER BY public_id`;
 
-/** The live servers reached through an agent (they have no connection row), for building their runtime entries at startup
- *  (`serverId` is the internal id, for seeding an owner). */
+/** The live servers, every one reached through an agent (they have no connection row; a leftover `local` row counts as one,
+ *  ADR-0066), for building their runtime entries at startup (`serverId` is the internal id, for seeding an owner). */
 export async function listAgentServers(db: Queryable): Promise<{ serverId: string; publicId: string; displayName: string }[]> {
   const result = await timedQuery(db, "servers.listAgentServers", LIST_AGENT_SERVERS);
   return parseRows(z.object({ id: z.string(), public_id: z.string(), display_name: z.string() }), result.rows, "servers.listAgentServers").map((row) => ({
@@ -342,7 +344,7 @@ export async function listAgentServers(db: Queryable): Promise<{ serverId: strin
 const LIST_OPERATOR_AGENT_SERVERS = `
   SELECT public_id, display_name
   FROM servers.servers
-  WHERE connection_kind = 'agent' AND created_via = 'operator' AND deleted_at IS NULL
+  WHERE connection_kind IN ('agent', 'local') AND created_via = 'operator' AND deleted_at IS NULL
   ORDER BY public_id`;
 
 /** ADR-0046 section 6: the operator's managed list shows only the agent servers the operator created. A self-serve server's
@@ -353,6 +355,16 @@ export async function listOperatorAgentServers(db: Queryable): Promise<{ publicI
     publicId: row.public_id,
     displayName: row.display_name,
   }));
+}
+
+const IS_OPERATOR_SERVER = `
+  SELECT 1 FROM servers.servers WHERE public_id = $1 AND created_via = 'operator' AND deleted_at IS NULL`;
+
+/** True for a live server the operator created: what the managed list shows, and all the operator's remove may touch. A
+ *  self-serve server is its owner's to remove, even when the operator is a member of it. */
+export async function isOperatorServer(db: Queryable, publicId: string): Promise<boolean> {
+  const result = await timedQuery(db, "servers.isOperatorServer", IS_OPERATOR_SERVER, [publicId]);
+  return result.rows.length > 0;
 }
 
 // ADR-0046 section 1.3: a plain INSERT, never the upserts above. A public id that already exists, live or soft-deleted, is
