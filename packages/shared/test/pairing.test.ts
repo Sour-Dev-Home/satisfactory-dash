@@ -112,6 +112,21 @@ describe("pairing: poll answers", () => {
     }
   });
 
+  it("approvedBy is optional, at most 64 characters, and refuses control, bidi and zero-width characters", () => {
+    const withName = (approvedBy: unknown) => PairingPollResponseSchema.safeParse({ ...fixtures.pairingPollResponseApproved, approvedBy }).success;
+    expect(withName(undefined)).toBe(true);
+    expect(withName("Player-4F2K")).toBe(true);
+    expect(withName("x".repeat(64))).toBe(true);
+    for (const status of ["pending", "expired", "slow_down"]) {
+      expect(PairingPollResponseSchema.safeParse({ status, approvedBy: "Player-4F2K" }).success, status).toBe(false);
+    }
+    expect(withName("a b")).toBe(false);
+    expect(withName("⁦x")).toBe(false);
+    for (const bad of ["", "x".repeat(65), "a\nb", "a‮b", "a​b", "a\u0000b", 42, null]) {
+      expect(withName(bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
   it("server names refuse control, bidi and zero-width characters; versions refuse odd characters; caps hold", () => {
     for (const name of ["a\nb", "a‮b", "a​b", "a\u0000b", "a b"]) {
       expect(PairingStartRequestSchema.safeParse({ agentVersion: "0.1.0", serverName: name }).success, JSON.stringify(name)).toBe(false);
