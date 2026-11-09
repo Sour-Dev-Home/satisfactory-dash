@@ -222,13 +222,13 @@ describe("PairPage: the confirmation step", () => {
 });
 
 describe("the way into and out of the page", () => {
-  it("AddServer offers no pairing link: the mod (0.3.0) enrols only with a code, so the page is reached by URL alone", () => {
+  it("AddServer links to /app/pair, for a code the mod (0.3.0) printed on the server console", () => {
     renderWithClient(
       <MemoryRouter>
         <AddServer onCreated={() => {}} />
       </MemoryRouter>,
     );
-    expect(screen.queryByRole("link", { name: "Pair it" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Pair it" })).toHaveAttribute("href", "/app/pair");
   });
 
   it("ServerGate opens the server named in the router state, and ignores an unknown one", async () => {

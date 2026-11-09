@@ -2,7 +2,7 @@
 title: Getting started with Satis Manager
 description: What Satis Manager shows, who it is for, and how to try the demo, sign in and add your first Satisfactory dedicated server.
 order: 1
-updated: 2026-11-03
+updated: 2026-11-09
 ---
 Satis Manager is a web dashboard for a Satisfactory dedicated server. It reads your running game and shows, in a browser, how the factory is doing: the power on every circuit, what each machine is making, which machines are stuck, how items flow between your factories, and where everything sits on the map. You can check it from your phone while you're away from the game, or keep it open on a second screen while you build.
 
@@ -40,6 +40,8 @@ If you don't have a server in the dashboard yet, the app asks you to add one. If
 4. Paste that code into the Satis Manager mod's config file on your dedicated server. [Connecting a server](/guides/connecting-a-server) walks through installing the mod and where the code goes.
 
 A server that hasn't connected within 24 hours of adding it is removed automatically, so you don't collect empty entries. If the code runs out first, create a new one.
+
+Running mod 0.3.0 or later, and it printed a pairing code in your server's console? Use the **Pair it** link next to the form, type the code, check the details and approve it.
 
 ## Find your way around
 
