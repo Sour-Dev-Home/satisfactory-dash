@@ -3,9 +3,9 @@ import { Router } from "express";
 import request from "supertest";
 import { ApiErrorResponseSchema } from "@satisfactory-dash/shared";
 import {
+  ApiFailure,
   classifyRequestFailure,
   createErrorHandler,
-  describeFailure,
   ForbiddenError,
   HTTP_STATUS_BY_CODE,
   ServerNotFoundError,
@@ -14,8 +14,6 @@ import {
 import { ContractViolationError } from "./sendValidated.js";
 import { createApp } from "../app.js";
 import { createLogger } from "./logger.js";
-import { UpstreamError } from "./errors.js";
-import { VanillaApiClient } from "../modules/gameserver/index.js";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -42,121 +40,49 @@ function appThrowing(err: unknown) {
   return { app: createApp({ logger, routers: [router] }), lines };
 }
 
+/** An upstream failure as the agent snapshot store throws it, with a cause whose text carries an address (the
+ *  detail tests below check that address never reaches a production body). */
 const unreachable = () =>
-  new UpstreamError("connect ECONNREFUSED 127.0.0.1:8080", { failureKind: "unreachable" });
-
-describe("describeFailure (classification; inputs and branches unchanged by ADR-0003)", () => {
-  // Found by a review pass: every failure used to get the same "Could not reach..."
-  // message, wrong for anything that isn't a connectivity problem.
-  it("describes an auth failure (401/403-style error) distinctly from an unreachable server", () => {
-    expect(describeFailure(new UpstreamError("unauthorized", { status: 401 }))).toEqual({
-      code: "upstream_auth_rejected",
-      message: "Satisfactory dedicated server rejected the request (check the configured auth token)",
-    });
+  Object.assign(new ApiFailure("upstream_unreachable", "This server's game PC has not reported yet"), {
+    cause: new Error("connect ECONNREFUSED 127.0.0.1:8080"),
   });
 
-  it('says "Could not reach" only for an error the adapter classified as unreachable', () => {
-    expect(describeFailure(unreachable())).toEqual({
-      code: "upstream_unreachable",
-      message: "Could not reach the Satisfactory dedicated server",
-    });
-  });
-
-  // Found by a review pass: a 200 response with malformed JSON, and any adapter
-  // crash, were both reported as "Could not reach..." even though the server
-  // had answered.
-  it("describes an invalid response distinctly from an unreachable server", () => {
-    const err = new UpstreamError("not valid JSON", { failureKind: "invalid_response" });
-    expect(describeFailure(err)).toEqual({
-      code: "upstream_invalid_response",
-      message: "Satisfactory dedicated server returned an invalid response",
-    });
-  });
-
-  it("treats a non-upstream error like a TypeError as our own internal failure", () => {
-    expect(describeFailure(new TypeError("Cannot read properties of null"))).toEqual({
+// ADR-0066 build PR 6: the UpstreamError mapping is gone. An upstream code comes only from an ApiFailure; anything else
+// fails closed as our own 500 (architect ruling, ADR-0003 PR 3).
+describe("classifyRequestFailure fails closed", () => {
+  it("treats a non-ApiFailure error like a TypeError as our own internal failure", () => {
+    expect(classifyRequestFailure(new TypeError("Cannot read properties of null"))).toEqual({
       code: "internal",
       message: "Internal server error",
     });
   });
 
-  // Architect acceptance tests for PR 3: only an UpstreamError can become an upstream
-  // code. A plain Error carrying a numeric status fails closed as 500, never 502 --
-  // that duck-typing is how PR #16's URIError got blamed on the game server.
-  it("fails closed for a plain Error with a numeric status: internal, not upstream", () => {
-    expect(describeFailure(Object.assign(new Error("x"), { status: 404 })).code).toBe("internal");
-    expect(describeFailure(Object.assign(new Error("x"), { failureKind: "unreachable" })).code).toBe("internal");
+  // A plain Error carrying a numeric status fails closed as 500, never 502: that duck-typing is how PR #16's
+  // URIError got blamed on the game server.
+  it("fails closed for a plain Error with a numeric status or a failureKind: internal, not upstream", () => {
+    expect(classifyRequestFailure(Object.assign(new Error("x"), { status: 404 })).code).toBe("internal");
+    expect(classifyRequestFailure(Object.assign(new Error("x"), { failureKind: "unreachable" })).code).toBe("internal");
   });
 
-  it("maps an UpstreamError with no status, errorCode or failureKind to upstream_error", () => {
-    expect(describeFailure(new UpstreamError("something upstream")).code).toBe("upstream_error");
-  });
-
-  // Issue #8 item 4: the vanilla API's errorCode lands in the public message, so it's
-  // bounded to 64 characters from a safe set.
-  it("bounds and sanitizes the server-supplied errorCode in the message", () => {
-    const hostile = "<script>" + "a".repeat(10_000);
-    const { message } = describeFailure(new UpstreamError("x", { errorCode: hostile }));
-    expect(message).not.toContain("<");
-    expect(message.length).toBeLessThan(120);
-  });
-
-  // Found by a review pass: describeFailure read err.status unguarded, so a
-  // throwing getter made the route's error handling itself throw.
-  it("does not throw when reading the error's status throws", () => {
-    const err = new UpstreamError("hostile");
-    Object.defineProperty(err, "status", {
-      get() {
-        throw new Error("boom");
-      },
-    });
-    expect(describeFailure(err)).toEqual({ code: "internal", message: "Internal server error" });
-  });
-
-  // Found by a review pass: typeof === "number" accepted NaN, 0 and negatives,
-  // producing "request failed (status NaN)".
-  it.each([Number.NaN, 0, -1, 200.5, 1000])("ignores a non-HTTP status value %s", (status) => {
-    expect(describeFailure(new UpstreamError("bad status", { status })).code).toBe("upstream_error");
-  });
-
-  // Found by a review pass, using errors thrown by the real VanillaApiClient
-  // rather than hand-built ones: it never put the HTTP status on its errors, so
-  // /api/status with a bad token got a generic message instead of the auth hint.
-  describe("with errors from the real VanillaApiClient", () => {
-    async function classify(transportResult: { status: number; body: unknown }) {
-      const client = new VanillaApiClient({
-        host: "localhost",
-        port: 7777,
-        timeoutMs: 1000,
-        allowSelfSignedCert: false,
-        transport: vi.fn().mockResolvedValue(transportResult),
+  // Found by a review pass: a throwing getter must not make the error handling itself throw.
+  it("does not throw when reading the error's expose or statusCode throws", () => {
+    const err = new Error("hostile");
+    for (const key of ["expose", "statusCode", "status"]) {
+      Object.defineProperty(err, key, {
+        get() {
+          throw new Error("boom");
+        },
       });
-      return describeFailure(await client.call("QueryServerState").catch((e: unknown) => e));
     }
-
-    it("a 401 with no body gets the auth-token message", async () => {
-      expect(await classify({ status: 401, body: undefined })).toMatchObject({ code: "upstream_auth_rejected" });
-    });
-
-    it("a 403 with an errorCode body still gets the auth-token message", async () => {
-      const failure = await classify({ status: 403, body: { errorCode: "insufficient_scope" } });
-      expect(failure.message).toContain("check the configured auth token");
-    });
-
-    it("a 500 with no body reports the status", async () => {
-      expect(await classify({ status: 500, body: undefined })).toEqual({
-        code: "upstream_error",
-        message: "Satisfactory dedicated server request failed (status 500)",
-      });
-    });
+    expect(classifyRequestFailure(err)).toEqual({ code: "internal", message: "Internal server error" });
   });
 });
 
 describe("error middleware (ADR-0003 envelope)", () => {
   it.each([
     ["upstream unreachable", unreachable(), 503, "upstream_unreachable"],
-    ["upstream auth rejected", new UpstreamError("401", { status: 401 }), 502, "upstream_auth_rejected"],
-    ["upstream invalid response", new UpstreamError("bad", { failureKind: "invalid_response" }), 502, "upstream_invalid_response"],
+    ["upstream auth rejected", new ApiFailure("upstream_auth_rejected", "rejected"), 502, "upstream_auth_rejected"],
+    ["upstream invalid response", new ApiFailure("upstream_invalid_response", "bad"), 502, "upstream_invalid_response"],
     ["our own bug", new TypeError("oops"), 500, "internal"],
     ["a plain Error with a numeric status", Object.assign(new Error("x"), { status: 503 }), 500, "internal"],
   ])("maps %s to its HTTP status and code, in a body that matches the shared schema", async (_name, err, status, code) => {
@@ -233,8 +159,8 @@ describe("error middleware (ADR-0003 envelope)", () => {
   });
 
   // Found while writing this middleware: express.json() rejects a malformed body with
-  // an http-errors error carrying status 400, which describeFailure's status branch
-  // would have blamed on the game server.
+  // an http-errors error carrying status 400, which the old upstream mapping's status
+  // branch would have blamed on the game server.
   it("reports a malformed JSON request body as our 400 bad_request, not an upstream error", async () => {
     const { app } = appThrowing(unreachable());
     const res = await request(app).post("/api/echo").set("Content-Type", "application/json").send("{not json");
@@ -264,7 +190,7 @@ describe("error middleware (ADR-0003 envelope)", () => {
   // to 400. Each now has its own code, and each code keeps one status (ADR-0003).
   // Found by PR #16's fresh-eyes review: Express's router throws a URIError with a
   // bare `status: 400` (no `expose`) for a broken percent-encoded route parameter, and
-  // describeFailure's status branch blamed it on the game server as a 502. Latent
+  // the old upstream mapping's status branch blamed it on the game server as a 502. Latent
   // until the first parameterised route (server-scoped routes, ADR-0001).
   it("reports a malformed percent-encoded route parameter as our 400 bad_request, not a 502", async () => {
     const { app } = appThrowing(unreachable());

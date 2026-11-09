@@ -1,19 +1,15 @@
-import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { createTestDatabase, dbTestsAvailable } from "../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../test-support/testDb.js";
-import { createSecretsKeyring } from "../../platform/secrets/secrets.js";
 import { createUser } from "../identity/repositories/userRepository.js";
 import { loadDatabaseServers } from "./loadDatabaseServers.js";
 import { addMember, getMemberRole, removeMember, setMemberRole, transferOwnership } from "./repositories/memberRepository.js";
-import { saveConnection } from "./repositories/connectionRepository.js";
 import { softDeleteServer, upsertConfiguredServer } from "./repositories/serverRepository.js";
 import { ServerRuntime } from "./serverRuntime.js";
 
 // #311: the database refuses to leave a live server without an owner, wherever the write comes from.
 const available = dbTestsAvailable();
-const ring = createSecretsKeyring("k1", new Map([["k1", randomBytes(32)]]));
 
 /** What pg reports for the trigger's error: the SQLSTATE, the constraint and the stable message. */
 const OWNERLESS = { code: "23514", constraint: "server_members_never_ownerless", message: "ownerless_server" };
@@ -122,14 +118,18 @@ describe.skipIf(!available)("a live server is never ownerless (database trigger)
   // ADR-0066: the startup seed loads every stored server as one awaiting (or running) the mod; these rows are leftover
   // `local` ones with a stored connection, which is never read.
   const buildAgent = ({ publicId, displayName }: { publicId: string; displayName: string }) => ({ id: publicId, displayName, services: "agent", workers: [] });
+  // ADR-0066 build PR 6: the write path is gone, so the leftover row goes in directly. Its ciphertext is never opened.
+  const storeLeftoverConnection = (serverId: string, ip: string) =>
+    app.query(
+      `INSERT INTO servers.server_connections (server_id, host, pinned_ip, api_port, frm_port, api_token_enc, key_id)
+       VALUES ($1, 'gaming-pc.lan', $2::inet, 7777, 8080, $3, 'k1')`,
+      [serverId, ip, Buffer.alloc(40, 1)],
+    );
 
   it("the startup seed only adds owners, still works, and reports each seeded server with source startup_seed", async () => {
     const operator = await user();
     const server = await upsertConfiguredServer(app, { publicId: "nov-seeded", displayName: "Seeded" });
-    await saveConnection(app, ring, server.id, {
-      host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080,
-      apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678",
-    });
+    await storeLeftoverConnection(server.id, "192.168.1.20");
     const load = () => loadDatabaseServers({ db: app, runtime: new ServerRuntime<string>(), operatorUserId: operator, buildAgent });
     expect((await load()).ownershipSeeded).toEqual(["nov-seeded"]);
     expect(await getMemberRole(app, { publicId: "nov-seeded", userId: operator })).toBe("owner");
@@ -176,10 +176,7 @@ describe.skipIf(!available)("a live server is never ownerless (database trigger)
     const [operator, realOwner] = [await user(), await user()];
     const server = await upsertConfiguredServer(app, { publicId: "nov-owned", displayName: "Owned" });
     await addMember(app, { serverId: server.id, userId: realOwner, role: "owner", actorUserId: null });
-    await saveConnection(app, ring, server.id, {
-      host: "192.168.1.21", pinnedIp: "192.168.1.21", apiPort: 7777, frmPort: 8080,
-      apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678",
-    });
+    await storeLeftoverConnection(server.id, "192.168.1.21");
     const res = await loadDatabaseServers({ db: app, runtime: new ServerRuntime<string>(), operatorUserId: operator, buildAgent });
     expect(res.ownershipSeeded).not.toContain("nov-owned");
     expect(await getMemberRole(app, { publicId: "nov-owned", userId: realOwner })).toBe("owner");

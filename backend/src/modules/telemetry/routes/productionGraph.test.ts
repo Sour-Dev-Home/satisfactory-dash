@@ -8,7 +8,6 @@ import { createLogger } from "../../../platform/logger.js";
 import { InMemoryServerDirectory, createServersRouter } from "../../servers/index.js";
 import type { ServerAccess } from "../../servers/index.js";
 import type { TelemetryServices } from "../telemetryServices.js";
-import { UpstreamError } from "../../../platform/errors.js";
 import { ApiFailure } from "../../../platform/errorResponse.js";
 import { observed } from "../../../platform/snapshot.js";
 import { createProductionGraphRouter } from "./productionGraph.js";
@@ -121,7 +120,7 @@ describe("GET /api/servers/:serverId/production-graph", () => {
   });
 
   it("a failed factory read is mapped like bottlenecks (502 upstream)", async () => {
-    const res = await get(build({ factory: async () => { throw new UpstreamError("down"); } }));
+    const res = await get(build({ factory: async () => { throw new ApiFailure("upstream_error", "down"); } }));
     expect(res.status).toBe(502);
   });
 

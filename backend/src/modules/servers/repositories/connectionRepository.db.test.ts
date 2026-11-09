@@ -4,16 +4,18 @@ import pg from "pg";
 import { createTestDatabase, dbTestsAvailable } from "../../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../../test-support/testDb.js";
 import { createSecretsKeyring } from "../../../platform/secrets/secrets.js";
-import { deleteConnection, getConnection, getConnectionSummary, listConnections, saveConnection, updateConnection } from "./connectionRepository.js";
+import type { SecretsKeyring } from "../../../platform/secrets/secrets.js";
+import { listConnections } from "./connectionRepository.js";
 import { softDeleteServer, upsertConfiguredServer } from "./serverRepository.js";
 
 const available = dbTestsAvailable();
 
 const API_TOKEN = "api-token-abcdefghij1234";
 const FRM_TOKEN = "frm-token-klmnopqrst5678";
-const input = { host: "gaming-pc.lan", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, apiToken: API_TOKEN, frmToken: FRM_TOKEN };
 
 // Runs as satis_app against a real Postgres (the migration is applied by createTestDatabase).
+// ADR-0066 build PR 6: the write paths are gone; what stays is the read behind `verify-secrets` (the restore drill), the
+// table's constraints and the soft delete's wipe. Rows are stored here as the retired `saveConnection` stored them.
 describe.skipIf(!available)("server connections against a real Postgres", () => {
   let db: TestDatabase;
   let pool: pg.Pool;
@@ -41,100 +43,53 @@ describe.skipIf(!available)("server connections against a real Postgres", () => 
   const newServer = async () => upsertConfiguredServer(pool, { publicId: `conn-${++counter}`, displayName: "Conn" });
   const rawRow = async (serverId: string) =>
     (await admin.query("SELECT * FROM servers.server_connections WHERE server_id = $1", [serverId])).rows[0];
+  /** Stores a 'local' server's connection the way the retired write path did (context `<id>:local:<field>`). */
+  const store = async (ring: SecretsKeyring, serverId: string, pinnedIp = "192.168.1.20") => {
+    const api = ring.seal(API_TOKEN, `${serverId}:local:api`);
+    const frm = ring.seal(FRM_TOKEN, `${serverId}:local:frm`);
+    await pool.query(
+      `INSERT INTO servers.server_connections (server_id, host, pinned_ip, api_port, frm_port, api_token_enc, frm_token_enc, key_id)
+       VALUES ($1, 'gaming-pc.lan', $2::inet, 7777, 8080, $3, $4, $5)`,
+      [serverId, pinnedIp, api.data, frm.data, api.keyId],
+    );
+  };
 
   it("defaults a server to the 'local' kind", async () => {
     const server = await newServer();
     expect(server.connectionKind).toBe("local");
   });
 
-  it("saves, reads back and summarises a connection; the table holds ciphertext only", async () => {
+  it("reads a stored connection back with both tokens opened; the table holds ciphertext only", async () => {
     const server = await newServer();
-    expect(await saveConnection(pool, ringK1, server.id, input)).toBe(true);
-    expect(await getConnection(pool, ringK1, server.id)).toMatchObject({ ...input, publicId: server.publicId, serverId: server.id });
-    expect(await getConnectionSummary(pool, ringK1, server.id)).toMatchObject({ apiTokenSet: true, apiTokenLast4: "1234", frmTokenSet: true, frmTokenLast4: "5678" });
+    await store(ringK1, server.id);
+    const list = await listConnections(pool, ringK1);
+    expect(list.connections.find((c) => c.serverId === server.id)).toMatchObject({
+      publicId: server.publicId,
+      host: "gaming-pc.lan",
+      pinnedIp: "192.168.1.20",
+      apiPort: 7777,
+      frmPort: 8080,
+      apiToken: API_TOKEN,
+      frmToken: FRM_TOKEN,
+    });
     const raw = await rawRow(server.id);
     expect(raw.key_id).toBe("k1");
     expect(Buffer.from(raw.api_token_enc).includes(Buffer.from(API_TOKEN))).toBe(false);
     expect(Buffer.from(raw.frm_token_enc).includes(Buffer.from(FRM_TOKEN))).toBe(false);
   });
 
-  it("saving again replaces the row (one connection per server)", async () => {
+  it("reads an IPv6 pinned address back as text", async () => {
     const server = await newServer();
-    await saveConnection(pool, ringK1, server.id, input);
-    await saveConnection(pool, ringK1, server.id, { ...input, host: "other.lan", frmToken: undefined });
-    const connection = await getConnection(pool, ringK1, server.id);
-    expect(connection?.host).toBe("other.lan");
-    expect(connection?.frmToken).toBeUndefined();
-    expect((await admin.query("SELECT 1 FROM servers.server_connections WHERE server_id = $1", [server.id])).rowCount).toBe(1);
+    await store(ringK1, server.id, "::1");
+    expect((await listConnections(pool, ringK1)).connections.find((c) => c.serverId === server.id)?.pinnedIp).toBe("::1");
   });
 
-  it("stores an IPv6 pinned address and reads it back as text", async () => {
+  it("soft-deleting a server wipes its encrypted tokens, and the list never shows it", async () => {
     const server = await newServer();
-    await saveConnection(pool, ringK1, server.id, { ...input, pinnedIp: "::1" });
-    expect((await getConnection(pool, ringK1, server.id))?.pinnedIp).toBe("::1");
-  });
-
-  it("refuses to save for an unknown, deleted or agent-kind server, writing nothing", async () => {
-    expect(await saveConnection(pool, ringK1, "00000000-0000-4000-8000-000000000000", input)).toBe(false);
-    const agent = await newServer();
-    await admin.query("UPDATE servers.servers SET connection_kind = 'agent' WHERE id = $1", [agent.id]);
-    expect(await saveConnection(pool, ringK1, agent.id, input)).toBe(false);
-    const gone = await newServer();
-    await softDeleteServer(pool, gone.publicId);
-    expect(await saveConnection(pool, ringK1, gone.id, input)).toBe(false);
-    for (const id of [agent.id, gone.id]) expect(await rawRow(id)).toBeUndefined();
-  });
-
-  it("an edit re-seals BOTH tokens with the current key, so a row never mixes keys", async () => {
-    const server = await newServer();
-    await saveConnection(pool, ringK1, server.id, input);
-    expect(await updateConnection(pool, ringK2, server.id, { apiToken: "new-api-token-zzzz9999" })).toBe(true);
-    const raw = await rawRow(server.id);
-    expect(raw.key_id).toBe("k2");
-    // The FRM token was not in the patch, yet with k1 retired the whole row still opens.
-    const connection = await getConnection(pool, onlyK2, server.id);
-    expect(connection).toMatchObject({ apiToken: "new-api-token-zzzz9999", frmToken: FRM_TOKEN, host: "gaming-pc.lan" });
-    await expect(getConnection(pool, ringK1, server.id)).rejects.toThrow("Could not decrypt");
-  });
-
-  it("an edit changes only the fields given, and null clears the FRM token", async () => {
-    const server = await newServer();
-    await saveConnection(pool, ringK1, server.id, input);
-    await updateConnection(pool, ringK1, server.id, { apiPort: 7778, frmToken: null });
-    expect(await getConnection(pool, ringK1, server.id)).toMatchObject({ apiPort: 7778, frmPort: 8080, host: "gaming-pc.lan", apiToken: API_TOKEN });
-    expect((await getConnection(pool, ringK1, server.id))?.frmToken).toBeUndefined();
-    expect((await rawRow(server.id)).frm_token_enc).toBeNull();
-  });
-
-  it("an edit reports false when there is no connection or the server is deleted", async () => {
-    const server = await newServer();
-    expect(await updateConnection(pool, ringK1, server.id, { apiPort: 1 })).toBe(false);
-    await saveConnection(pool, ringK1, server.id, input);
-    await softDeleteServer(pool, server.publicId);
-    expect(await updateConnection(pool, ringK1, server.id, { apiPort: 1 })).toBe(false);
-  });
-
-  it("concurrent edits both apply and leave one consistent key", async () => {
-    const server = await newServer();
-    await saveConnection(pool, ringK1, server.id, input);
-    await Promise.all([
-      updateConnection(pool, ringK2, server.id, { apiPort: 7001 }),
-      updateConnection(pool, ringK2, server.id, { frmPort: 8001 }),
-    ]);
-    expect(await getConnection(pool, ringK2, server.id)).toMatchObject({ apiPort: 7001, frmPort: 8001, apiToken: API_TOKEN, frmToken: FRM_TOKEN });
-  });
-
-  it("deleting a connection, or soft-deleting its server, wipes the encrypted tokens", async () => {
-    const one = await newServer();
-    await saveConnection(pool, ringK1, one.id, input);
-    expect(await deleteConnection(pool, one.id)).toBe(true);
-    expect(await deleteConnection(pool, one.id)).toBe(false);
-    expect(await rawRow(one.id)).toBeUndefined();
-
-    const two = await newServer();
-    await saveConnection(pool, ringK1, two.id, input);
-    expect(await softDeleteServer(pool, two.publicId)).toBe(true);
-    expect(await rawRow(two.id)).toBeUndefined();
+    await store(ringK1, server.id);
+    expect(await softDeleteServer(pool, server.publicId)).toBe(true);
+    expect(await rawRow(server.id)).toBeUndefined();
+    expect((await listConnections(pool, ringK1)).connections.map((c) => c.serverId)).not.toContain(server.id);
   });
 
   it("the table's constraints refuse bad ports, a network as the pinned address and a bad key id", async () => {
@@ -163,8 +118,8 @@ describe.skipIf(!available)("server connections against a real Postgres", () => 
   it("listConnections opens what it can and reports rows the ring cannot open", async () => {
     const readable = await newServer();
     const stranded = await newServer();
-    await saveConnection(pool, ringK2, readable.id, input);
-    await saveConnection(pool, ringK1, stranded.id, input);
+    await store(ringK2, readable.id);
+    await store(ringK1, stranded.id);
     const withoutRing = await listConnections(pool, null);
     expect(withoutRing.connections).toEqual([]);
     expect(withoutRing.unreadable.map((u) => u.serverId)).toEqual(expect.arrayContaining([readable.id, stranded.id]));

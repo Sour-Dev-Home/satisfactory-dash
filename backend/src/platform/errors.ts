@@ -1,11 +1,5 @@
-/**
- * `UpstreamError` (the base class of every "the game server failed" error) and `RequestFailureKind` are defined in
- * the game-adapter package, because the adapter throws them (ADR-0031 PR 2). They are re-exported here, the same
- * class, so `instanceof UpstreamError` in platform/errorResponse.ts still recognises what the adapter throws.
- * platform/errorResponse.ts maps ONLY these to upstream_* codes (502/503).
- */
-export { UpstreamError } from "@satisfactory-dash/game-adapter";
-export type { RequestFailureKind } from "@satisfactory-dash/game-adapter";
+/* ADR-0066 build PR 6: the `UpstreamError` re-export from the game-adapter package is gone; nothing in the backend throws
+ * one since direct polling was retired. */
 
 /** A configuration the backend refuses to start with. server.ts reports it and exits.
  *  Shared by every module's config loader (gameserver, servers, identity). */

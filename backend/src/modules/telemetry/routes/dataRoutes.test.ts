@@ -18,7 +18,7 @@ import {
 import type { z } from "zod";
 import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
-import { UpstreamError } from "../../../platform/errors.js";
+import { ApiFailure } from "../../../platform/errorResponse.js";
 import { InMemoryServerDirectory, createServersRouter } from "../../servers/index.js";
 import type { TelemetryServices as ServerServices } from "../telemetryServices.js";
 import { createStatusRouter } from "./status.js";
@@ -98,7 +98,7 @@ describe.each(dataEndpoints)("GET /api/servers/:serverId/%s", (_name, endpoint, 
   });
 
   it("returns 503 upstream_unreachable when the game server can't be reached", async () => {
-    const services = withService(stubServices(), failing(new UpstreamError("down", { failureKind: "unreachable" })));
+    const services = withService(stubServices(), failing(new ApiFailure("upstream_unreachable", "down")));
     const res = await request(buildApp(services)).get(endpoint.path("default"));
     expect(res.status).toBe(503);
     expect(res.body.error.code).toBe("upstream_unreachable");

@@ -30,17 +30,6 @@ export type { AccountServers, AccountServersDeps } from "./accountServers.js";
 export type { SelfServeRouterOptions } from "./selfServeRouter.js";
 export { loadSelfServeConfigFromEnv } from "./selfServeConfig.js";
 export type { SelfServeConfig } from "./selfServeConfig.js";
-export {
-  AddressRefusedError,
-  DEFAULT_ADDRESS_POLICY,
-  LAN_ALLOWED,
-  LanRequiresPinningError,
-  addressVerdict,
-  isAllowedAddress,
-  isLoopbackAddress,
-  resolveAllowedAddress,
-} from "./addressGuard.js";
-export type { AddressLookup, AddressPolicy, AddressVerdict } from "./addressGuard.js";
 export { AgentRuntimeReplacedError, ServerRuntime } from "./serverRuntime.js";
 export type { RuntimeServer, RuntimeWorker, ServerRuntimeOptions } from "./serverRuntime.js";
 // ADR-0031 PR 5a: the agents module switches a server to 'agent' in its enrolment transaction and looks servers up.
@@ -48,22 +37,7 @@ export { findServerByPublicId, listAgentServers, lockServerForPairing, switchToA
 export type { ConnectionKind, RegisteredServer } from "./repositories/serverRepository.js";
 export { loadDatabaseServers, reconcileDatabaseServers } from "./loadDatabaseServers.js";
 export type { BuildAgentServer, LoadDatabaseServersResult, ReconcileDatabaseServersResult } from "./loadDatabaseServers.js";
-export {
-  countConnections,
-  createConnection,
-  deleteConnection,
-  getConnection,
-  getConnectionSummary,
-  listConnections,
-  saveConnection,
-  updateConnection,
-} from "./repositories/connectionRepository.js";
-export type {
-  CreateConnectionOutcome,
-  ConnectionInput,
-  ConnectionList,
-  ConnectionPatch,
-  ServerConnection,
-  ServerConnectionSummary,
-  UnreadableConnection,
-} from "./repositories/connectionRepository.js";
+// ADR-0066 build PR 6: the stored connections' one remaining read, for the `verify-secrets` admin command (the restore
+// drill). It goes with the table in build PR 10.
+export { listConnections } from "./repositories/connectionRepository.js";
+export type { ConnectionList, ServerConnection, UnreadableConnection } from "./repositories/connectionRepository.js";

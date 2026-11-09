@@ -310,18 +310,6 @@ export async function lockServerByPublicId(db: Queryable, publicId: string): Pro
   return row === undefined ? undefined : toServer(row);
 }
 
-const SWITCH_TO_LOCAL = `
-  UPDATE servers.servers
-  SET connection_kind = 'local'
-  WHERE id = $1 AND connection_kind = 'agent' AND deleted_at IS NULL
-  RETURNING id`;
-
-/** ADR-0031 amendment: an agent server is read by this backend again. Only an agent server changes (false otherwise). The
- *  caller stores the new connection right after, in the same transaction (`createConnection` needs the kind to be 'local'). */
-export async function switchToLocalKind(db: Queryable, serverId: string): Promise<boolean> {
-  return (await timedQuery(db, "servers.switchToLocalKind", SWITCH_TO_LOCAL, [serverId])).rows.length > 0;
-}
-
 // ADR-0066 Decision 7: a leftover 'local' row (a backup restored from before the migration that converted them) is
 // served as an agent server awaiting the mod. Direct polling is retired, so no other kind of server exists.
 const LIST_AGENT_SERVERS = `

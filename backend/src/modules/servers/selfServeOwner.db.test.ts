@@ -246,7 +246,7 @@ describe.skipIf(!available)("self-serve owner actions, creator caps and the pend
   });
 
   describe("runtime races (#526 security review L1, L2)", () => {
-    // ADR-0066: "switch to local" is retired (410), so its L1 case went with it.
+    // ADR-0066: "switch to local" is retired (deleted in build PR 6), so its L1 case went with it.
     it("L1: the owner's remove waits for the shared management mutex, so it never interleaves with an operator change", async () => {
       const owner = await user();
       const mutex = new Mutex();

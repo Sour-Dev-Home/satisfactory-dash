@@ -460,7 +460,7 @@ export const app = createApp({
         ]
       : []),
     // The collection routes must come before the servers router (its /servers/:serverId check would
-    // read "test-connection" as a server id); the scoped ones after it (its membership check runs first).
+    // read "managed" as a server id); the scoped ones after it (its membership check runs first).
     ...(managementRouters ? [managementRouters.collection] : []),
     // ADR-0046: POST /api/servers/agent, a collection route too ("agent" is a reserved server id).
     ...(selfServeRouter ? [selfServeRouter] : []),

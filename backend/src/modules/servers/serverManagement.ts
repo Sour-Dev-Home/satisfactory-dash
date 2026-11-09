@@ -9,8 +9,8 @@ import type { ServerRuntime } from "./serverRuntime.js";
 /**
  * ADR-0030's server management, as it stands since ADR-0066 (build PR 5): every server is reached through the mod, so the
  * operator lists, renames and removes servers here (an agent server is created by `POST /api/servers/agent`, the self-serve
- * create). Adding, editing, testing and switching a direct-poll server are gone: their routes answer 410 until build PR 6
- * deletes them. This is the service behind the routes; it knows nothing about HTTP.
+ * create). Adding, editing, testing and switching a direct-poll server are gone, with their routes (build PR 6). This is
+ * the service behind the routes; it knows nothing about HTTP.
  *
  * - Every mutation of the runtime (rename, remove) runs under one mutex, one at a time, after its commit.
  * - Remove soft-deletes the server (its memberships, any stored connection and every recorded row go in the same

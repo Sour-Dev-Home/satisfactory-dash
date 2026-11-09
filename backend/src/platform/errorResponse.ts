@@ -4,11 +4,7 @@ import type { ApiErrorResponse, KnownErrorCode } from "@satisfactory-dash/shared
 import { ownValue } from "@satisfactory-dash/shared";
 import { formatErrorDetail } from "./formatErrorDetail.js";
 import { ContractViolationError } from "./sendValidated.js";
-import { UpstreamError } from "./errors.js";
 import { requestLogLevel } from "./logLevel.js";
-
-const UNREACHABLE_MESSAGE = "Could not reach the Satisfactory dedicated server";
-const FALLBACK_MESSAGE = "Request to the Satisfactory dedicated server failed";
 
 export interface ClassifiedFailure {
   code: KnownErrorCode;
@@ -95,66 +91,9 @@ export const HTTP_STATUS_BY_CODE: Record<KnownErrorCode, number> = {
 
 const INTERNAL_MESSAGE = "Internal server error";
 
-/** The vanilla API's errorCode reaches the public `message`, so bound what the game
- *  server (or anything pretending to be it) can put there: at most 64 characters from
- *  a safe set (issue #8, item 4). */
-function safeErrorCode(errorCode: string): string {
-  return errorCode.replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64);
-}
-
-/**
- * Maps an error to its ADR-0003 code. Upstream codes (502/503) come ONLY from an
- * `UpstreamError` (platform/errors.ts), the base class of every adapter transport,
- * HTTP-status, error-body and validation failure. Anything else fails closed as our
- * own `internal` 500, even if it carries a numeric `status` (architect ruling, PR 3):
- * a review of PR #16 found Express's router throwing a URIError with `status: 400`
- * that this function, then duck-typed, blamed on the game server.
- *
- * Earlier review passes still apply inside the upstream branch: "Could not reach"
- * needs positive evidence (`failureKind: "unreachable"`), a 401/403 gets the auth
- * hint, and an out-of-range status is ignored.
- */
-export function describeFailure(err: unknown): ClassifiedFailure {
-  // This runs for every failed request, so it must not throw -- a review pass found
-  // a hostile `status` getter made it do exactly that, turning the JSON error body
-  // into Express's default non-JSON error page. formatErrorDetail.ts guards every
-  // read the same way.
-  try {
-    return describeFailureUnsafe(err);
-  } catch {
-    return { code: "internal", message: INTERNAL_MESSAGE };
-  }
-}
-
-function describeFailureUnsafe(err: unknown): ClassifiedFailure {
-  if (!(err instanceof UpstreamError)) {
-    return { code: "internal", message: INTERNAL_MESSAGE };
-  }
-  const { status, errorCode, failureKind } = err;
-  // Number.isInteger + range, not typeof === "number": that accepted NaN, 0 and
-  // negatives, producing messages like "request failed (status NaN)".
-  if (typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599) {
-    return status === 401 || status === 403
-      ? {
-          code: "upstream_auth_rejected",
-          message: "Satisfactory dedicated server rejected the request (check the configured auth token)",
-        }
-      : { code: "upstream_error", message: `Satisfactory dedicated server request failed (status ${status})` };
-  }
-  if (typeof errorCode === "string" && safeErrorCode(errorCode).length > 0) {
-    return {
-      code: "upstream_error",
-      message: `Satisfactory dedicated server request failed (${safeErrorCode(errorCode)})`,
-    };
-  }
-  if (failureKind === "unreachable") {
-    return { code: "upstream_unreachable", message: UNREACHABLE_MESSAGE };
-  }
-  if (failureKind === "invalid_response") {
-    return { code: "upstream_invalid_response", message: "Satisfactory dedicated server returned an invalid response" };
-  }
-  return { code: "upstream_error", message: FALLBACK_MESSAGE };
-}
+/* ADR-0066 build PR 6: the `UpstreamError` mapping (`describeFailure`) is gone with direct polling: nothing throws one any
+ * more. An upstream code now comes only from an `ApiFailure` (the agent snapshot store's), and any other error fails
+ * closed as our own `internal` 500, even if it carries a numeric `status` (architect ruling, ADR-0003 PR 3). */
 
 /** A :serverId that isn't a valid server id (ADR-0001: ^[a-z0-9-]{1,32}$). */
 export class InvalidServerIdError extends Error {
@@ -266,24 +205,10 @@ export class RouteNotFoundError extends Error {
   }
 }
 
-/**
- * ADR-0066 build PR 5: a route that existed and is retired answers HTTP 410 for one release, then is deleted (404, build
- * PR 6). The contract has no `gone` code and adding one is a contract change of its own (ground rule 6), so the body
- * carries the closest existing code, `not_found`, and this class is the one place the status is not the code's.
- */
-export class RouteGoneError extends Error {
-  static readonly STATUS = 410;
-  constructor(message: string) {
-    super(message);
-    this.name = "RouteGoneError";
-  }
-}
-
 /** A client-side problem with OUR request (e.g. express.json() rejecting a malformed,
  *  oversized or wrongly encoded body). Those errors come from http-errors with
- *  `expose: true` and a 4xx `statusCode`. They must be caught before describeFailure,
- *  whose `status` branch would otherwise report them as the game server's fault.
- *  Returns the status, or undefined when `err` isn't one. */
+ *  `expose: true` and a 4xx `statusCode`; each status gets its own code below, never
+ *  the fail-closed `internal`. Returns the status, or undefined when `err` isn't one. */
 function clientRequestErrorStatus(err: unknown): number | undefined {
   try {
     if (err === null || typeof err !== "object" || !("expose" in err) || err.expose !== true) {
@@ -325,9 +250,6 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   if (err instanceof RouteNotFoundError) {
     return { code: "not_found", message: "No such API endpoint" };
   }
-  if (err instanceof RouteGoneError) {
-    return { code: "not_found", message: err.message };
-  }
   if (err instanceof ApiFailure) {
     return {
       code: err.code,
@@ -365,9 +287,8 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
     return { code: "server_not_found", message: "No server with that id" };
   }
   // Express's router throws a URIError (with a bare `status: 400`, no `expose`) for a
-  // broken percent-encoded route parameter. Without this, describeFailure's status
-  // branch would blame our client's bad URL on the game server (found by PR #16's
-  // fresh-eyes review).
+  // broken percent-encoded route parameter: our client's bad URL, a 400 (found by PR
+  // #16's fresh-eyes review, when it was blamed on the game server).
   if (err instanceof URIError) {
     return { code: "bad_request", message: "The request URL is malformed" };
   }
@@ -375,7 +296,7 @@ export function classifyRequestFailure(err: unknown): ClassifiedFailure {
   // status (ADR-0003 amendment); anything else is a generic 400.
   switch (clientRequestErrorStatus(err)) {
     case undefined:
-      return describeFailure(err);
+      return { code: "internal", message: INTERNAL_MESSAGE };
     case 413:
       return { code: "payload_too_large", message: "The request body is too large" };
     case 415:
@@ -419,8 +340,7 @@ export function createErrorHandler(fallbackLogger: Logger): ErrorRequestHandler 
     }
     const { code, message, reason, servers, other } = classifyRequestFailure(err);
     const detail = detailFor(err);
-    // RouteGoneError is the one exception to "the code alone decides the status" (see its comment).
-    const status = err instanceof RouteGoneError ? RouteGoneError.STATUS : (ownValue(HTTP_STATUS_BY_CODE, code) ?? 500);
+    const status = ownValue(HTTP_STATUS_BY_CODE, code) ?? 500;
     const log = req.log ?? fallbackLogger;
     const requestId = typeof req.id === "string" ? req.id : String(req.id ?? "unknown");
     // Only real failures are errors (a 401 is routine while signed out, other 4xx are warnings).
