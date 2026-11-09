@@ -45,13 +45,15 @@ The mod notices when its config file changes and reads it again, so you don't ne
 
 If editing a file on your host is awkward, mod 0.3.0 and later can show you a pairing code instead. It does this on its own when its config has no code and it has never connected.
 
-The code appears in the server console and in its log, `FactoryGame.log`, as a line like "Pairing code ABCD-EFGH-JKLM: sign in at satis-manager.com/pair and enter it". When exactly one player is on the server, the mod also posts it in the in-game chat.
+The code appears in the server console and in its log, `FactoryGame.log`, as a line like "Pairing code ABCD-EFGH-JKLM: sign in at satis-manager.com/pair and enter it (expires in 15 minutes)". The mod also posts it in the in-game chat when a new code starts while exactly one player is on, or when a player joins an empty server while a code is live.
 
 1. Go to [satis-manager.com/pair](/app/pair) and sign in, or use the **Pair it** link beside the add-server form.
 2. Type the code and press **Continue**.
 3. Check the server name, version and request time under "Is this your server?", choose **A new server** or **One of my servers**, and press **Approve**.
 
-Only approve a server you started pairing yourself. A code lasts 15 minutes, and the mod shows a fresh one when it expires, for an hour after the server starts. After that, join the server or restart it to get a new code. A code in the config file always wins: if you paste one, the mod enrols with it instead.
+Only approve a server you started pairing yourself. A code lasts about 15 minutes (the console line says exactly how long), and the mod shows a fresh one when it expires, for an hour after the server starts. After the first hour the server goes quiet; restart it, or join it when nobody else is on, to get a new code. A code in the config file always wins: if you paste one, the mod enrols with it instead.
+
+If you revoke the mod's access in **Settings**, the mod stops until the server restarts. A restart starts pairing again; joining doesn't.
 
 ## How your connection is protected
 
