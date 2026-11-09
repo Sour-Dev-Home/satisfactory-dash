@@ -41,16 +41,6 @@ A server that hasn't connected within 24 hours of adding it is removed automatic
 
 The mod notices when its config file changes and reads it again, so you don't need to restart the server. Once it has connected, **Settings** shows the server as enrolled, and data arrives within a few seconds. The mod keeps its own credential after that, so later restarts need no code.
 
-## Or pair from the server's console
-
-If editing a file on your host is awkward, the mod can show a pairing code instead. It prints one in the server console and in the log (FactoryGame.log), and writes it to pairing.txt next to the mod.
-
-1. In the dashboard, open **Pair a server** (the **Pair it** link beside the add-server form).
-2. Type the code and press **Continue**.
-3. Check the server name, version and request time under "Is this your server?", choose **A new server** or **One of my servers**, and press **Approve**.
-
-Only approve a server you started pairing yourself. The mod prints a fresh code when one expires, for up to an hour; after that, restart the server to get a new one.
-
 ## How your connection is protected
 
 - **No inbound port.** The mod only makes outgoing connections.
