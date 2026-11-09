@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useAddServer } from "../api/selfServeWrites";
 import { ServerNameForm } from "./ServerNameForm";
 import { CODE_LIFETIME, addServerErrorText, isLimitRefusal } from "./selfServeText";
@@ -41,6 +41,10 @@ export function AddServer({
           </p>
         </>
       )}
+      {/* Mod 0.3.0 prints a pairing code on the server console when it has no code in its config and no credential. */}
+      <p className="mb-0 text-sm text-muted">
+        Have a pairing code from your server&apos;s console? <Link to="/app/pair">Pair it</Link>.
+      </p>
       <ServerNameForm
         label="Server name"
         placeholder="e.g. Our factory"
