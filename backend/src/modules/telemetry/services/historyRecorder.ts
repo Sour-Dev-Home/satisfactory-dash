@@ -10,7 +10,7 @@ import {
   type PowerSampleRow,
   type TransitionRow,
 } from "../repositories/historyRepository.js";
-import type { BackgroundWorker } from "./powerHistoryPoller.js";
+import type { BackgroundWorker } from "./backgroundWorker.js";
 import { isCatalogedItem } from "../itemForms.js";
 import {
   MAX_POWER_SAMPLE_CIRCUITS,

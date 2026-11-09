@@ -1,7 +1,7 @@
 import type { PowerHistory } from "@satisfactory-dash/shared";
 import type { PowerHistoryStore } from "./powerHistoryStore.js";
 import { POWER_HISTORY_INTERVAL_SECONDS } from "./powerHistoryStore.js";
-import type { PollerHealth } from "./powerHistoryPoller.js";
+import type { PollerHealth } from "./backgroundWorker.js";
 
 /** ADR-0022: the history is stale when the poller's last success is older than this many intervals. */
 export const STALE_AFTER_INTERVALS = 3;

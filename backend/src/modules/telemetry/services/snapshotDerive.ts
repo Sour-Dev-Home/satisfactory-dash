@@ -1,9 +1,9 @@
 import type { AgentFactory, AgentPower, Factory, FactoryBuilding, GeneratorItem, Power, PowerCircuit as PowerCircuitResponse, PowerGenerator } from "@satisfactory-dash/shared";
-import type { PowerCircuit } from "../../gameserver/index.js";
+import type { PowerCircuit } from "../domain.js";
 import { classifyBuilding } from "./classifyBuilding.js";
 import { classifyPowerCircuit } from "./classifyPower.js";
 import type { ProductionUnit } from "../itemForms.js";
-import type { UnitResolver } from "./productionService.js";
+import type { UnitResolver } from "../itemForms.js";
 
 /**
  * ADR-0031: what an edge agent sends for power and factory carries no backend-derived field (see the contract's

@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 import { FactorySchema, PowerSchema, StatusSchema } from "@satisfactory-dash/shared";
 import type { LatestSnapshotRepository, LatestSnapshotRow, LatestSnapshotWrite } from "../repositories/latestSnapshotRepository.js";
-import type { BackgroundWorker } from "./powerHistoryPoller.js";
+import type { BackgroundWorker } from "./backgroundWorker.js";
 import type { LatestSnapshotStore, PersistedState } from "./agentSnapshotStore.js";
 
 /**

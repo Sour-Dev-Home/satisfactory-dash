@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { PowerHistoryResponseSchema } from "@satisfactory-dash/shared";
-import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
+import type { ServerStatus } from "../../gameserver/index.js";
+import type { PowerCircuit } from "../domain.js";
 import { createLogger } from "../../../platform/logger.js";
 import { PowerHistoryPoller } from "./powerHistoryPoller.js";
 import type { PowerHistoryPorts } from "./powerHistoryPoller.js";

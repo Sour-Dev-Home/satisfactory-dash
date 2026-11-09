@@ -1,31 +1,19 @@
 import type { Logger } from "pino";
-import type { PowerCircuit, ServerStatus } from "../../gameserver/index.js";
+import type { ServerStatus } from "../../gameserver/index.js";
 import { formatErrorDetail } from "../../../platform/formatErrorDetail.js";
 import { createBackgroundRecorder, type MetricsRecorder, type MetricsSink } from "../../../platform/metrics/index.js";
+import type { PowerCircuit } from "../domain.js";
+import type { BackgroundWorker, PollerHealth } from "./backgroundWorker.js";
 import { noopHistoryRecorder, sessionKey, type HistoryRecorder } from "./historyRecorder.js";
 import { noopObservationSink, type ObservationSink } from "./observationBoard.js";
 import { classifyPowerCircuit } from "./powerService.js";
 import type { PowerHistoryStore, PowerSample } from "./powerHistoryStore.js";
 import { POWER_HISTORY_INTERVAL_SECONDS } from "./powerHistoryStore.js";
 
-/** A long-running task the composition root starts once the server is listening and stops
- *  on shutdown (ADR-0022: the backend's first background worker). */
-export interface BackgroundWorker {
-  start(): void;
-  /** Stops scheduling and resolves once any poll in flight has finished. */
-  stop(): Promise<void>;
-}
-
 /** What the poller reads from one game server: the gameserver adapter satisfies this. */
 export interface PowerHistoryPorts {
   getServerStatus(): Promise<ServerStatus>;
   getPowerCircuits(): Promise<PowerCircuit[]>;
-}
-
-/** What the read side needs to decide `stale` (ADR-0022: last success older than 3 intervals). */
-export interface PollerHealth {
-  startedAt(): number | undefined;
-  lastSuccessAt(): number | undefined;
 }
 
 export interface PowerHistoryPollerOptions {
