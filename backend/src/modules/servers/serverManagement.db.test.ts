@@ -100,6 +100,23 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
     expect(runtime.has(publicId)).toBe(true);
   });
 
+  it("a leftover `local` operator row is listed as an agent server, renamed, then removed; an unknown id is 404", async () => {
+    const runtime = new ServerRuntime<string>();
+    const publicId = `sm-local-${++counter}`;
+    const server = await upsertConfiguredServer(pool, { publicId, displayName: "Old" });
+    expect((await pool.query("SELECT connection_kind FROM servers.servers WHERE id = $1", [server.id])).rows[0].connection_kind).toBe("local");
+    await addMember(pool, { serverId: server.id, userId: operatorId, role: "owner", actorUserId: null });
+    runtime.add({ id: publicId, displayName: "Old", services: "agent", workers: [], kind: "agent" });
+    const app = appWith(runtime);
+    const list = ManagedServerListResponseSchema.parse((await request(app).get("/api/servers/managed")).body);
+    expect(list.agentServers).toContainEqual({ id: publicId, displayName: "Old", kind: "agent" });
+    expect((await request(app).patch(`/api/servers/${publicId}/name`).send({ displayName: "New" })).status).toBe(200);
+    expect((await request(app).delete(`/api/servers/${publicId}`)).body).toEqual({ deleted: true });
+    expect(runtime.has(publicId)).toBe(false);
+    expect((await request(app).delete(`/api/servers/${publicId}`)).status).toBe(404);
+    expect((await request(app).delete("/api/servers/no-such-server")).status).toBe(404);
+  });
+
   it("the direct-poll routes answer 410 and write nothing", async () => {
     const runtime = new ServerRuntime<string>();
     const { publicId, id } = await agentServer(runtime);
