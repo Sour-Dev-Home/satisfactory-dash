@@ -7,7 +7,7 @@ import { createLogger } from "../../platform/logger.js";
 import { ServerNotFoundError } from "../../platform/errorResponse.js";
 import { UserRateLimiter } from "../../platform/userRateLimiter.js";
 import { InMemoryServerDirectory } from "./serverDirectory.js";
-import { DIRECT_POLL_GONE_MESSAGE, createServerManagementRouters } from "./serverManagementRouter.js";
+import { createServerManagementRouters } from "./serverManagementRouter.js";
 import { createServersRouter } from "./serversRouter.js";
 import type { ServerManagementService } from "./serverManagement.js";
 import type { ServerAccess } from "./serverAccess.js";
@@ -60,9 +60,9 @@ const send = (app: ReturnType<typeof build>, method: "post" | "patch" | "delete"
 
 const connectionBody = { id: "alt", displayName: "Alt", host: "192.168.1.30", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abc123", frmToken: "frm-token-def456" };
 
-// ADR-0066 build PR 5: direct polling is retired. These routes still exist for one release and answer 410 (build PR 6
-// deletes them, and they become 404s).
-const RETIRED: [string, "post" | "patch" | "get", string, unknown][] = [
+// ADR-0066: the direct-poll routes answered 410 for one release (build PR 5) and are deleted (build PR 6). A call to one
+// now falls through to the app's normal 404, with the shared envelope, and reaches no service.
+const DELETED: [string, "post" | "patch" | "get", string, unknown][] = [
   ["create", "post", "/api/servers", connectionBody],
   ["test a candidate", "post", "/api/servers/test-connection", connectionBody],
   ["get the stored connection", "get", "/api/servers/alpha/connection", undefined],
@@ -71,35 +71,20 @@ const RETIRED: [string, "post" | "patch" | "get", string, unknown][] = [
   ["switch to local", "post", "/api/servers/alpha/local-connection", connectionBody],
 ];
 
-describe("the retired direct-poll routes (ADR-0066)", () => {
-  it.each(RETIRED)("%s: 410 for the operator, with the shared envelope, code not_found, and a message pointing at the mod", async (_name, method, url, body) => {
+describe("the deleted direct-poll routes (ADR-0066 build PR 6)", () => {
+  it.each(DELETED)("%s: 404 for the operator, with the shared envelope, and nothing called", async (_name, method, url, body) => {
     const service = fakeService();
     const res = await send(build(service), method, url, OPERATOR, body);
-    expect(res.status).toBe(410);
-    const { error } = ApiErrorResponseSchema.parse(res.body);
-    expect(error.code).toBe("not_found");
-    expect(error.message).toBe(DIRECT_POLL_GONE_MESSAGE);
-    expect(error.message).toContain("mod");
+    expect(res.status).toBe(404);
+    expect(ApiErrorResponseSchema.parse(res.body).error.code).toMatch(/^(not_found|server_not_found)$/);
     expect(JSON.stringify(res.body)).not.toMatch(/api-token|frm-token|192\.168/);
     for (const fn of [service.listAgentServers, service.renameAgentServer, service.remove]) expect(fn).not.toHaveBeenCalled();
   });
 
-  it.each(RETIRED)("%s: still 401 without a session and 403 for anyone but the operator", async (_name, method, url, body) => {
-    const app = build(fakeService());
-    expect((await send(app, method, url, undefined, body)).status).toBe(401);
-    const refused = await send(app, method, url, OTHER, body);
-    expect(refused.status).toBe(403);
-    expect(ApiErrorResponseSchema.parse(refused.body).error.code).toBe("forbidden");
-  });
-
-  it("a body that would fail the old schema is not validated any more: still 410, never a 400 echoing it", async () => {
+  it("a body that would fail the old schema is never validated: a 404, never a 400 echoing it", async () => {
     const res = await send(build(fakeService()), "post", "/api/servers", OPERATOR, { apiToken: "has space\r\nX-Evil: 1" });
-    expect(res.status).toBe(410);
+    expect(res.status).toBe(404);
     expect(JSON.stringify(res.body)).not.toContain("X-Evil");
-  });
-
-  it("is 503 until the servers are loaded, like every management route", async () => {
-    expect((await send(build(fakeService(), { isReady: () => false }), "post", "/api/servers", OPERATOR, connectionBody)).status).toBe(503);
   });
 });
 

@@ -1,14 +1,12 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { createTestDatabase, dbTestsAvailable } from "../../../../test-support/testDb.js";
 import type { TestDatabase } from "../../../../test-support/testDb.js";
 import { ApiFailure, NotEditableError, RateLimitedError } from "../../../platform/errorResponse.js";
 import { createLogger } from "../../../platform/logger.js";
-import { createSecretsKeyring } from "../../../platform/secrets/secrets.js";
 import { UserRateLimiter } from "../../../platform/userRateLimiter.js";
 import { seedPresetRules } from "../../alerts/repositories/alertRepository.js";
-import { saveConnection, updateConnection } from "../../servers/repositories/connectionRepository.js";
 import { softDeleteServer, upsertConfiguredServer } from "../../servers/repositories/serverRepository.js";
 import { COMMAND_RETENTION_DAYS, MAX_OPEN_COMMANDS, expireStaleCommands, purgeOldCommands } from "../repositories/commandRepository.js";
 import { createAgentsService } from "./agentsService.js";
@@ -24,7 +22,6 @@ const available = dbTestsAvailable();
 const ACTOR = randomUUID();
 const CADENCE = { statusSeconds: 5, powerSeconds: 5, factorySeconds: 30 };
 const silent = createLogger({ level: "silent" }, { write: () => {} });
-const ring = createSecretsKeyring("k1", new Map([["k1", randomBytes(32)]]));
 
 /** The failure a call rejects with, or undefined if it resolved. */
 async function failureOf(work: Promise<unknown>): Promise<unknown> {
@@ -38,8 +35,9 @@ async function failureOf(work: Promise<unknown>): Promise<unknown> {
 const codeOf = (err: unknown): string | undefined => (err instanceof ApiFailure ? err.code : err instanceof Error ? err.name : undefined);
 
 // ADR-0031 PR 5b against a real Postgres: commands to an agent (create, poll, report, expire, purge), the auto-pause read,
-// the agent_offline rule kind, and the enrolment codes that a saved connection drops (the migration is applied by
-// createTestDatabase; the services run as satis_app, fixtures the app never writes go in as the admin).
+// and the agent_offline rule kind (the migration is applied by createTestDatabase; the services run as satis_app, fixtures
+// the app never writes go in as the admin). ADR-0066 build PR 6: saving a direct-poll connection is gone, and with it the
+// cases where a save dropped the server's open enrolment codes.
 describe.skipIf(!available)("agent commands against a real Postgres", () => {
   let db: TestDatabase;
   let pool: pg.Pool;
@@ -344,50 +342,6 @@ describe.skipIf(!available)("agent commands against a real Postgres", () => {
       expect(await softDeleteServer(pool, publicId)).toBe(true);
       expect(await statusOf(command.id)).toBeUndefined();
       expect((await admin.query("SELECT 1 FROM agents.commands WHERE server_id = $1", [agent.serverUuid])).rowCount).toBe(0);
-    });
-  });
-
-  describe("saving a local connection drops the server's open enrolment codes (ADR-0031 PR 5b)", () => {
-    const input = { host: "127.0.0.1", pinnedIp: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdefgh1234", frmToken: "frm-token-abcdefgh5678" };
-    const openCodes = async (serverUuid: string) => (await admin.query("SELECT 1 FROM agents.enrollment_codes WHERE server_id = $1 AND consumed_at IS NULL", [serverUuid])).rowCount;
-
-    it("saveConnection", async () => {
-      const server = await upsertConfiguredServer(pool, { publicId: `cmd-${++counter}`, displayName: "Local" });
-      const { code } = await agents.createEnrollmentCode(server.publicId, ACTOR);
-      expect(await openCodes(server.id)).toBe(1);
-      expect(await saveConnection(pool, ring, server.id, input)).toBe(true);
-      expect(await openCodes(server.id)).toBe(0);
-      expect(codeOf(await failureOf(enrollment.enroll(code, "0.1.0")))).toBe("enrollment_code_invalid");
-      // The server is still a local one, with its tokens.
-      expect((await admin.query("SELECT connection_kind FROM servers.servers WHERE id = $1", [server.id])).rows[0].connection_kind).toBe("local");
-    });
-
-    it("updateConnection, and it leaves other servers' codes alone", async () => {
-      const server = await upsertConfiguredServer(pool, { publicId: `cmd-${++counter}`, displayName: "Local" });
-      const bystander = await upsertConfiguredServer(pool, { publicId: `cmd-${++counter}`, displayName: "Other" });
-      await saveConnection(pool, ring, server.id, input);
-      await agents.createEnrollmentCode(server.publicId, ACTOR);
-      await agents.createEnrollmentCode(bystander.publicId, ACTOR);
-      expect(await updateConnection(pool, ring, server.id, { apiPort: 7778 })).toBe(true);
-      expect(await openCodes(server.id)).toBe(0);
-      expect(await openCodes(bystander.id)).toBe(1);
-    });
-
-    it("a rename alone changes nothing about how the server is reached: its codes stay", async () => {
-      const server = await upsertConfiguredServer(pool, { publicId: `cmd-${++counter}`, displayName: "Local" });
-      await saveConnection(pool, ring, server.id, input);
-      await agents.createEnrollmentCode(server.publicId, ACTOR);
-      expect(await updateConnection(pool, ring, server.id, { displayName: "Renamed" })).toBe(true);
-      expect(await openCodes(server.id)).toBe(1);
-    });
-
-    it("a spent code is not touched (it is history)", async () => {
-      const server = await upsertConfiguredServer(pool, { publicId: `cmd-${++counter}`, displayName: "Agent" });
-      await admin.query("UPDATE servers.servers SET connection_kind = 'agent' WHERE id = $1", [server.id]);
-      await enrollment.enroll((await agents.createEnrollmentCode(server.publicId, ACTOR)).code, "0.1.0");
-      await admin.query("UPDATE servers.servers SET connection_kind = 'local' WHERE id = $1", [server.id]);
-      await saveConnection(pool, ring, server.id, input);
-      expect((await admin.query("SELECT 1 FROM agents.enrollment_codes WHERE server_id = $1 AND consumed_at IS NOT NULL", [server.id])).rowCount).toBe(1);
     });
   });
 

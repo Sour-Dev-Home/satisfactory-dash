@@ -67,7 +67,11 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // /commands/:commandId`), so nothing is exempt any more: the generated tests cover every scoped route.
 // ADR-0047 (#311 task 2a) added `members.leave` to the contract before its route; task 2b mounted it, so nothing is
 // exempt again. Leave is a member's own write (`memberSelfService`), and the owner is refused with 409 would_orphan.
-const SCOPED = scopedEndpoints(endpoints);
+// ADR-0066 build PR 6 deleted the backend's direct-poll management routes; the contract keeps their entries until build
+// PR 8 (ground rule 6). They are not mounted, so they are left out of the generated tests and checked below to be 404s.
+const DELETED_ON_BACKEND = new Set(["serverManagement.get", "serverManagement.update", "serverManagement.switchToLocal", "serverManagement.testSaved"]);
+const CONTRACT_SCOPED = scopedEndpoints(endpoints);
+const SCOPED = CONTRACT_SCOPED.filter((e) => !DELETED_ON_BACKEND.has(e.name));
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) =>
   route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails").replace(":designationId", plannerDesignationIronLine.id);
@@ -247,26 +251,22 @@ const ALERT_BODIES: Record<string, unknown> = {
   "plannerDesignations.replace": plannerDesignationReplaceRequestMerge,
 };
 const bodyFor = (name: string): unknown =>
-  Object.hasOwn(ALERT_BODIES, name) ? ALERT_BODIES[name] : name === "serverManagement.update" || name === "serverManagement.renameAgent" ? { displayName: "Renamed" } : name === "serverManagement.switchToLocal" ? { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdef123456" } : { enabled: true };
+  Object.hasOwn(ALERT_BODIES, name) ? ALERT_BODIES[name] : name === "serverManagement.renameAgent" ? { displayName: "Renamed" } : { enabled: true };
 // POST .../test takes no body, like the other action endpoints.
 const hasBody = (name: string, method: Method) =>
   method !== "GET" &&
   method !== "DELETE" &&
-  name !== "serverManagement.testSaved" &&
   name !== "alerts.destinations.testDiscord" &&
   name !== "members.leave" &&
   name !== "agent.enrollmentCode";
 /** What a successful write answers: 200, except a create (201). */
-// ADR-0066: auto-pause is always a command (202); the direct-poll management routes are retired and answer 410 to the operator.
-const RETIRED_MANAGEMENT = new Set(["serverManagement.get", "serverManagement.update", "serverManagement.switchToLocal", "serverManagement.testSaved"]);
+// ADR-0066: auto-pause is always a command (202).
 const successStatus = (name: string): number =>
   name === "alerts.rules.create" || name === "agent.enrollmentCode" || name === "plannerDesignations.create"
     ? 201
     : name === "settings.setAutoPause"
       ? 202
-      : RETIRED_MANAGEMENT.has(name)
-        ? 410
-        : 200;
+      : 200;
 
 const call = (app: ReturnType<typeof buildApp>, name: string, method: Method, url: string, user: string) => {
   const req = request(app)[method.toLowerCase() as "get"](url).set("x-test-user", user);
@@ -470,8 +470,8 @@ describe("the selfServeOwner endpoints", () => {
 });
 
 describe("the operator-only endpoints in the contract", () => {
-  it("are exactly the server-management ones, and the generated tests cover the scoped ones", () => {
-    const operatorOnlyNames = SCOPED.filter((e) => e.operatorOnly).map((e) => e.name).sort();
+  it("are exactly the server-management ones, and the generated tests cover the scoped ones still mounted", () => {
+    const operatorOnlyNames = CONTRACT_SCOPED.filter((e) => e.operatorOnly).map((e) => e.name).sort();
     expect(operatorOnlyNames).toEqual([
       "serverManagement.get",
       "serverManagement.remove",
@@ -480,7 +480,20 @@ describe("the operator-only endpoints in the contract", () => {
       "serverManagement.testSaved",
       "serverManagement.update",
     ]);
-    expect(SCOPED.filter((e) => !e.operatorOnly).some((e) => e.name.startsWith("serverManagement"))).toBe(false);
+    expect(SCOPED.filter((e) => e.operatorOnly).map((e) => e.name).sort()).toEqual(["serverManagement.remove", "serverManagement.renameAgent"]);
+    expect(CONTRACT_SCOPED.filter((e) => !e.operatorOnly).some((e) => e.name.startsWith("serverManagement"))).toBe(false);
+  });
+});
+
+// ADR-0066 build PR 6: the deleted direct-poll routes are not mounted. Every caller, the operator included, gets a 404
+// with the shared envelope; nothing is read or written. (Their contract entries go in build PR 8.)
+describe.each(CONTRACT_SCOPED.filter((e) => DELETED_ON_BACKEND.has(e.name)))("deleted: $method $route ($name)", ({ name, method, route }) => {
+  const app = buildApp();
+
+  it.each([OPERATOR, OWNER, OUTSIDER])("answers %s with a 404", async (user) => {
+    const res = await call(app, name, method, urlFor(route, "alpha"), user);
+    expect(res.status).toBe(404);
+    expect(["not_found", "server_not_found"]).toContain(ApiErrorResponseSchema.parse(res.body).error.code);
   });
 });
 

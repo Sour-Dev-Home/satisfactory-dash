@@ -1,11 +1,16 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createSecretsKeyring } from "../../../platform/secrets/secrets.js";
+import type { SecretsKeyring } from "../../../platform/secrets/secrets.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
-import { getConnection, getConnectionSummary, listConnections, saveConnection, updateConnection } from "./connectionRepository.js";
+import { listConnections } from "./connectionRepository.js";
 
-// No SQL runs here (the real statements are covered by connectionRepository.db.test.ts in CI): a fake
-// Queryable records what would be written, and serves it back as a row, to test the sealing itself.
+// No SQL runs here (the real statement is covered by connectionRepository.db.test.ts in CI): a fake Queryable serves
+// rows to test the opening itself.
+//
+// ADR-0066 build PR 6: the write paths are gone, so the rows are sealed here the way the retired `saveConnection` sealed
+// them: the context `<server id>:<kind>:<field>`. That is deliberate. The restore drill must open rows written by the old
+// code, so a change to the context format the reader uses fails here.
 
 const SERVER_A = "11111111-1111-4111-8111-111111111111";
 const SERVER_B = "22222222-2222-4222-8222-222222222222";
@@ -14,204 +19,49 @@ const FRM_TOKEN = "frm-token-klmnopqrst5678";
 
 const newRing = (id = "k1", key = randomBytes(32)) => createSecretsKeyring(id, new Map([[id, key]]));
 
-interface Written {
-  params: unknown[];
-}
-
-function recordingDb(): Queryable & { written: Written[] } {
-  const written: Written[] = [];
-  return {
-    written,
-    async query(_text, values = []) {
-      written.push({ params: values });
-      return { rows: [{ server_id: values[0] }] };
-    },
-  };
-}
-
-/** A row as Postgres would return it for what `saveConnection` wrote for `serverId`. */
-function rowFrom(written: Written, serverId: string, overrides: Record<string, unknown> = {}) {
-  const [, host, pinnedIp, apiPort, frmPort, apiEnc, frmEnc, keyId] = written.params;
+/** A row as Postgres returns it for a connection the old code stored for `serverId` (a 'local' server). */
+function sealedRow(ring: SecretsKeyring, serverId: string, overrides: Record<string, unknown> = {}, frmToken: string | null = FRM_TOKEN) {
+  const api = ring.seal(API_TOKEN, `${serverId}:local:api`);
+  const frm = frmToken === null ? undefined : ring.seal(frmToken, `${serverId}:local:frm`);
   return {
     server_id: serverId,
     public_id: "srv",
     display_name: "Srv",
     connection_kind: "local",
-    host,
-    pinned_ip: pinnedIp,
-    api_port: apiPort,
-    frm_port: frmPort,
-    api_token_enc: apiEnc,
-    frm_token_enc: frmEnc,
-    key_id: keyId,
+    host: "192.168.1.20",
+    pinned_ip: "192.168.1.20",
+    api_port: 7777,
+    frm_port: 8080,
+    api_token_enc: api.data,
+    frm_token_enc: frm?.data ?? null,
+    key_id: api.keyId,
     ...overrides,
   };
 }
 
 const servingDb = (rows: unknown[]): Queryable => ({ query: async () => ({ rows }) });
 
-const input = { host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, apiToken: API_TOKEN, frmToken: FRM_TOKEN };
-
-async function saved(ring = newRing()) {
-  const db = recordingDb();
-  expect(await saveConnection(db, ring, SERVER_A, input)).toBe(true);
-  return { ring, written: db.written[0]! };
-}
-
-describe("saveConnection", () => {
-  it("writes only ciphertext: no token appears in any SQL parameter", async () => {
-    const { written } = await saved();
-    for (const param of written.params) {
-      const text = Buffer.isBuffer(param) ? param.toString("latin1") : String(param);
-      expect(text).not.toContain(API_TOKEN);
-      expect(text).not.toContain(FRM_TOKEN);
-    }
-    expect(Buffer.isBuffer(written.params[5])).toBe(true);
-    expect(written.params[7]).toBe("k1");
-  });
-
-  it("stores no FRM ciphertext when there is no FRM token", async () => {
-    const db = recordingDb();
-    await saveConnection(db, newRing(), SERVER_A, { ...input, frmToken: undefined });
-    expect(db.written[0]!.params[6]).toBeNull();
-  });
-
-  it("reports false when the database wrote nothing (unknown, deleted or non-local server)", async () => {
-    const db: Queryable = { query: async () => ({ rows: [] }) };
-    expect(await saveConnection(db, newRing(), SERVER_A, input)).toBe(false);
-  });
-});
-
-describe("reading back", () => {
-  it("opens both tokens", async () => {
-    const { ring, written } = await saved();
-    const connection = await getConnection(servingDb([rowFrom(written, SERVER_A)]), ring, SERVER_A);
-    expect(connection).toMatchObject({ host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, apiToken: API_TOKEN, frmToken: FRM_TOKEN });
-  });
-
-  it("returns undefined when there is no row", async () => {
-    expect(await getConnection(servingDb([]), newRing(), SERVER_A)).toBeUndefined();
-  });
-
-  it("the summary carries set flags and the last 4 characters, never a token", async () => {
-    const { ring, written } = await saved();
-    const summary = await getConnectionSummary(servingDb([rowFrom(written, SERVER_A)]), ring, SERVER_A);
-    expect(summary).toMatchObject({ apiTokenSet: true, apiTokenLast4: "1234", frmTokenSet: true, frmTokenLast4: "5678" });
-    const json = JSON.stringify(summary);
-    expect(json).not.toContain(API_TOKEN);
-    expect(json).not.toContain(FRM_TOKEN);
-  });
-
-  it("shows no suffix for a short token (it would reveal most of it)", async () => {
-    const ring = newRing();
-    const db = recordingDb();
-    await saveConnection(db, ring, SERVER_A, { ...input, apiToken: "short-tok", frmToken: undefined });
-    const summary = await getConnectionSummary(servingDb([rowFrom(db.written[0]!, SERVER_A)]), ring, SERVER_A);
-    expect(summary).toMatchObject({ apiTokenLast4: null, frmTokenSet: false, frmTokenLast4: null });
-  });
-});
-
-describe("the sealing context binds a value to its row and field", () => {
-  it("a row copied to another server does not open", async () => {
-    const { ring, written } = await saved();
-    await expect(getConnection(servingDb([rowFrom(written, SERVER_B)]), ring, SERVER_B)).rejects.toThrow("Could not decrypt");
-  });
-
-  it("the API and FRM ciphertexts cannot be swapped", async () => {
-    const { ring, written } = await saved();
-    const swapped = rowFrom(written, SERVER_A, { api_token_enc: written.params[6], frm_token_enc: written.params[5] });
-    await expect(getConnection(servingDb([swapped]), ring, SERVER_A)).rejects.toThrow("Could not decrypt");
-  });
-
-  it("uses the kind on the row, so a server flipped to another kind stops opening", async () => {
-    const { ring, written } = await saved();
-    await expect(getConnection(servingDb([rowFrom(written, SERVER_A, { connection_kind: "agent" })]), ring, SERVER_A)).rejects.toThrow("Could not decrypt");
-  });
-});
-
-/** A fake pool whose one client serves `row` for the locking SELECT and records the UPDATE. */
-function fakePool(row: unknown) {
-  const updates: unknown[][] = [];
-  const statements: string[] = [];
-  const client = {
-    on() {},
-    removeListener() {},
-    release() {},
-    async query(text: string, values: unknown[] = []) {
-      statements.push(text.trim().split(/\s+/)[0]!);
-      if (text.includes("FOR UPDATE")) return { rows: row === undefined ? [] : [row] };
-      if (text.includes("UPDATE servers.server_connections")) {
-        updates.push(values);
-        return { rows: [{ server_id: values[0] }] };
-      }
-      return { rows: [] };
-    },
-  };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { pool: { connect: async () => client } as any, updates, statements };
-}
-
-describe("updateConnection", () => {
-  it("keeps unpatched fields, re-seals both tokens with the current key and keeps their contexts", async () => {
-    const oldKey = randomBytes(32);
-    const oldRing = newRing("k1", oldKey);
-    const ring = createSecretsKeyring("k2", new Map([["k2", randomBytes(32)], ["k1", oldKey]]));
-    const { written } = await saved(oldRing);
-    const { pool, updates } = fakePool(rowFrom(written, SERVER_A));
-    expect(await updateConnection(pool, ring, SERVER_A, { apiPort: 7778 })).toBe(true);
-    const [, host, ip, apiPort, frmPort, , , keyId] = updates[0]!;
-    expect([host, ip, apiPort, frmPort, keyId]).toEqual(["192.168.1.20", "192.168.1.20", 7778, 8080, "k2"]);
-    const opened = await getConnection(servingDb([rowFrom({ params: updates[0]! }, SERVER_A)]), ring, SERVER_A);
-    expect(opened).toMatchObject({ apiToken: API_TOKEN, frmToken: FRM_TOKEN });
-  });
-
-  it("frmToken null clears it, undefined keeps it", async () => {
-    const { ring, written } = await saved();
-    const cleared = fakePool(rowFrom(written, SERVER_A));
-    await updateConnection(cleared.pool, ring, SERVER_A, { frmToken: null });
-    expect(cleared.updates[0]![6]).toBeNull();
-    const kept = fakePool(rowFrom(written, SERVER_A));
-    await updateConnection(kept.pool, ring, SERVER_A, { frmToken: undefined, apiToken: undefined });
-    expect(Buffer.isBuffer(kept.updates[0]![6])).toBe(true);
-  });
-
-  it("can repair a row sealed by a retired key when the patch supplies every token it holds", async () => {
-    const { written } = await saved(newRing("k1"));
-    const ring = newRing("k2");
-    const { pool, updates } = fakePool(rowFrom(written, SERVER_A));
-    expect(await updateConnection(pool, ring, SERVER_A, { apiToken: "brand-new-api-token", frmToken: "brand-new-frm-token" })).toBe(true);
-    expect(updates[0]![7]).toBe("k2");
-  });
-
-  it("an unreadable row with an incomplete patch fails without writing or leaking a token", async () => {
-    const { written } = await saved(newRing("k1"));
-    const { pool, updates, statements } = fakePool(rowFrom(written, SERVER_A));
-    const err = await updateConnection(pool, newRing("k2"), SERVER_A, { apiPort: 1 }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(Error);
-    expect(String((err as Error).message)).not.toContain(API_TOKEN);
-    expect(updates).toEqual([]);
-    expect(statements).toContain("ROLLBACK");
-  });
-
-  it("returns false when there is no row", async () => {
-    const { pool } = fakePool(undefined);
-    expect(await updateConnection(pool, newRing(), SERVER_A, { apiPort: 1 })).toBe(false);
-  });
-});
-
 describe("listConnections", () => {
+  it("opens both tokens of a stored row", async () => {
+    const ring = newRing();
+    const list = await listConnections(servingDb([sealedRow(ring, SERVER_A)]), ring);
+    expect(list.unreadable).toEqual([]);
+    expect(list.connections).toEqual([
+      { serverId: SERVER_A, publicId: "srv", displayName: "Srv", host: "192.168.1.20", pinnedIp: "192.168.1.20", apiPort: 7777, frmPort: 8080, apiToken: API_TOKEN, frmToken: FRM_TOKEN },
+    ]);
+  });
+
+  it("a row with no FRM token opens without one", async () => {
+    const ring = newRing();
+    const list = await listConnections(servingDb([sealedRow(ring, SERVER_A, {}, null)]), ring);
+    expect(list.connections[0]).not.toHaveProperty("frmToken");
+  });
+
   it("opens readable rows and reports the others by key id, never skipping them", async () => {
     const oldKey = randomBytes(32);
     const oldRing = newRing("k1", oldKey);
     const ring = createSecretsKeyring("k2", new Map([["k2", randomBytes(32)], ["k1", oldKey]]));
-    const oldDb = recordingDb();
-    await saveConnection(oldDb, oldRing, SERVER_A, input);
-    const newDb = recordingDb();
-    await saveConnection(newDb, ring, SERVER_B, input);
-    const rows = [
-      rowFrom(oldDb.written[0]!, SERVER_A, { public_id: "a" }),
-      rowFrom(newDb.written[0]!, SERVER_B, { public_id: "b" }),
-    ];
+    const rows = [sealedRow(oldRing, SERVER_A, { public_id: "a" }), sealedRow(ring, SERVER_B, { public_id: "b" })];
     const list = await listConnections(servingDb(rows), ring);
     expect(list.connections.map((c) => c.publicId)).toEqual(["a", "b"]);
     expect(list.unreadable).toEqual([]);
@@ -224,24 +74,48 @@ describe("listConnections", () => {
   });
 
   it("reports every row as unreadable when there is no keyring", async () => {
-    const { written } = await saved();
-    const list = await listConnections(servingDb([rowFrom(written, SERVER_A)]), null);
+    const list = await listConnections(servingDb([sealedRow(newRing(), SERVER_A)]), null);
     expect(list.connections).toEqual([]);
     expect(list.unreadable).toEqual([{ serverId: SERVER_A, publicId: "srv", keyId: "k1" }]);
   });
 
   it("reports a modified value as unreadable, without its content", async () => {
-    const { ring, written } = await saved();
-    const tampered = Buffer.from(written.params[5] as Buffer);
+    const ring = newRing();
+    const row = sealedRow(ring, SERVER_A);
+    const tampered = Buffer.from(row.api_token_enc);
     tampered[14] = tampered[14]! ^ 0x01;
-    const list = await listConnections(servingDb([rowFrom(written, SERVER_A, { api_token_enc: tampered })]), ring);
+    const list = await listConnections(servingDb([{ ...row, api_token_enc: tampered }]), ring);
     expect(list.connections).toEqual([]);
     expect(list.unreadable).toHaveLength(1);
     expect(JSON.stringify(list)).not.toContain(API_TOKEN);
   });
 
   it("refuses a row whose shape drifted", async () => {
-    const { ring, written } = await saved();
-    await expect(listConnections(servingDb([rowFrom(written, SERVER_A, { pinned_ip: "not-an-ip" })]), ring)).rejects.toThrow("Unexpected database row shape");
+    const ring = newRing();
+    await expect(listConnections(servingDb([sealedRow(ring, SERVER_A, { pinned_ip: "not-an-ip" })]), ring)).rejects.toThrow("Unexpected database row shape");
+  });
+});
+
+describe("the sealing context binds a value to its row and field", () => {
+  const unreadableOnly = async (ring: SecretsKeyring, row: unknown) => {
+    const list = await listConnections(servingDb([row]), ring);
+    expect(list.connections).toEqual([]);
+    expect(list.unreadable).toHaveLength(1);
+  };
+
+  it("a row copied to another server does not open", async () => {
+    const ring = newRing();
+    await unreadableOnly(ring, { ...sealedRow(ring, SERVER_A), server_id: SERVER_B });
+  });
+
+  it("the API and FRM ciphertexts cannot be swapped", async () => {
+    const ring = newRing();
+    const row = sealedRow(ring, SERVER_A);
+    await unreadableOnly(ring, { ...row, api_token_enc: row.frm_token_enc, frm_token_enc: row.api_token_enc });
+  });
+
+  it("uses the kind on the row, so a server flipped to another kind stops opening", async () => {
+    const ring = newRing();
+    await unreadableOnly(ring, sealedRow(ring, SERVER_A, { connection_kind: "agent" }));
   });
 });

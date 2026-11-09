@@ -5,7 +5,7 @@ import { BottlenecksResponseSchema, endpoints } from "@satisfactory-dash/shared"
 import { conveyorsSample, factoryStatesAndIngredients } from "@satisfactory-dash/shared/fixtures";
 import { createApp } from "../../../app.js";
 import { createLogger } from "../../../platform/logger.js";
-import { UpstreamError } from "../../../platform/errors.js";
+import { ApiFailure } from "../../../platform/errorResponse.js";
 import { InMemoryServerDirectory, createServersRouter } from "../../servers/index.js";
 import type { ServerAccess } from "../../servers/index.js";
 import type { TelemetryServices } from "../telemetryServices.js";
@@ -160,7 +160,7 @@ describe("GET /api/servers/:serverId/bottlenecks", () => {
   });
 
   it("a factory read that fails is mapped like the factory route (502 upstream)", async () => {
-    const res = await get(build({ factory: async () => { throw new UpstreamError("down"); } }));
+    const res = await get(build({ factory: async () => { throw new ApiFailure("upstream_error", "down"); } }));
     expect(res.status).toBe(502);
   });
 });

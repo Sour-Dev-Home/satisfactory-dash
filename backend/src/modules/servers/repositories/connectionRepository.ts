@@ -1,22 +1,24 @@
 import { isIP } from "node:net";
 import { z } from "zod";
-import { parseFirst, parseRows } from "../../../platform/db/rows.js";
+import { parseRows } from "../../../platform/db/rows.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
 import { timedQuery } from "../../../platform/db/timedQuery.js";
-import { recordAuditEvent } from "../../../platform/audit/auditRepository.js";
-import { withTransaction } from "../../../platform/db/transaction.js";
 import { SecretsError } from "../../../platform/secrets/secrets.js";
 import type { SecretsKeyring } from "../../../platform/secrets/secrets.js";
 
 /**
- * How to reach a local server (ADR-0030): host, the pinned address, ports and the two game tokens.
- * The tokens are sealed by platform/secrets before they reach SQL and opened only here, so the
- * database (and any backup of it) holds ciphertext only.
+ * The stored connections of the retired direct-poll servers (ADR-0030): host, the pinned address, ports and the two
+ * game tokens, sealed by platform/secrets so the database (and any backup of it) holds ciphertext only.
  *
- * The AES-GCM context that binds a sealed value to its place is built in ONE function
- * (`tokenContext`), from the row's own server id and connection kind and the field name, never
- * from request input: a token copied to another server, or the API token swapped into the FRM
- * column, fails to open.
+ * ADR-0066 build PR 6: nothing reaches a game server directly any more, so every write path and every read but one is
+ * gone. What stays is `listConnections`, for the `verify-secrets` admin command that the backup restore drill runs
+ * (`runbooks/backups.md`): it proves a restored database's sealed tokens open with the backed-up key. The table and this
+ * read go in build PR 10, which drops the table. Rows are still deleted by a server's soft delete and at its enrolment
+ * (serverRepository.ts).
+ *
+ * The AES-GCM context that binds a sealed value to its place is built in ONE function (`tokenContext`), from the row's
+ * own server id and connection kind and the field name: a token copied to another server, or the API token swapped into
+ * the FRM column, fails to open.
  *
  * Errors and logs from this file never carry a token, a key or a ciphertext.
  */
@@ -28,51 +30,15 @@ export interface ServerConnection {
   displayName: string;
   /** What the operator typed (hostname or address). */
   host: string;
-  /** The address the backend connects to; validated by the address guard (a later PR), re-checked on every connect. */
+  /** The address the backend connected to. */
   pinnedIp: string;
   apiPort: number;
   frmPort: number;
   apiToken: string;
   /** FRM can run without a token. */
   frmToken?: string;
-  /** When the row was last written (ISO 8601); set by `listConnections` only. Any edit, the tokens included, changes it. */
+  /** When the row was last written (ISO 8601). */
   updatedAt?: string;
-}
-
-/** The write-only view (ADR-0030): whether a token is set and its last 4 characters, never the token. */
-export interface ServerConnectionSummary {
-  serverId: string;
-  publicId: string;
-  displayName: string;
-  host: string;
-  pinnedIp: string;
-  apiPort: number;
-  frmPort: number;
-  apiTokenSet: true;
-  apiTokenLast4: string | null;
-  frmTokenSet: boolean;
-  frmTokenLast4: string | null;
-}
-
-export interface ConnectionInput {
-  host: string;
-  pinnedIp: string;
-  apiPort: number;
-  frmPort: number;
-  apiToken: string;
-  frmToken?: string;
-}
-
-/** Fields an edit may change. `frmToken: null` clears the FRM token; `undefined` keeps it. */
-export interface ConnectionPatch {
-  /** Renames the server (servers.servers), in the same transaction. */
-  displayName?: string;
-  host?: string;
-  pinnedIp?: string;
-  apiPort?: number;
-  frmPort?: number;
-  apiToken?: string;
-  frmToken?: string | null;
 }
 
 export interface UnreadableConnection {
@@ -95,13 +61,6 @@ function tokenContext(serverId: string, connectionKind: string, field: TokenFiel
   return `${serverId}:${connectionKind}:${field}`;
 }
 
-/** Only local servers have a connection row (agent servers are reached through their agent). */
-const LOCAL_KIND = "local";
-
-/** Long enough that showing the end reveals little; shorter tokens show no suffix at all. */
-const LAST4_MIN_TOKEN_LENGTH = 12;
-const last4 = (token: string): string | null => (token.length >= LAST4_MIN_TOKEN_LENGTH ? token.slice(-4) : null);
-
 const ConnectionRowSchema = z.object({
   server_id: z.string(),
   public_id: z.string(),
@@ -114,12 +73,11 @@ const ConnectionRowSchema = z.object({
   api_token_enc: z.instanceof(Buffer),
   frm_token_enc: z.instanceof(Buffer).nullable(),
   key_id: z.string(),
-  // Read by the list only (ADR-0054 D3.10: it marks an edit); every write to the row sets it.
   updated_at: z.date().optional(),
 });
 type ConnectionRow = z.output<typeof ConnectionRowSchema>;
 
-// Whole statements, never assembled from pieces (the SQL guard, ADR-0025 decision 2).
+// A whole statement, never assembled from pieces (the SQL guard, ADR-0025 decision 2).
 const LIST_LIVE = `
   SELECT c.server_id, s.public_id, s.display_name, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
          c.api_port, c.frm_port, c.api_token_enc, c.frm_token_enc, c.key_id, c.updated_at
@@ -127,21 +85,6 @@ const LIST_LIVE = `
   JOIN servers.servers s ON s.id = c.server_id
   WHERE s.deleted_at IS NULL
   ORDER BY s.public_id`;
-
-const SELECT_ONE = `
-  SELECT c.server_id, s.public_id, s.display_name, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
-         c.api_port, c.frm_port, c.api_token_enc, c.frm_token_enc, c.key_id
-  FROM servers.server_connections c
-  JOIN servers.servers s ON s.id = c.server_id
-  WHERE s.deleted_at IS NULL AND c.server_id = $1`;
-
-const SELECT_ONE_FOR_UPDATE = `
-  SELECT c.server_id, s.public_id, s.display_name, s.connection_kind, c.host, host(c.pinned_ip) AS pinned_ip,
-         c.api_port, c.frm_port, c.api_token_enc, c.frm_token_enc, c.key_id
-  FROM servers.server_connections c
-  JOIN servers.servers s ON s.id = c.server_id
-  WHERE s.deleted_at IS NULL AND c.server_id = $1
-  FOR UPDATE OF c`;
 
 function openRow(ring: SecretsKeyring, row: ConnectionRow): ServerConnection {
   const connection: ServerConnection = {
@@ -162,7 +105,7 @@ function openRow(ring: SecretsKeyring, row: ConnectionRow): ServerConnection {
 }
 
 /** Every live connection, opened where possible. A row that cannot be opened is reported (never
- *  silently skipped) so readiness can say so; the caller logs only its key id. */
+ *  silently skipped) so `verify-secrets` can say so; the caller logs only its key id. */
 export async function listConnections(db: Queryable, ring: SecretsKeyring | null): Promise<ConnectionList> {
   const result = await timedQuery(db, "servers.listConnections", LIST_LIVE);
   const rows = parseRows(ConnectionRowSchema, result.rows, "servers.listConnections");
@@ -181,288 +124,4 @@ export async function listConnections(db: Queryable, ring: SecretsKeyring | null
     }
   }
   return list;
-}
-
-/** One server's connection with its tokens opened (for the poller and the test connection).
- *  Undefined when there is none. Throws SecretsError if the stored value cannot be opened. */
-export async function getConnection(db: Queryable, ring: SecretsKeyring, serverId: string): Promise<ServerConnection | undefined> {
-  const row = await selectRow(db, serverId, false);
-  return row === undefined ? undefined : openRow(ring, row);
-}
-
-/** The write-only view for API responses: no token, only "set" and the last 4 characters. */
-export async function getConnectionSummary(
-  db: Queryable,
-  ring: SecretsKeyring,
-  serverId: string,
-): Promise<ServerConnectionSummary | undefined> {
-  const connection = await getConnection(db, ring, serverId);
-  if (connection === undefined) return undefined;
-  const { apiToken, frmToken, ...rest } = connection;
-  return {
-    ...rest,
-    apiTokenSet: true,
-    apiTokenLast4: last4(apiToken),
-    frmTokenSet: frmToken !== undefined,
-    frmTokenLast4: frmToken === undefined ? null : last4(frmToken),
-  };
-}
-
-async function selectRow(db: Queryable, serverId: string, lock: boolean): Promise<ConnectionRow | undefined> {
-  const result = await timedQuery(db, "servers.selectConnection", lock ? SELECT_ONE_FOR_UPDATE : SELECT_ONE, [serverId]);
-  return parseFirst(ConnectionRowSchema, result.rows, "servers.selectConnection");
-}
-
-const UPSERT = `
-  INSERT INTO servers.server_connections
-    (server_id, host, pinned_ip, api_port, frm_port, api_token_enc, frm_token_enc, key_id)
-  SELECT s.id, $2, $3::inet, $4, $5, $6, $7, $8
-  FROM servers.servers s
-  WHERE s.id = $1 AND s.deleted_at IS NULL AND s.connection_kind = 'local'
-  ON CONFLICT (server_id) DO UPDATE SET
-    host = EXCLUDED.host, pinned_ip = EXCLUDED.pinned_ip, api_port = EXCLUDED.api_port,
-    frm_port = EXCLUDED.frm_port, api_token_enc = EXCLUDED.api_token_enc,
-    frm_token_enc = EXCLUDED.frm_token_enc, key_id = EXCLUDED.key_id, updated_at = now()
-  RETURNING server_id`;
-
-/**
- * Creates or replaces a local server's connection, sealing both tokens with the ring's current key.
- * False when the server is unknown, deleted or not a 'local' server (nothing is written then).
- * The input is trusted to be validated already (the address guard and the schema are the callers').
- */
-export async function saveConnection(
-  db: Queryable,
-  ring: SecretsKeyring,
-  serverId: string,
-  input: ConnectionInput,
-): Promise<boolean> {
-  // Only 'local' servers can take a connection row (the INSERT's WHERE enforces it), so the
-  // context's kind is that constant here; reads use the row's own kind and would reject a mismatch.
-  const api = ring.seal(input.apiToken, tokenContext(serverId, LOCAL_KIND, "api"));
-  const frm = input.frmToken === undefined ? undefined : ring.seal(input.frmToken, tokenContext(serverId, LOCAL_KIND, "frm"));
-  const result = await timedQuery(db, "servers.saveConnection", UPSERT, [
-    serverId,
-    input.host,
-    input.pinnedIp,
-    input.apiPort,
-    input.frmPort,
-    api.data,
-    frm?.data ?? null,
-    api.keyId,
-  ]);
-  if (result.rows.length === 0) return false;
-  await dropOpenEnrollmentCodes(db, serverId);
-  return true;
-}
-
-// ADR-0031 PR 5b: a code created for this server while it was one kind must not enrol an agent once the operator has
-// saved a local connection (enrolling replaces the connection and deletes its tokens). Saving a connection therefore
-// drops the server's unspent codes, so the permission that was checked when a code was CREATED cannot go stale.
-const DROP_OPEN_CODES = "DELETE FROM agents.enrollment_codes WHERE server_id = $1 AND consumed_at IS NULL";
-
-async function dropOpenEnrollmentCodes(db: Queryable, serverId: string): Promise<void> {
-  await timedQuery(db, "servers.dropOpenEnrollmentCodes", DROP_OPEN_CODES, [serverId]);
-}
-
-const INSERT_IF_ABSENT = `
-  INSERT INTO servers.server_connections
-    (server_id, host, pinned_ip, api_port, frm_port, api_token_enc, frm_token_enc, key_id)
-  SELECT s.id, $2, $3::inet, $4, $5, $6, $7, $8
-  FROM servers.servers s
-  WHERE s.id = $1 AND s.deleted_at IS NULL AND s.connection_kind = 'local'
-  ON CONFLICT (server_id) DO NOTHING
-  RETURNING server_id`;
-
-const CONNECTION_EXISTS = "SELECT 1 FROM servers.server_connections WHERE server_id = $1";
-
-export type CreateConnectionOutcome = "created" | "exists" | "not_local_server";
-
-/**
- * Creates a connection only if the server has none: it never overwrites (the create route answers 409
- * and the import skips), so edits go through `updateConnection`. "not_local_server" means the server is
- * unknown, deleted or not a 'local' one.
- */
-export async function createConnection(
-  db: Queryable,
-  ring: SecretsKeyring,
-  serverId: string,
-  input: ConnectionInput,
-): Promise<CreateConnectionOutcome> {
-  const api = ring.seal(input.apiToken, tokenContext(serverId, LOCAL_KIND, "api"));
-  const frm = input.frmToken === undefined ? undefined : ring.seal(input.frmToken, tokenContext(serverId, LOCAL_KIND, "frm"));
-  const inserted = await timedQuery(db, "servers.createConnection.insert", INSERT_IF_ABSENT, [
-    serverId,
-    input.host,
-    input.pinnedIp,
-    input.apiPort,
-    input.frmPort,
-    api.data,
-    frm?.data ?? null,
-    api.keyId,
-  ]);
-  if (inserted.rows.length > 0) {
-    await dropOpenEnrollmentCodes(db, serverId);
-    return "created";
-  }
-  const existing = await timedQuery(db, "servers.createConnection.exists", CONNECTION_EXISTS, [serverId]);
-  return existing.rows.length > 0 ? "exists" : "not_local_server";
-}
-
-/** How many connections exist (live servers only): the cap of ADR-0030 counts these. */
-export async function countConnections(db: Queryable): Promise<number> {
-  const result = await timedQuery(db, "servers.countConnections", COUNT_LIVE);
-  const row = parseFirst(z.object({ count: z.number().int() }), result.rows, "servers.countConnections");
-  return row?.count ?? 0;
-}
-
-const COUNT_LIVE = `
-  SELECT count(*)::int AS count
-  FROM servers.server_connections c
-  JOIN servers.servers s ON s.id = c.server_id
-  WHERE s.deleted_at IS NULL`;
-
-const UPDATE = `
-  UPDATE servers.server_connections
-  SET host = $2, pinned_ip = $3::inet, api_port = $4, frm_port = $5,
-      api_token_enc = $6, frm_token_enc = $7, key_id = $8, updated_at = now()
-  WHERE server_id = $1
-  RETURNING server_id`;
-
-/**
- * An edit. Both tokens share one key id, so the row is locked, both are opened with the key that
- * sealed them and BOTH are sealed again with the current key: an edit of one token never leaves
- * the row with two keys. False when there is no connection to edit.
- */
-export async function updateConnection(
-  pool: Parameters<typeof withTransaction>[0],
-  ring: SecretsKeyring,
-  serverId: string,
-  patch: ConnectionPatch,
-  /** When given, an audit event `server.updated` (the NAMES of the changed fields, never values) is
-   *  written in the same transaction. */
-  audit?: { actorUserId: string | null },
-): Promise<boolean> {
-  return withTransaction(pool, async (client) => {
-    const row = await selectRow(client, serverId, true);
-    if (row === undefined) return false;
-    // Open only what the patch does not replace: a row sealed by a retired key can still be repaired
-    // by supplying its tokens afresh.
-    const apiToken =
-      patch.apiToken ?? ring.open(row.key_id, row.api_token_enc, tokenContext(row.server_id, row.connection_kind, "api"));
-    let frmToken: string | undefined;
-    if (patch.frmToken === undefined) {
-      frmToken =
-        row.frm_token_enc === null
-          ? undefined
-          : ring.open(row.key_id, row.frm_token_enc, tokenContext(row.server_id, row.connection_kind, "frm"));
-    } else {
-      frmToken = patch.frmToken ?? undefined;
-    }
-    const api = ring.seal(apiToken, tokenContext(row.server_id, row.connection_kind, "api"));
-    const frm = frmToken === undefined ? undefined : ring.seal(frmToken, tokenContext(row.server_id, row.connection_kind, "frm"));
-    await timedQuery(client, "servers.updateConnection.update", UPDATE, [
-      serverId,
-      patch.host ?? row.host,
-      patch.pinnedIp ?? row.pinned_ip,
-      patch.apiPort ?? row.api_port,
-      patch.frmPort ?? row.frm_port,
-      api.data,
-      frm?.data ?? null,
-      api.keyId,
-    ]);
-    if (patch.displayName !== undefined) {
-      await timedQuery(client, "servers.updateConnection.rename", RENAME, [serverId, patch.displayName]);
-    }
-    // A rename alone changes nothing about how the server is reached: its codes stay.
-    const reachesDifferently = [patch.host, patch.pinnedIp, patch.apiPort, patch.frmPort, patch.apiToken, patch.frmToken].some((value) => value !== undefined);
-    if (reachesDifferently) await dropOpenEnrollmentCodes(client, serverId);
-    if (audit !== undefined) {
-      await recordAuditEvent(client, {
-        action: "server.updated",
-        actorUserId: audit.actorUserId ?? undefined,
-        serverId,
-        // pinnedIp is derived from the host, not something the operator changed by itself.
-        detail: {
-          fields: Object.keys(patch)
-            .filter((key) => key !== "pinnedIp" && patch[key as keyof ConnectionPatch] !== undefined)
-            .sort(),
-        },
-      });
-    }
-    return true;
-  });
-}
-
-const RENAME = "UPDATE servers.servers SET display_name = $2 WHERE id = $1";
-
-/** What the operator's edit form needs without opening a token: usable even when the stored tokens
- *  cannot be opened (a missing or wrong key), so the row can still be shown and repaired. */
-export interface ConnectionMeta {
-  serverId: string;
-  publicId: string;
-  displayName: string;
-  host: string;
-  pinnedIp: string;
-  apiPort: number;
-  frmPort: number;
-  frmTokenSet: boolean;
-  keyId: string;
-}
-
-const MetaRowSchema = z.object({
-  server_id: z.string(),
-  public_id: z.string(),
-  display_name: z.string(),
-  host: z.string(),
-  pinned_ip: z.string().refine((value) => isIP(value) !== 0),
-  api_port: z.number().int(),
-  frm_port: z.number().int(),
-  frm_token_set: z.boolean(),
-  key_id: z.string(),
-});
-
-const SELECT_META_BY_PUBLIC_ID = `
-  SELECT c.server_id, s.public_id, s.display_name, c.host, host(c.pinned_ip) AS pinned_ip,
-         c.api_port, c.frm_port, (c.frm_token_enc IS NOT NULL) AS frm_token_set, c.key_id
-  FROM servers.server_connections c
-  JOIN servers.servers s ON s.id = c.server_id
-  WHERE s.deleted_at IS NULL AND s.public_id = $1`;
-
-const toMeta = (row: z.output<typeof MetaRowSchema>): ConnectionMeta => ({
-  serverId: row.server_id,
-  publicId: row.public_id,
-  displayName: row.display_name,
-  host: row.host,
-  pinnedIp: row.pinned_ip,
-  apiPort: row.api_port,
-  frmPort: row.frm_port,
-  frmTokenSet: row.frm_token_set,
-  keyId: row.key_id,
-});
-
-/** The connection of the live server with this public id, without its tokens. Undefined when none. */
-export async function getConnectionMetaByPublicId(db: Queryable, publicId: string): Promise<ConnectionMeta | undefined> {
-  const result = await timedQuery(db, "servers.getConnectionMeta", SELECT_META_BY_PUBLIC_ID, [publicId]);
-  const row = parseFirst(MetaRowSchema, result.rows, "servers.getConnectionMeta");
-  return row === undefined ? undefined : toMeta(row);
-}
-
-const LIST_META = `
-  SELECT c.server_id, s.public_id, s.display_name, c.host, host(c.pinned_ip) AS pinned_ip,
-         c.api_port, c.frm_port, (c.frm_token_enc IS NOT NULL) AS frm_token_set, c.key_id
-  FROM servers.server_connections c
-  JOIN servers.servers s ON s.id = c.server_id
-  WHERE s.deleted_at IS NULL
-  ORDER BY s.public_id`;
-
-/** Every live stored connection without its tokens, whether or not this backend can open or serve it. */
-export async function listConnectionMetas(db: Queryable): Promise<ConnectionMeta[]> {
-  const result = await timedQuery(db, "servers.listConnectionMetas", LIST_META);
-  return parseRows(MetaRowSchema, result.rows, "servers.listConnectionMetas").map(toMeta);
-}
-
-/** Removes the connection row, wiping the encrypted tokens. False when there was none. */
-export async function deleteConnection(db: Queryable, serverId: string): Promise<boolean> {
-  const result = await timedQuery(db, "servers.deleteConnection", "DELETE FROM servers.server_connections WHERE server_id = $1 RETURNING server_id", [serverId]);
-  return result.rows.length > 0;
 }

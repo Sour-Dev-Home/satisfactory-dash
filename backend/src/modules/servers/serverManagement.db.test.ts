@@ -18,8 +18,8 @@ import { ServerRuntime } from "./serverRuntime.js";
 
 const available = dbTestsAvailable();
 
-// ADR-0066 build PR 5, as satis_app against a real Postgres: every server is reached through the mod. The operator lists,
-// renames and removes them; the direct-poll routes answer 410 and write nothing.
+// ADR-0066, as satis_app against a real Postgres: every server is reached through the mod. The operator lists, renames
+// and removes them; the direct-poll routes are deleted (build PR 6), answer 404 and write nothing.
 describe.skipIf(!available)("server management against a real Postgres", () => {
   let db: TestDatabase;
   let pool: pg.Pool;
@@ -117,7 +117,7 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
     expect((await request(app).delete("/api/servers/no-such-server")).status).toBe(404);
   });
 
-  it("the direct-poll routes answer 410 and write nothing", async () => {
+  it("the deleted direct-poll routes answer 404 and write nothing", async () => {
     const runtime = new ServerRuntime<string>();
     const { publicId, id } = await agentServer(runtime);
     const app = appWith(runtime);
@@ -130,7 +130,7 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
       await request(app).post(`/api/servers/${publicId}/test-connection`),
       await request(app).post(`/api/servers/${publicId}/local-connection`).set("Content-Type", "application/json").send(body),
     ];
-    expect(answers.map((res) => res.status)).toEqual([410, 410, 410, 410, 410, 410]);
+    expect(answers.map((res) => res.status)).toEqual([404, 404, 404, 404, 404, 404]);
     expect(await findServerByPublicId(pool, "sm-new")).toBeUndefined();
     expect((await pool.query("SELECT connection_kind, display_name FROM servers.servers WHERE id = $1", [id])).rows).toEqual([
       { connection_kind: "agent", display_name: `Name ${publicId}` },
