@@ -56,7 +56,8 @@ const PairingServerNameSchema = z
 
 /** POST /agent/v1/pairings (unauthenticated). The name is the server's own label, bounded like every agent string. */
 export const PairingStartRequestSchema = z.strictObject({
-  agentVersion: z.string().min(1).max(32).regex(/^[0-9A-Za-z.+-]+$/).describe("The agent's own version, at most 32 characters"),
+  // `/` for the mod's "mod/0.x.y", the same string it sends to enrol and in every snapshot.
+  agentVersion: z.string().min(1).max(32).regex(/^[0-9A-Za-z.+/-]+$/).describe("The agent's own version, at most 32 characters"),
   serverName: PairingServerNameSchema.optional().describe("What the owner will see on the confirmation screen; at most 200 characters"),
 });
 /** 201. */
