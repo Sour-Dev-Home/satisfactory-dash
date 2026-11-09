@@ -175,6 +175,23 @@ describe("ServerManagementView: renaming", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
   });
 
+  it("lets the operator save again after a refusal (the double-submit guard is released)", async () => {
+    serveManaged(managedAgentOne);
+    let refuse = true;
+    const bodies = captureRename(() =>
+      refuse ? HttpResponse.json(errorOperatorOnly, { status: 403 }) : HttpResponse.json(renameAgentServerResponse),
+    );
+    renderView();
+    fireEvent.click(await screen.findByRole("button", { name: `Rename ${factoryTwo.displayName}` }));
+    type("Name", renameAgentServerResponse.server.displayName);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByRole("alert");
+    refuse = false;
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(`Saved ${renameAgentServerResponse.server.displayName}.`)).toBeInTheDocument();
+    expect(bodies).toHaveLength(2);
+  });
+
   it("cancels back to the list", async () => {
     serveManaged(managedAgentOne);
     renderView();
