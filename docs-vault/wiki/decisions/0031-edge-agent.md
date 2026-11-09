@@ -1,5 +1,9 @@
 # ADR-0031: The edge agent (the game PC connects out; the backend never reaches in)
 
+> **Amended by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md) (2026-11-09):** the edge agent is the mod.
+> PR 2 (the adapter package) and PR 6 (the Node agent) are retired. The `/agent/v1` protocol, credentials, commands and the
+> `agent` kind remain in force.
+
 Status: accepted (owner, 2026-09-26: as drafted; "agent offline" is a default preset, on after the
 shadow week; runs from the repo checkout until the first other player; the auto-pause toggle shows
 "Saving…" until the agent confirms)

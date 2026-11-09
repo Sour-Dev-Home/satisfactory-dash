@@ -1,6 +1,7 @@
 # ADR-0040: The server manager, an Electron holdover until the mod
 
-Status: accepted (owner, 2026-10-19) for issue #436. The design was approved by the owner on
+Status: **superseded by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md) (2026-11-09)**: the Electron server
+manager (`server-manager/`) is retired with the Node agent. Previously accepted (owner, 2026-10-19) for issue #436. The design was approved by the owner on
 2026-10-19; this ADR records it. The build tasks that follow are blocked by #436 and define their
 own interface contracts.
 

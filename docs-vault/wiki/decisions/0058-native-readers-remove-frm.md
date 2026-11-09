@@ -1,5 +1,9 @@
 # ADR-0058: Native game readers in the mod, then remove the FRM dependency and bridge
 
+> **Decision 5 superseded by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md) (2026-11-09):** the Node agent,
+> `packages/game-adapter` and the local poller are retired. The mod is the only sender; Linux and unmodded hosts have no path until
+> the mod serves them (mod #86). The clean-room rules (Decision 6) stand.
+
 Status: **accepted** (owner, 2026-10-25), **done** (2026-11-06: R7 shipped in mod 0.2.0, scope A; see "Done" at the end; answers and the sprint grouping in "Owner's answers" at the end, which override
 Decisions 2 and 6 where they differ). Written to carry out the owner's decision recorded in ADR-0051 section 2 ("lets move
 to removing the dependency now. its a big project and scraps some work but it would be worth it ... Ideally we get

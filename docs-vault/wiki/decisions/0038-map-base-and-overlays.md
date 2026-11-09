@@ -1,5 +1,8 @@
 # ADR-0038: The map's base image and overlay layers: data volume, cadence and caching
 
+> **Amended by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md) (2026-11-09):** M3's local world poller
+> (`LocalWorldPoller`) is retired. Map layers come only from the mod's `/agent/v1/world/<layer>` posts.
+
 Status: accepted (owner, 2026-09-27) for card #330: D1 a data-derived base map now, plus a written permission
 request to Coffee Stain; D2 ADR-0029 stays, so no player positions; D3 world cadence 10 min (30 min for game-thread
 reads), sent only when the data changed.
