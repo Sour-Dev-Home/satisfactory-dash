@@ -11,7 +11,7 @@ import { Landing } from "./landing/Landing";
 import { PairPage } from "./selfServe/PairPage";
 import { ServerGate } from "./servers/ServerGate";
 import { Shell } from "./shell/Shell";
-import { ToApp } from "./shell/ToApp";
+import { ToApp, ToPair } from "./shell/ToApp";
 import { HazardStripe } from "./ui/HazardStripe";
 import { Logo } from "./ui/Logo";
 
@@ -63,6 +63,7 @@ export function AppFrame() {
                 </AuthGate>
               }
             />
+            <Route path="/pair" element={<ToPair />} />
             {/* The public front page, main site only: the demo's / is "Enter demo". */}
             {!IS_DEMO && <Route path="/" element={<Landing />} />}
             <Route path="*" element={<ToApp />} />

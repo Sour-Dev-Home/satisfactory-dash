@@ -21,8 +21,8 @@ contract needs to grow, not that this module should special-case a backend detai
   Power, Factory, Planner, Map, Settings, plus Servers and Metrics for the operator only: ADR-0030, `src/serverManagement/`,
   shown when the server list says `canManageServers`; since ADR-0066 it lists only the servers the mod connects
   (`agentServers`), to rename or remove). `/` is the static landing page (`src/landing/`, main site only;
-  the demo's `/` is "Enter demo"); any other path redirects to `/app`, keeping the query
-  string. Keep `/` and the static public paths (`/guides/*`, `/changelog`, below) free of app code: no
+  the demo's `/` is "Enter demo"); `/pair` (the address the mod prints) redirects to `/app/pair` and drops any query
+  string, so nothing can prefill a code; any other path redirects to `/app`, keeping the query string. Keep `/` and the static public paths (`/guides/*`, `/changelog`, below) free of app code: no
   queries, no auth, no API calls (`e2e/landing.spec.ts`, `e2e/guides.spec.ts`). Its link-preview tags are static
   in `index.html` (previews don't run JavaScript); `og:image` is `public/og-image.png`, the
   demo video's poster (`npm run demo:video`).
