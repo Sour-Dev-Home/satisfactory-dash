@@ -418,7 +418,14 @@ Better than reusing the offline `satis-backup-read` key: create a second Read On
 `pgmigrations`; row counts of `identity.users`, `servers.servers`, `audit.audit_events`; at least one user) and
 prints `PASS` or `FAIL` with the reasons. It then removes the container and the temp folder holding the plaintext,
 on success, on failure and on Ctrl-C; if it cannot delete that folder it fails and names it. Needs `aws` v2, `age`
-and Docker on `PATH`. Run it only here, never on a shared or CI machine:
+and Docker on `PATH`. Run it only here, never on a shared or CI machine.
+
+**The easy way:** `.\scripts\windows\restore-check.ps1` from the repo root. It asks only for what it needs:
+- **First run:** the bucket and endpoint. It remembers them in `%LOCALAPPDATA%\satisfactory-dash\restore-check.json`, since they aren't secret. Use `-Reconfigure` to change them.
+- **When the profile is missing:** a Read Only B2 keyID and applicationKey, which it writes as the `satis-backup-read` AWS CLI profile.
+- **Every run:** the age private key, pasted at a hidden prompt. It writes the key to a temp folder only you can read and deletes it in a `finally`, whatever the result.
+
+It exits 0 on PASS, 1 on FAIL and 2 when something is missing, such as Docker not running. By hand, the same check is:
 
 ```powershell
 $env:BACKUP_S3_BUCKET = '<bucket>'
