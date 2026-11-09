@@ -1,0 +1,5 @@
+- **`scripts/windows/restore-check.ps1`, the local restore check with only the key to paste.**
+  - It wraps `scripts/restore-check.mjs`. On the first run it asks for the bucket and endpoint and remembers them (they aren't secret). If the `satis-backup-read` AWS CLI profile is missing, it creates it from a pasted Read Only B2 key, written straight to the credentials file and never on a command line.
+  - It then takes the age key at a hidden prompt and writes it to a temp folder only the current user can read. It deletes the key in a `finally`, whatever the result.
+  - The owner ran it on 2026-11-09 for ADR-0066 PR 10's backup gate, and it printed PASS.
+  - `runbooks/backups.md`, "Local restore check", now leads with it.
