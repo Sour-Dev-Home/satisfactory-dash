@@ -23,9 +23,9 @@ function app() {
     renameAgentServer: vi.fn(),
   };
   const m = createServerManagementRouters(service as ServerManagementService);
-  const directory = new InMemoryServerDirectory([{ id: "home", displayName: "Home", services: {} }]);
+  const directory = new InMemoryServerDirectory([{ id: "base", displayName: "Base", services: {} }]);
   const access = {
-    getRole: async (id: string) => (id === "home" ? ("viewer" as const) : undefined),
+    getRole: async (id: string) => (id === "base" ? ("viewer" as const) : undefined),
     listForUser: async () => [],
   };
   return {
@@ -43,7 +43,7 @@ describe("management request validation holes", () => {
   it("a malformed JSON body does not echo its content", async () => {
     const { app: a } = app();
     const res = await request(a)
-      .patch("/api/servers/home/name")
+      .patch("/api/servers/base/name")
       .set("x-test-user", "op")
       .set("Content-Type", "application/json")
       .send('{"apiToken":"LEAKME-123",');
@@ -54,7 +54,7 @@ describe("management request validation holes", () => {
   it("rename and DELETE on a server the caller is a mere viewer of are 403 for a non-operator, and 404 for a non-member", async () => {
     const { app: a, service } = app();
     for (const [method, suffix] of [["patch", "/name"], ["delete", ""]] as const) {
-      const viewer = await request(a)[method](`/api/servers/home${suffix}`).set("x-test-user", "someone").set("Content-Type", "application/json").send('{"displayName":"X"}');
+      const viewer = await request(a)[method](`/api/servers/base${suffix}`).set("x-test-user", "someone").set("Content-Type", "application/json").send('{"displayName":"X"}');
       expect(viewer.status).toBe(403);
       const stranger = await request(a)[method](`/api/servers/nope${suffix}`).set("x-test-user", "someone").set("Content-Type", "application/json").send('{"displayName":"X"}');
       expect(stranger.status).toBe(404);
