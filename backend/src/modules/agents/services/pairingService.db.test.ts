@@ -158,6 +158,28 @@ describe.skipIf(!available)("device-code pairing (database)", () => {
         expect(minted).not.toHaveProperty("approvedBy");
       }
     });
+
+    it("an approver renamed to a real name between approval and poll is not shared", async () => {
+      const id = (await createUser(pool, { displayName: "Player-4F2K9QXZ" })).id;
+      const started = await start();
+      await service.approve(id, { userCode: started.userCode, target: { kind: "new" } });
+      await pool.query("UPDATE identity.users SET display_name = 'Alice Smith' WHERE id = $1", [id]);
+      const minted = await poll(started.pairingSecret);
+      expect(minted.status).toBe("approved");
+      expect(minted).not.toHaveProperty("approvedBy");
+    });
+
+    it("an approver deleted between approval and poll does not break the poll", async () => {
+      const id = (await createUser(pool, { displayName: "Player-4F2K9QXZ" })).id;
+      const started = await start();
+      await service.approve(id, { userCode: started.userCode, target: { kind: "new" } });
+      // The owner-guard trigger refuses to delete the owner of the new server, so point the approval at a user id with no row
+      // (approved_by has no foreign key), which is what a deleted approver looks like to the join.
+      await pool.query("UPDATE agents.pairings SET approved_by = $1 WHERE user_code = $2", [randomUUID(), started.userCode]);
+      const minted = await poll(started.pairingSecret);
+      expect(minted.status).toBe("approved");
+      expect(minted).not.toHaveProperty("approvedBy");
+    });
   });
 
   describe("approve a new server, then poll", () => {

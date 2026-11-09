@@ -108,6 +108,11 @@ describe("pairing: poll answers", () => {
     expect(withName(undefined)).toBe(true);
     expect(withName("Player-4F2K")).toBe(true);
     expect(withName("x".repeat(64))).toBe(true);
+    for (const status of ["pending", "expired", "slow_down"]) {
+      expect(PairingPollResponseSchema.safeParse({ status, approvedBy: "Player-4F2K" }).success, status).toBe(false);
+    }
+    expect(withName("a b")).toBe(false);
+    expect(withName("⁦x")).toBe(false);
     for (const bad of ["", "x".repeat(65), "a\nb", "a‮b", "a​b", "a\u0000b", 42, null]) {
       expect(withName(bad), JSON.stringify(bad)).toBe(false);
     }
