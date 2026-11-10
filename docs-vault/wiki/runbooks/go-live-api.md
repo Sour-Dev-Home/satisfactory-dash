@@ -10,13 +10,19 @@ JSON bodies in temp files, so PowerShell's quoting can't mangle them.
 `backend\.env` (git-ignored) or is typed at a prompt. Never paste a token or a password
 into a chat, an issue or a commit.
 
+**Since [ADR-0066](../decisions/0066-mod-only-retire-node-agent-and-direct-poll.md) the backend never calls the game
+server.** Servers connect through the SatisDashAgent mod, which pushes to `/agent/v1` (`agents.md`). The backend holds no
+game API or FRM token, so the token rows of step 1, the servers file and step 2's enforcement checks are retired; the
+earlier version of this page with them is in its git history.
+
 The tunnel stays OFF until steps 1 to 4 pass. If any go-live test in step 6 fails, stop the
 tunnel (step 7) and report; don't fix it while it's exposed.
 
 ## 0. Before you start
 
-- The Windows Firewall inbound **block** rule for TCP 8080 (FRM's plain-HTTP API) is in
-  place. Loopback traffic isn't filtered, so the backend still reaches FRM at `127.0.0.1`.
+- If FRM is still installed on the game server from before ADR-0066, keep the Windows Firewall inbound **block** rule
+  for TCP 8080 (FRM's plain-HTTP API) in place, or remove FRM: nothing reads it now, and a mod host needs only SML and
+  SatisDashAgent (ADR-0058).
 - You have a Cloudflare account that owns `satis-manager.com`.
 - Reminder (issue #19): never point a `satis-manager.com` subdomain at a third-party service
   you don't control. The cross-site guard trusts every same-site subdomain.
@@ -32,99 +38,20 @@ Copy `backend\.env.example` to `backend\.env` if you haven't, then set these. Le
 | `DASHBOARD_ADMIN_USER` | The username you'll sign in with. |
 | `DASHBOARD_ADMIN_PASSWORD_HASH` | `npm run --silent hash-password -w backend`. It prompts for a password (12+ characters, no echo) and prints one line starting with `scrypt$`. Paste that whole line, never the password. Quotes around the value are optional. |
 | `SESSION_SECRET` | At least 32 random bytes. `[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(48))` prints one; copy it into the file. Changing it later signs every session out (and is how a stolen session is revoked). |
-| `SATISFACTORY_API_TOKEN` | An **application token**: run `server.GenerateAPIToken` in the game server's console. Application tokens don't expire; `server.InvalidateAPITokens` revokes all of them (`dedicated-server-api.md E5`). Don't use a password-login token. |
-| `FRM_AUTH_TOKEN` | FRM's token: the value of `FicsitRemoteMonitoring.Server.uWS.AuthenticationToken` in `FactoryGame\Saved\Config\WindowsServer\GameUserSettings.ini` in the server install (`frm-authentication.md`). Rotating it by hand is optional and deferred; ADR-0017 designs the automated version. |
 | `CORS_ALLOWED_ORIGINS` | `https://satis-manager.com` (exactly one origin, never `*`). |
 
-The backend refuses to start if a login value is missing, and if the game-server host is
-not a loopback or private address.
+The backend refuses to start if a login value is missing. The old game-server variables
+(`SATISFACTORY_*`, `FRM_*`, `SATISFACTORY_SERVERS_FILE`) are no longer read since ADR-0066; delete them from
+`backend\.env` and delete any `backend\servers.json` (it held tokens in plain text). Servers are created and enrolled
+as in `agents.md`.
 
-### Optional: several game servers (`SATISFACTORY_SERVERS_FILE`, ADR-0025)
+## 2. (Retired by ADR-0066) Game-server token enforcement
 
-By default the backend serves one game server from the `SATISFACTORY_*` values above. To serve
-several, copy `backend\servers.example.json` to `backend\servers.json` (git-ignored, like `.env`,
-because it holds tokens) and set `SATISFACTORY_SERVERS_FILE=servers.json` in `.env` (a relative
-path is resolved from where the backend starts, `backend\`). The file wins over
-`SATISFACTORY_SERVER_ID`, `SATISFACTORY_SERVER_NAME` and the other single-server variables, which
-are then ignored. Nothing changes if the variable is unset or blank.
-
-| Field | Meaning | Same rule as |
-|---|---|---|
-| `id` | Public server id: 1-32 lowercase letters, digits or dashes, unique. Never a host or port | `SATISFACTORY_SERVER_ID` |
-| `name` | Shown by the dashboard (optional, default "Satisfactory server") | `SATISFACTORY_SERVER_NAME` |
-| `host` | Loopback or private IP only (the backend refuses to start otherwise) | `SATISFACTORY_SERVER_HOST` |
-| `apiPort`, `frmPort` | Whole numbers 1-65535 (JSON numbers) | `SATISFACTORY_API_PORT`, `FRM_WEB_PORT` |
-| `apiToken`, `frmToken` | This server's tokens; never inherited from the environment | `SATISFACTORY_API_TOKEN`, `FRM_AUTH_TOKEN` |
-| `requestTimeoutMs` | 1000-60000 (optional) | `SATISFACTORY_REQUEST_TIMEOUT_MS` |
-| `verifyApiCertificate` | `true` to verify the game server's TLS certificate even on a loopback or private host (optional) | `SATISFACTORY_API_REJECT_UNAUTHORIZED` |
-
-A `host` on your private network (a LAN IP) is accepted, but the FRM web server speaks plain HTTP
-only, so its token and data would cross the LAN unencrypted; prefer `127.0.0.1` with the backend
-running on the game PC. When the file is in use, any still-set single-server variables (for
-example `SATISFACTORY_SERVER_HOST`) are ignored, and the backend logs one warning naming them.
-
-The file is validated at startup: an unreadable file, invalid JSON, an unknown field, a duplicate
-id or a bad value stops the backend with a message that names the field and the server id (never a
-value). Each server gets its own connection, its own power-history poller and its own data routes.
-
-## 2. Restart the game server WITHOUT AllowInsecureLocalAccess, then prove enforcement
-
-Until now the server has trusted any request from this PC, so nothing proved its tokens
-work. Turn that off:
-
-1. Save the game, then stop the dedicated server. Either use the vanilla API (`SaveGame`
-   with a `SaveName`, then `Shutdown`) while insecure local access still works, or type
-   `server.SaveGame <name>` then `server.Shutdown` in the server's console. The
-   `-ini:Engine:[SystemSettings]:FG.DedicatedServer.AllowInsecureLocalAccess=1` argument
-   (`dedicated-server-api.md E5`) exists only on the running process's command line
-   if you started the server by hand; there may be no launcher file to edit. Check the
-   running process's command line, or wherever you launch it from (a shortcut, a `.bat`, a
-   service), and make sure the new launch does not include it.
-2. Start it with a **visible console** so you can see it come up. A launcher script kept
-   outside the repo, in the dedicated server install folder, works well:
-   `& "<install folder>\FactoryServer.exe" -log` (`-log` opens the console; verified on
-   the Windows server). The saved game loads on its own: confirm with `QueryServerState`
-   (`isGameRunning` true, the expected session name). Anyone connected is disconnected by
-   the restart [NEEDS VERIFICATION: not in docs-vault; assume so].
-3. Prove the game API now refuses an unauthenticated call and accepts the token. The token is
-   read from `.env` without being printed:
-
-```powershell
-$m = Select-String -Path backend\.env -Pattern '^SATISFACTORY_API_TOKEN=(.+)$'
-if (-not $m) { throw "SATISFACTORY_API_TOKEN is missing or empty in backend\.env" }
-$tok = $m.Matches[0].Groups[1].Value.Trim().Trim('"')
-$body = New-TemporaryFile
-[IO.File]::WriteAllText($body, '{"function":"GetServerOptions"}')
-"no token  : " + (curl.exe -sk -o NUL -w "%{http_code}" -H "Content-Type: application/json" --data-binary "@$body" https://localhost:7777/api/v1)
-"with token: " + (curl.exe -sk -o NUL -w "%{http_code}" -H "Content-Type: application/json" -H "Authorization: Bearer $tok" --data-binary "@$body" https://localhost:7777/api/v1)
-Remove-Item $body; Remove-Variable tok
-```
-
-   Expect `401` (or `403`) without the token and `200` with it. If the no-token call still
-   gives `200`, enforcement is not on; go back to item 1 of this section.
-
-4. Same for FRM (`FRM_AUTH_TOKEN`). Verified 2026-09-24: FRM's **read** endpoints
-   (`getPower` and the other `get*` pages) answer 200 with no token, a wrong token, or
-   from the machine's own LAN address; only certain endpoints check the token. A write
-   endpoint does: `POST /sendChatMessage` gave 401 with no token or a wrong token and 200
-   with the right one in the `X-FRM-Authorization` header. So the `getPower` check below
-   proves the token is *accepted*, not that it is *required*; it will show 200 both ways.
-   Keep the Windows Firewall block on TCP 8080 in place.
-
-```powershell
-$m = Select-String -Path backend\.env -Pattern '^FRM_AUTH_TOKEN=(.+)$'
-if (-not $m) { throw "FRM_AUTH_TOKEN is missing or empty in backend\.env" }
-$frm = $m.Matches[0].Groups[1].Value.Trim().Trim('"')
-"no token  : " + (curl.exe -s -o NUL -w "%{http_code}" http://127.0.0.1:8080/getPower)
-"with token: " + (curl.exe -s -o NUL -w "%{http_code}" -H "X-FRM-Authorization: $frm" http://127.0.0.1:8080/getPower)
-Remove-Variable frm
-```
-
-Then build and start the backend (section 3) and run its **flip and restore** check with
-enforcement on. Do not skip it: it proves the settings flow works against an enforcing
-server. (Run 2026-09-24: login 200, status live, settings `editable: true`, auto-pause
-flipped and restored, both 200.) The refused-token path (401/403 mapped to `not_editable`)
-stays untested; it needs a run with a deliberately wrong application token.
+The backend no longer holds a game API token or an FRM token, so there is nothing of ours to prove against an enforcing
+game server. Whether the game server itself runs without `AllowInsecureLocalAccess` is the host's own hardening, not a
+go-live step for this backend. The mod reads the game natively and reports its own game connection (`gameReachable`,
+`lastGameReadAt`, shown on Settings). History: on 2026-09-24 the then-current direct-poll
+check passed (login 200, status live, settings `editable: true`, auto-pause flipped and restored, both 200).
 
 ## 3. Build and run the backend
 
@@ -143,10 +70,13 @@ should print `status : ok`. The startup log line names the address it bound: it 
 `127.0.0.1`. When you're done with the checks below, stop it with Ctrl+C and run
 `Pop-Location` to return to the repo root.
 
-### Verify the backend works with real token enforcement (backend running)
+### Verify the backend works with an enrolled mod (backend running)
+
+Needs one server the mod has enrolled (`agents.md`); `<server-id>` is its public id.
 
 ```powershell
 $base = "http://127.0.0.1:3001"
+$sid = "<server-id>"
 # Sign in. The password goes into a temp file that is deleted right after.
 $pw = Read-Host "Dashboard password" -AsSecureString
 $plain = [System.Net.NetworkCredential]::new("", $pw).Password
@@ -163,35 +93,36 @@ Remove-Item $hdr
 if (-not $m) { throw "Login failed (HTTP $code); no session cookie. Did you replace <DASHBOARD_ADMIN_USER>?" }
 $cookie = $m.Matches[0].Groups[1].Value
 
-# 1. Live data through enforced tokens (FRM + vanilla): expect real values.
-curl.exe -s -H "Cookie: $cookie" "$base/api/servers/default/status"
+# 1. Live data from the mod's latest snapshot: expect real values.
+curl.exe -s -H "Cookie: $cookie" "$base/api/servers/$sid/status"
 
-# 2. Settings: editable must be true with an application token.
-$s = curl.exe -s -H "Cookie: $cookie" "$base/api/servers/default/settings" | ConvertFrom-Json
+# 2. Settings: what the mod last reported.
+$s = curl.exe -s -H "Cookie: $cookie" "$base/api/servers/$sid/settings" | ConvertFrom-Json
 $s.data
 $orig = [bool]$s.data.autoPause
 
-# 3. Flip and restore the auto-pause setting. ALWAYS finish with the restore.
+# 3. Flip and restore the auto-pause setting. Each PUT answers 202 with a command the mod runs; follow it with
+#    GET /api/servers/$sid/commands/<id> until its status is succeeded. ALWAYS finish with the restore.
 function Set-AutoPause([bool]$enabled) {
   $f = New-TemporaryFile
   [IO.File]::WriteAllText($f, (@{ enabled = $enabled } | ConvertTo-Json -Compress))
-  curl.exe -s -X PUT -H "Cookie: $cookie" -H "Content-Type: application/json" --data-binary "@$f" "$base/api/servers/default/settings/auto-pause"
+  $r = curl.exe -s -X PUT -H "Cookie: $cookie" -H "Content-Type: application/json" --data-binary "@$f" "$base/api/servers/$sid/settings/auto-pause" | ConvertFrom-Json
   Remove-Item $f
+  $r.command   # status pending at first
 }
-Set-AutoPause (-not $orig)     # expect data.autoPause to be the opposite of $orig
-Set-AutoPause $orig            # restore
-curl.exe -s -H "Cookie: $cookie" "$base/api/servers/default/settings"   # expect autoPause = $orig
+$c = Set-AutoPause (-not $orig)
+curl.exe -s -H "Cookie: $cookie" "$base/api/servers/$sid/commands/$($c.id)"   # repeat until status succeeded
+$c = Set-AutoPause $orig       # restore
+curl.exe -s -H "Cookie: $cookie" "$base/api/servers/$sid/commands/$($c.id)"   # repeat until status succeeded
 Remove-Variable cookie, s     # the cookie is a live session token
 ```
 
-(The cookie and tokens appear on `curl.exe`'s command line while it runs, where other
-programs on this PC can see them. That's acceptable on a machine only you use.)
+(The cookie appears on `curl.exe`'s command line while it runs, where other programs on this PC can see it. That's
+acceptable on a machine only you use.)
 
-Pass = the status has real numbers, `editable` is `true`, the flip and the restore both
-show in the response, and the setting ends where it started. **Record the result**: add it
-to ADR-0012 (it resolves the "non-admin token is refused" and enforcement questions) and
-tick the item in issue #19. If `editable` is `false`, the token or its privilege is wrong;
-fix that before continuing.
+Pass = the status has real numbers, both commands end `succeeded`, and the setting ends where it started. A command
+left unanswered for 60 s ends `expired`: check that the mod is running and enrolled (`agents.md`). **Record the
+result** in issue #19.
 
 Stop the foreground backend (Ctrl+C) before the next step.
 
@@ -436,7 +367,5 @@ backend's process.
 
 ## After it passes
 
-- Tick each item in issue #19 as it passes, and record the step-2/3 enforcement result in
-  ADR-0012.
+- Tick each item in issue #19 as it passes, and record the step-3 result there.
 - The frontend at `https://satis-manager.com` can now sign in against the API.
-- Still deferred: rotating the FRM token by hand (ADR-0017 designs the automated version).

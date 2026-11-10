@@ -3,13 +3,13 @@
 Catalog of every page in this wiki. One line per page. Updated whenever a page is
 added or removed.
 
-- [`vanilla-dedicated-server-api.md`](./vanilla-dedicated-server-api.md) — summary of
-  the official Dedicated Server API (Lightweight UDP Query + HTTPS JSON-RPC): auth,
+- [`vanilla-dedicated-server-api.md`](./vanilla-dedicated-server-api.md) — **historical** (ADR-0066: nothing
+  calls this API; kept for reference): summary of the official Dedicated Server API (Lightweight UDP Query + HTTPS JSON-RPC): auth,
   relevant functions, and the observation that it has no production/power data model.
 - [`runbooks/owasp-top-10-check.md`](./runbooks/owasp-top-10-check.md) — the repeatable OWASP Top 10:2025 sanity
   check: per category, what to look at in this repo, the status (PASS/GAP), the follow-up issues, and a log of runs.
 - [`runbooks/go-live-api.md`](./runbooks/go-live-api.md) — ordered steps to turn on the
-  API: production `.env`, enforced game tokens, Scheduled Task, Cloudflare Tunnel, go-live
+  API: production `.env` (no game tokens since ADR-0066), a check through an enrolled mod, Scheduled Task, Cloudflare Tunnel, go-live
   tests and rollback (issue #19).
 - [`runbooks/backups.md`](./runbooks/backups.md) — the nightly encrypted database backup (pg_dump, age,
   put-only S3 upload): the owner's one-time AWS and age setup, a local trial without AWS, and the
@@ -21,15 +21,15 @@ added or removed.
   proxies), the stable JSON shape, and the definitions and limits.
 - [`log.md`](./log.md) and [`log.d/`](./log.d/README.md) — the wiki's change log: `log.md` is frozen at
   2026-09-25 and each PR since adds one fragment file in `log.d/` (ADR-0033); `npm run log` prints both in order.
-- [`runbooks/servers.md`](./runbooks/servers.md) — servers stored in the database with encrypted tokens
-  (ADR-0030): the `SERVER_SECRETS_KEY` and its offline backup, the deploy order (migrate first), the
-  `import-servers` and `verify-secrets` commands, unreadable rows and key rotation.
+- [`runbooks/servers.md`](./runbooks/servers.md) — servers since ADR-0066 (mod only: no stored connections, no
+  `import-servers`): the managed list, rename and remove, the `SERVER_SECRETS_KEY` (webhooks, push) and its offline
+  backup, key rotation and `verify-secrets` until PR 10 drops `servers.server_connections`.
 - [`runbooks/history.md`](./runbooks/history.md) — production history (ADR-0027 PR 3): the deploy
-  order (`db:migrate` first), what is stored and for how long, the recorder, pollers and rollup worker.
+  order (`db:migrate` first), what is stored and for how long, the recorder, the snapshot ingest and rollup worker.
 - [`runbooks/alerts.md`](./runbooks/alerts.md) — the alert engine (ADR-0027 PR 5): the deploy order (`db:migrate`
   first), the rule kinds and presets, suppression, restarts, and the SQL to read the alert log during the shadow run.
-- [`runbooks/agents.md`](./runbooks/agents.md) — the backend side of the edge agent (ADR-0031 PR 5a and 5b): the deploy
-  order (`db:migrate` first), enrolment codes and what enrolling does to a local server, revoking (the only way back is
+- [`runbooks/agents.md`](./runbooks/agents.md) — the backend side of the edge agent, which since ADR-0066 is the mod
+  only (ADR-0031 PR 5a and 5b): the deploy order (`db:migrate` first), enrolment codes, revoking (the only way back is
   re-enrolling), commands (auto-pause answers `202`), and the `agent_offline` alert.
 - [`runbooks/abuse-response.md`](./runbooks/abuse-response.md) — the operator's abuse response (#516, ADR-0045): find a
   server, remove it so nothing is left (the table-by-table list), `disable-user` / `enable-user`, and what to re-apply
@@ -43,11 +43,12 @@ added or removed.
 - [`runbooks/aws.md`](./runbooks/aws.md) — the backend on AWS (ADR-0034, #405, #408, #409): running an ops task, apply,
   deploy and its health checks, migrate, restore, scale to 0, the monthly credit check, the backup-role check, the tunnel,
   the cutover and the exit.
-- [`frm-api.md`](./frm-api.md) — summary of FicsitRemoteMonitoring's Read API: the two
+- [`frm-api.md`](./frm-api.md) — **historical** (ADR-0066: nothing calls FRM; kept for reference and as the mod's
+  parity record): summary of FicsitRemoteMonitoring's Read API: the two
   transports (Web Server vs. tunneled Game Port API), the full endpoint index grouped
   by resource, and which endpoints are candidates for production-rate/overflow/power
   monitoring (field-level schemas still need capturing — see `log.md`).
-- [`frm-endpoint-volumes.md`](./frm-endpoint-volumes.md) — per FRM endpoint of the Players card and map-overlay work (#329,
+- [`frm-endpoint-volumes.md`](./frm-endpoint-volumes.md) — **historical** (ADR-0066): per FRM endpoint of the Players card and map-overlay work (#329,
   #330): measured size and item count from real captures (2026-09-27), whether it runs on the game thread, and whether the
   vanilla API or the agent's current snapshot already covers it; three responses are large (schematics, resource nodes,
   train rails, about 1.4 MB together).
@@ -61,9 +62,9 @@ added or removed.
 - [`machine-states.md`](./machine-states.md) — how a machine's state (producing, idle, backed up,
   underfed, paused, unpowered) is derived per snapshot (ADR-0027), the provisional threshold and its
   evidence, and how to tune it with a capture session.
-- [`data-gap-analysis.md`](./data-gap-analysis.md) — table of player-facing metrics vs.
-  API coverage. Filled in from the Phase 2 live-server spike (2026-09-21): every
-  stated metric is covered by the vanilla API or FRM, no custom mod needed yet.
+- [`data-gap-analysis.md`](./data-gap-analysis.md) — the player-facing metrics the mod sends (per ADR-0058 reader)
+  and the gaps it does not yet send (Linux hosts, storage, drones and trucks, fluid overflow); the mod is the only
+  source since ADR-0066, and the FRM path's power-production note is kept as history.
 - [`lessons-learned.md`](./lessons-learned.md) — one-sentence-per-bug log of real bugs
   found by independent `test-hunter` review passes, with a counter that increments
   when the same pattern recurs, so repeated mistakes get visible sooner.
@@ -84,7 +85,7 @@ added or removed.
   Postgres and Google sign-in, is accepted; ADR-0026, the offline demo mode, is accepted; ADR-0027, production history and alerts, is
   accepted, and builds only after ADR-0025 gate A; ADR-0028, external uptime monitoring and a
   public status page, is accepted; ADR-0029, showing who is connected with minimal data, is accepted; ADR-0030, managing multiple servers, is accepted; [ADR-0040](./decisions/0040-server-manager-holdover.md),
-  the server manager, an Electron holdover until the mod, is accepted).
+  the server manager, an Electron holdover until the mod, is superseded by ADR-0066).
 - [`decisions/0045-threat-model-untrusted-servers.md`](./decisions/0045-threat-model-untrusted-servers.md) — the threat
   model for game servers the owner doesn't control (#505, proposed): per trust boundary, each risk with an existing
   control, a new task (#514 to #517) or an explicit accept; gates the mod's first public release.

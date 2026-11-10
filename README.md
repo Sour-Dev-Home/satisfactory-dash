@@ -64,8 +64,7 @@ flowchart LR
     b2[("Backblaze B2<br/>encrypted backups")]
 
     subgraph pc["Owner's PC: no inbound ports"]
-        agent["Edge agent<br/>Scheduled Task"]
-        game["Satisfactory dedicated server<br/>with the FRM mod"]
+        game["Satisfactory dedicated server<br/>with the SatisDashAgent mod"]
     end
 
     browser -->|loads the app, HTTPS| workers
@@ -75,11 +74,10 @@ flowchart LR
     api -->|SQL| rds
     ops -->|pg_dump| rds
     ops -->|uploads, age-encrypted| b2
-    agent -->|pushes snapshots, polls commands: outbound only| edge
-    agent -->|loopback| game
+    game -->|the mod pushes snapshots, polls commands: outbound only| edge
 ```
 
-Every connection into the PC and into AWS starts on the inside: cloudflared and the agent dial out,
+Every connection into the PC and into AWS starts on the inside: cloudflared and the mod dial out,
 and nothing reaches in. See [Deployment](#deployment) for the runbooks behind each part.
 
 ## Why these choices
@@ -92,12 +90,13 @@ Each line is the project-specific reason from the decision record it links.
   ([ADR-0034](docs-vault/wiki/decisions/0034-backend-on-aws.md)).
 - **A Cloudflare Tunnel instead of open ports or a public load balancer**: cloudflared connects out,
   so the game PC never needed port forwarding and AWS has no inbound rule; moving hosts is a tunnel
-  route switch, and the agent, frontend and DNS name don't change
+  route switch, and the mod, frontend and DNS name don't change
   ([ADR-0013](docs-vault/wiki/decisions/0013-deployment-topology.md),
   [ADR-0034](docs-vault/wiki/decisions/0034-backend-on-aws.md)).
-- **The agent pushes out; the backend never reaches into the player's network**: the game's API
-  token is admin-level and FRM is plain HTTP, so neither may leave the game PC, and the agent keeps
-  the tokens there ([ADR-0031](docs-vault/wiki/decisions/0031-edge-agent.md)).
+- **The mod pushes out; the backend never reaches into the player's network**: the mod reads the
+  game natively inside the server process, so no game token or game port ever leaves the game PC
+  ([ADR-0031](docs-vault/wiki/decisions/0031-edge-agent.md),
+  [ADR-0066](docs-vault/wiki/decisions/0066-mod-only-retire-node-agent-and-direct-poll.md)).
 - **One PostgreSQL for accounts, servers and history**: at this scale it's one store to operate, with
   ACID where it matters, and plain PostgreSQL (no RDS-only extensions) moves with `pg_dump`
   ([ADR-0020](docs-vault/wiki/decisions/0020-multi-user-data-model.md),

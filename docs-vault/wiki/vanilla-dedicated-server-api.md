@@ -1,5 +1,7 @@
 # Vanilla Dedicated Server API
 
+> **Historical:** nothing reads this API since [ADR-0066](./decisions/0066-mod-only-retire-node-agent-and-direct-poll.md); the mod is the only data source. Kept for reference.
+
 Summary of the official Satisfactory Dedicated Server API, derived from
 `docs-vault/raw-sources/dedicated-server-api.md` (captured 2026-09-21 from the local
 Steam install's `CommunityResources/DedicatedServerAPIDocs.md`).

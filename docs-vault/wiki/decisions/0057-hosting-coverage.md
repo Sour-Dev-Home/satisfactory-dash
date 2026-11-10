@@ -146,12 +146,16 @@ relay and the host.
 ## Decision
 
 ### 1. Keep the Node agent as the "you control a process" path; the mod is the "you don't" path
+**Superseded by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md).**
+
 Amend ADR-0042 sub-project 5: the Node agent is **not** deprecated at parity. Reasons: the mod needs a UE toolchain, a
 rebuild per game/SML release (`mod-maintenance.md`) and per-host approval of outbound traffic, none of which the agent
 needs; the Linux agent is a small delta on a working program; and Docker, Linux VPS and relay hosts need an agent
 whether or not the mod exists. Both stay on the one `/agent/v1` contract, so there is no duplicated backend.
 
 ### 2. Linux agent build steps (smallest first; each is a separate PR, no stacking; the overall order is Decision 8)
+**Superseded by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md).**
+
 1. **Contract and backend: nothing** (checked: the agent kind is transport-agnostic). One check PR is allowed: a
    vanilla-only server (no `power`, no `factory`) shows a clear "basic data" state instead of an error or empty charts
    (owner: `backend`/`frontend` sessions; the test is a fixture with only `status`). Trigger: before the first
@@ -353,7 +357,7 @@ the user already plans. We never ask for, schedule or trigger a restart.
    dashboard reads (`current`, `minSupported`, `minSafe`, advisories), additive only.
 2. **Mod pairing flow and compatibility policy** (mod session), alongside the Linux agent: log line and stdout code,
    the `pairing.txt` fallback, poll with `slow_down`, store the credential, clear it on 401. Mod reports its version.
-3. **Linux agent**: Decision 2 steps 2-4 (`SecretBox`, `STATE_DIRECTORY`, systemd unit), then the tarball and GHCR image
+3. **Linux agent** (superseded by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md)): Decision 2 steps 2-4 (`SecretBox`, `STATE_DIRECTORY`, systemd unit), then the tarball and GHCR image
    (steps 5-6). The agent uses the same pairing endpoint when it has no credential.
    **Stopped (owner, 2026-10-25):** "stop the developing of linux specific agent if the mod can eventually handle it
    anyway". Steps 2-4 shipped (#680 `SecretBox` and `STATE_DIRECTORY`, #681 the systemd unit and

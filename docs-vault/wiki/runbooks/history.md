@@ -71,9 +71,9 @@ rollups (re-bucketing days of minute rows per request would touch millions of ro
 ## How it works
 
 - Each server has a buffered recorder (flushed every 15 s, at most 20,000 rows per kind; when a
-  database outage fills the buffer the oldest rows are dropped). It never slows or fails a poll.
-- `FactoryHistoryPoller` (30 s per server) sums `production` across buildings and records
-  state transitions. A first snapshot, or one where more than half the buildings are new, only
+  database outage fills the buffer the oldest rows are dropped). It never slows or fails an ingest.
+- The mod's snapshot ingest (`telemetry/services/agentIngest.ts`; the 30 s `FactoryHistoryPoller` went with
+  direct-poll servers in ADR-0066) sums `production` across buildings and records state transitions. A first snapshot, or one where more than half the buildings are new, only
   sets the baseline (no transitions). A building whose state cannot be decided keeps its last state.
 - `HistoryMaintenanceWorker` (one per process, started after the database is up) rolls up every
   minute, re-covering the last 5 minutes so late rows are counted, and at start catches up over the

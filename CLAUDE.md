@@ -20,31 +20,24 @@ anything `WORKFLOW.md` says about drafts, the merge queue, fresh-eyes checks or 
 
 1. **Ask before building.** Before implementing anything non-trivial, ask clarifying
    questions and propose an approach. Do not start writing code until we've aligned.
-2. **Cite or flag.** Any claim about the Satisfactory Dedicated Server HTTPS API, the
-   FicsitRemoteMonitoring (FRM) mod's JSON API, or Satisfactory Mod Loader (SML) must
-   cite a file under `docs-vault/raw-sources/`. If it isn't documented there, write
-   `[NEEDS VERIFICATION]` instead of guessing. Modding this game from memory produces
+2. **Cite or flag.** Any claim about the game, the Satisfactory Dedicated Server HTTPS API,
+   the FicsitRemoteMonitoring (FRM) mod's JSON API, or Satisfactory Mod Loader (SML) must
+   cite a file under `docs-vault/raw-sources/` or the mod repository's notes. If it isn't
+   documented there, write `[NEEDS VERIFICATION]` instead of guessing. Modding this game from memory produces
    hallucinated API calls — treat anything not grounded in `docs-vault/` as suspect.
 3. **Prefer the fixed chain over the agent.** Power-outage detection, overflow alerts,
-   and production-rate math are deterministic — a scheduled poll + threshold check, not
+   and production-rate math are deterministic — a threshold check on the snapshots the mod pushes, not
    an LLM call. Only reach for AI/agent behavior where the task is genuinely open-ended
    (e.g. summarizing a factory's health in plain language).
-4. **Don't build the custom mod first.** Two data sources already exist and should be
-   exhausted before writing any UE5/SML code:
-   - Vanilla Dedicated Server HTTPS API (`docs-vault/raw-sources/dedicated-server-api.md`)
-   - FicsitRemoteMonitoring JSON API (`docs-vault/raw-sources/frm-*.md`)
-   Only build a custom mod for metrics neither source provides. Keep that gap list at
-   `docs-vault/wiki/data-gap-analysis.md`. A mod replaces the agent only after the
-   ADR-0039 gates pass and the owner approves a build ADR (G3); exploration spikes
-   under ADR-0039 are allowed (see
-   `docs-vault/wiki/decisions/0039-mod-as-end-state-research.md`).
-5. **Isolate the game-server adapter.** All communication with a Satisfactory server
-   (vanilla API or FRM) lives in `packages/game-adapter/` (ADR-0031 PR 2) and reaches the
-   backend only through `backend/src/modules/gameserver/`. No FRM- or
-   API-specific response shapes leak into React components or the database schema —
-   the backend exposes its own clean REST/WebSocket contract, defined in
-   `packages/shared/`, to the frontend.
-   This is what makes "one server now, many via AWS later" a config change, not a rewrite.
+4. **The mod is the data source.** The SatisDashAgent mod (ADR-0058) reads the game natively
+   and pushes to `/agent/v1`; the backend never calls the game's HTTPS API or FRM. A metric
+   the mod does not send is a gap in `docs-vault/wiki/data-gap-analysis.md` and is added to
+   the mod. Any claim about the game, FRM or SML cites `docs-vault/raw-sources/` or the mod
+   repository's notes, otherwise write `[NEEDS VERIFICATION]`.
+5. **Isolate the sender.** The backend knows a game server only through the `/agent/v1`
+   protocol (`packages/shared`, `backend/src/modules/agents/`). No game- or mod-specific
+   response shape leaks into React or the database schema. That is what makes one server
+   now, many via AWS later, a config change.
 6. **Contract changes are isolated changes.** A change to `packages/shared/` is a
    breaking-change candidate for both `frontend/` and `backend/`. Don't bundle it with
    unrelated work, and update every caller on both sides in the same change.
@@ -69,8 +62,8 @@ boundaries without restructuring, once subagents are introduced:
 | Directory | Future agent | Depends on |
 |---|---|---|
 | `frontend/` | frontend agent | `packages/shared/` types + `backend/` REST/WS contract only |
-| `backend/src/modules/{telemetry,servers,identity}/` (routes and services inside each) | backend agents | `backend/src/modules/gameserver/` via its `index.ts`, fixture data for tests; expose `packages/shared/` |
-| `packages/game-adapter/` (and the backend's thin `modules/gameserver/` facade) | data-adapter agent | `docs-vault/` and `packages/shared/` only — never guesses |
+| `backend/src/modules/{telemetry,servers,identity}/` (routes and services inside each) | backend agents | `backend/src/modules/agents/` for game data, fixture data for tests; expose `packages/shared/` |
+| `backend/src/modules/agents/` (the protocol) and the mod repository | mod agent | `packages/shared/` only — never guesses |
 | `packages/shared/` | shared by all — changes here require review from whichever agent owns the other side of the change |
 
 The point of drawing these lines now, before multiple agents exist, is that Conway's
@@ -82,7 +75,9 @@ built around them than to set up correctly now, while the codebase is still smal
 ## Docs vault
 
 - `docs-vault/raw-sources/` — immutable. Saved copies of official docs, captured API
-  responses, SML references. Never edit these, only add to them.
+  responses, SML references. Never edit these, only add to them. The FRM and vanilla API
+  captures are historical since ADR-0066 (nothing calls those APIs); they stay as the mod's
+  parity record (ADR-0058).
 - `docs-vault/wiki/` — living, AI-maintained notes derived from raw-sources: summaries,
   the data-gap analysis, decisions. `index.md` catalogs every page; `log.md` is the frozen
   record of what changed and when up to 2026-09-25, and every PR since adds one fragment

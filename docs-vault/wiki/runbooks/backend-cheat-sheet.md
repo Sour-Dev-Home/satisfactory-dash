@@ -5,7 +5,7 @@ Facts that cost CI rounds when guessed. Each one names where it comes from; if a
 ## Two ids for a server
 
 - **Public id**: a string, `^[a-z0-9-]{1,32}$` (ADR-0001). It is the `:serverId` in URLs and `publicId` on `RegisteredServer`
-  (`modules/servers/repositories/serverRepository.ts`). Services take this (`switchToLocal(actor, publicId, ...)`).
+  (`modules/servers/repositories/serverRepository.ts`). Services take this.
 - **Internal id**: a UUID, `RegisteredServer.id`. Repository functions that touch other tables take THIS
   (`getConnection(db, ring, server.id)`, `lockServerByPublicId` returns it, `agents.*` and history rows key on it).
   Passing a public id there fails with `invalid input syntax for type uuid`.
