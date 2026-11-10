@@ -217,10 +217,13 @@ describe.skipIf(!available)("server repositories against a real Postgres", () =>
          WHERE k.contype = 'f' AND k.confrelid = 'servers.servers'::regclass
          ORDER BY 1`,
       );
-      // The real delete list (parsed from the repository's own statements) plus the two statements that have their own
-      // constants. Tables further down (alert_state, outbox) cascade from a table on that list and have no direct reference.
-      const cleared = [...PURGED_TABLES, "servers.server_members", "servers.server_connections"].sort();
-      expect(referencing.rows.map((r) => r.tbl as string).sort()).toEqual(cleared);
+      // The real delete list (parsed from the repository's own statements) plus the members statement, which has its own
+      // constant. Tables further down (alert_state, outbox) cascade from a table on that list and have no direct reference.
+      // ADR-0066 PR 10a: servers.server_connections still references servers.servers but nothing touches it any more;
+      // PR 10b drops it, and this exception goes with it.
+      const cleared = [...PURGED_TABLES, "servers.server_members"];
+      const leftAlone = ["servers.server_connections"];
+      expect(referencing.rows.map((r) => r.tbl as string).sort()).toEqual([...cleared, ...leftAlone].sort());
     });
 
     it("reviving a removed id purges what a racing write left behind, but a refresh of a live server does not (#516)", async () => {

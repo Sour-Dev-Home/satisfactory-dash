@@ -84,8 +84,6 @@ describe.skipIf(!available)("self-serve agent servers (database)", () => {
       const stored = await row(created.id);
       expect(stored).toMatchObject({ connection_kind: "agent", created_via: "self_serve", deleted_at: null });
       expect(await getMemberRole(pool, { publicId: created.id, userId: owner })).toBe("owner");
-      // No host and no tokens: an agent server has no connection row.
-      expect((await admin.query("SELECT 1 FROM servers.server_connections WHERE server_id = $1", [stored!.id])).rowCount).toBe(0);
       const audit = (await admin.query("SELECT action, actor_user_id::text AS actor, detail FROM audit.audit_events WHERE server_id = $1 ORDER BY id", [stored!.id])).rows;
       // The membership's own row (written by addMember) and the create's, in one transaction.
       expect(audit).toEqual([

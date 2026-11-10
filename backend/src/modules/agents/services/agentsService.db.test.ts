@@ -72,22 +72,16 @@ describe.skipIf(!available)("agent enrolment against a real Postgres", () => {
     await db?.drop();
   });
 
-  /** A local server (with a stored connection) unless `kind` says it is already an agent server. */
+  /** A local server unless `kind` says it is already an agent server. (ADR-0066 PR 10a: a leftover stored connection is
+   *  covered by localToAgent.db.test.ts, which shows enrolment leaves it alone.) */
   const newServer = async (kind: "local" | "agent" = "local") => {
     const server = await upsertConfiguredServer(pool, { publicId: `ag-${++counter}`, displayName: "Agents" });
-    if (kind === "local") {
-      await admin.query(
-        `INSERT INTO servers.server_connections (server_id, host, pinned_ip, api_port, frm_port, api_token_enc, key_id)
-         VALUES ($1, '127.0.0.1', '127.0.0.1', 7777, 8080, decode(repeat('ab', 40), 'hex'), 'k1')`,
-        [server.id],
-      );
-    } else {
+    if (kind === "agent") {
       await admin.query("UPDATE servers.servers SET connection_kind = 'agent' WHERE id = $1", [server.id]);
     }
     return server;
   };
   const kindOf = async (serverUuid: string) => (await admin.query("SELECT connection_kind FROM servers.servers WHERE id = $1", [serverUuid])).rows[0]?.connection_kind as string;
-  const connectionRows = async (serverUuid: string) => (await admin.query("SELECT 1 FROM servers.server_connections WHERE server_id = $1", [serverUuid])).rowCount;
   const auditActions = async (serverUuid: string) =>
     (await admin.query("SELECT action, detail::text AS detail FROM audit.audit_events WHERE server_id = $1 ORDER BY id", [serverUuid])).rows as { action: string; detail: string }[];
 
@@ -115,7 +109,7 @@ describe.skipIf(!available)("agent enrolment against a real Postgres", () => {
       await expect(enrollment.enroll(second.code, "0.1.0")).resolves.toMatchObject({ serverId: server.publicId });
     });
 
-    it("needs the operator for a server this backend reaches directly (enrolling replaces its stored tokens)", async () => {
+    it("needs the operator for a server this backend used to reach directly (a `local` row)", async () => {
       const server = await newServer("local");
       expect(await failureOf(agents.createEnrollmentCode(server.publicId, OWNER))).toBeInstanceOf(ForbiddenError);
       expect((await admin.query("SELECT 1 FROM agents.enrollment_codes WHERE server_id = $1", [server.id])).rowCount).toBe(0);
@@ -139,7 +133,7 @@ describe.skipIf(!available)("agent enrolment against a real Postgres", () => {
   });
 
   describe("enrolling", () => {
-    it("trades the code for a credential, switches a local server to an agent server and deletes its tokens, in one step", async () => {
+    it("trades the code for a credential, switches a local server to an agent server, in one step", async () => {
       const server = await newServer("local");
       const { code } = await agents.createEnrollmentCode(server.publicId, OPERATOR);
       const result = await enrollment.enroll(code, "0.1.0");
@@ -147,7 +141,6 @@ describe.skipIf(!available)("agent enrolment against a real Postgres", () => {
       expect(result.cadence).toEqual(CADENCE);
       expect(result.agentSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
       expect(await kindOf(server.id)).toBe("agent");
-      expect(await connectionRows(server.id)).toBe(0);
       // Only the hash of the secret is stored, and it finds this server.
       const stored = (await admin.query("SELECT secret_hash, agent_version FROM agents.agent_credentials WHERE server_id = $1", [server.id])).rows[0];
       expect(Buffer.compare(stored.secret_hash, sha256(result.agentSecret))).toBe(0);
@@ -174,7 +167,6 @@ describe.skipIf(!available)("agent enrolment against a real Postgres", () => {
       await admin.query("UPDATE agents.enrollment_codes SET expires_at = now() - interval '1 second' WHERE server_id = $1", [server.id]);
       expect(codeOf(await failureOf(enrollment.enroll(code, "0.1.0")))).toBe("enrollment_code_invalid");
       expect(await kindOf(server.id)).toBe("local");
-      expect(await connectionRows(server.id)).toBe(1);
       expect((await admin.query("SELECT 1 FROM agents.agent_credentials WHERE server_id = $1", [server.id])).rowCount).toBe(0);
     });
 

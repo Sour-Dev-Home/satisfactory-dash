@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { createInterface } from "node:readline";
 import pg from "pg";
-import { saveDiscordDestination } from "../src/modules/alerts/index.js";
+import { checkStoredSecrets, saveDiscordDestination } from "../src/modules/alerts/index.js";
 import { loadDatabaseConfig } from "../src/platform/db/config.js";
 import { ConfigError } from "../src/platform/errors.js";
 import { loadSecretsKeyringFromEnv } from "../src/platform/secrets/secrets.js";
@@ -10,7 +10,6 @@ import { disableUserAdmin, enableUserAdmin } from "../src/modules/identity/accou
 import { createAccountDeletion } from "../src/modules/identity/accountDeletion.js";
 import { createAccountServers } from "../src/modules/servers/index.js";
 import { revokeAllSessionsAdmin, revokeUserSessionsAdmin } from "../src/modules/identity/sessionAdmin.js";
-import { listConnections } from "../src/modules/servers/index.js";
 
 // ADR-0025: break-glass commands, run locally against the app database (DATABASE_URL in
 // backend/.env). Shell access to this PC is the trust boundary. Output never includes secrets.
@@ -19,9 +18,10 @@ import { listConnections } from "../src/modules/servers/index.js";
 //   npm run admin -- revoke-sessions --user <user-id>  sign one account out everywhere
 //   (import-servers is gone: ADR-0066 retired direct polling, so no server is configured in the environment.)
 
-//   npm run admin -- verify-secrets                    ADR-0030: open every stored token with SERVER_SECRETS_KEY and
-//                                                      report how many open (never prints a token); used by the
-//                                                      restore rehearsal. Exits 1 if any cannot be opened.
+//   npm run admin -- verify-secrets                    ADR-0030, ADR-0066 PR 10a: open every sealed alert webhook and
+//                                                      web-push subscription with SERVER_SECRETS_KEY and report how
+//                                                      many open (never prints a value); used by the restore
+//                                                      rehearsal. Exits 1 if any cannot be opened or there are none.
 
 //   npm run admin -- set-alert-webhook <server-id>     ADR-0027: set a server's Discord webhook (until the rules API
 //                                                      exists). The URL is read from STDIN, never from an argument
@@ -87,15 +87,23 @@ async function runVerify(pool: pg.Pool): Promise<void> {
     return;
   }
   try {
-    const { connections, unreadable } = await listConnections(pool, ring);
-    console.log(`${connections.length} stored connection(s) opened with the key; ${unreadable.length} could not be opened.`);
-    for (const row of unreadable) console.log(`  cannot open: server "${row.publicId}" (key id "${row.keyId}")`);
-    if (unreadable.length > 0 || connections.length === 0) {
-      if (connections.length === 0 && unreadable.length === 0) console.log("There are no stored connections to check.");
-      process.exitCode = 1;
+    const check = await checkStoredSecrets(pool, ring);
+    const tables = [
+      ["alert webhook(s)", check.destinations],
+      ["push subscription(s)", check.pushSubscriptions],
+    ] as const;
+    let total = 0;
+    let unreadable = 0;
+    for (const [label, table] of tables) {
+      console.log(`${table.opened} ${label} opened with the key; ${table.unreadable.length} could not be opened.`);
+      for (const row of table.unreadable) console.log(`  cannot open: row "${row.id}" (key id "${row.keyId}")`);
+      total += table.opened + table.unreadable.length;
+      unreadable += table.unreadable.length;
     }
+    if (total === 0) console.log("There are no sealed values to check.");
+    if (unreadable > 0 || total === 0) process.exitCode = 1;
   } catch {
-    console.error("Could not read the stored connections: is the database up and migrated?");
+    console.error("Could not read the sealed values: is the database up and migrated?");
     process.exitCode = 1;
   }
 }

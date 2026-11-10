@@ -121,7 +121,7 @@ describe.skipIf(!available)("self-serve owner actions, creator caps and the pend
       expect((await row(created.id)).deleted_at).not.toBeNull();
       // ADR-0047 amendment: the owner's remove clears the name too.
       expect((await row(created.id)).display_name).toBeNull();
-      for (const table of [...PURGED_TABLES, "servers.server_members", "servers.server_connections"]) {
+      for (const table of [...PURGED_TABLES, "servers.server_members"]) {
         expect((await admin.query(`SELECT 1 FROM ${table} WHERE server_id = $1`, [uuid])).rowCount, table).toBe(0);
       }
       expect(rt.remove).toHaveBeenCalledWith(created.id);

@@ -184,10 +184,6 @@ const DELETE_MEMBERS = `
   DELETE FROM servers.server_members
   WHERE server_id = $1`;
 
-const DELETE_CONNECTION = `
-  DELETE FROM servers.server_connections
-  WHERE server_id = $1`;
-
 // ADR-0027 history belongs to the server it was recorded on. A soft-deleted server keeps its row, and creating
 // the same public id again revives that row (same internal id), so without this a new physical server would
 // inherit the old one's history (ADR-0030 security review). Constants, one per table: no dynamic table names.
@@ -212,7 +208,8 @@ const DELETE_HISTORY = [
   "DELETE FROM agents.commands WHERE server_id = $1",
   // #516 (ADR-0045 "Retention"): the saved world layers and the push opt-ins also belong to the server, so a revived
   // id must not inherit them either. Every table that references servers.servers (migrations) is on this list:
-  // server_members and server_connections above; telemetry (5 tables), alerts (rules and alert_state, alert_events,
+  // server_members above (ADR-0066 PR 10a: nothing touches the retired servers.server_connections, which PR 10b
+  // drops); telemetry (5 tables), alerts (rules and alert_state, alert_events,
   // server_mutes, destinations and outbox, push_optins), agents (4 tables), map.world_layers and map.factory_designations here. The audit trail
   // keeps its server_id on purpose. metrics.series_hourly has no server_id column, but a `server` label holds
   // the public id until the 90-day purge (a random id, not personal on its own; ADR-0056 section 5).
@@ -259,13 +256,11 @@ export async function softDeleteServerInTransaction(client: Queryable, publicId:
     await recordAuditEvent(client, { action: "server.deleted", actorUserId: audit.actorUserId ?? undefined, serverId: row.id, detail: audit.detail });
   }
   await timedQuery(client, "servers.softDeleteServer.deleteMembers", DELETE_MEMBERS, [row.id]);
-  // ADR-0030: a removed server keeps no credentials, not even encrypted ones.
-  await timedQuery(client, "servers.softDeleteServer.deleteConnection", DELETE_CONNECTION, [row.id]);
   await purgeServerData(client, row.id);
   return true;
 }
 
-/** Deletes everything recorded for one server except its membership and connection (those have their own statements):
+/** Deletes everything recorded for one server except its membership (that has its own statement):
  *  the same list the soft delete runs, and the revive paths run again so a revived id always starts empty. */
 export async function purgeServerData(db: Queryable, serverId: string): Promise<void> {
   for (const statement of DELETE_HISTORY) {
@@ -283,8 +278,8 @@ const SWITCH_TO_AGENT = `
   RETURNING public_id`;
 
 /**
- * ADR-0031 PR 5a: a server is now reached through an agent. Its kind becomes 'agent' and its stored game-server
- * tokens are deleted (an agent server holds none), and it returns the public id, or undefined when the server is
+ * ADR-0031 PR 5a: a server is now reached through an agent. Its kind becomes 'agent' (ADR-0066 PR 10a: it no longer
+ * touches the retired `servers.server_connections`), and it returns the public id, or undefined when the server is
  * unknown or removed (nothing is written then). The caller runs it in the enrolment transaction, so the switch, the
  * credential and the audit event commit together.
  */
@@ -292,7 +287,6 @@ export async function switchToAgentConnection(db: Queryable, serverId: string): 
   const switched = await timedQuery(db, "servers.switchToAgentConnection", SWITCH_TO_AGENT, [serverId]);
   const row = parseFirst(z.object({ public_id: z.string() }), switched.rows, "servers.switchToAgentConnection");
   if (row === undefined) return undefined;
-  await timedQuery(db, "servers.switchToAgentConnection.deleteConnection", DELETE_CONNECTION, [serverId]);
   return row.public_id;
 }
 

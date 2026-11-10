@@ -13,7 +13,7 @@ import type { ServerRuntime } from "./serverRuntime.js";
  * the service behind the routes; it knows nothing about HTTP.
  *
  * - Every mutation of the runtime (rename, remove) runs under one mutex, one at a time, after its commit.
- * - Remove soft-deletes the server (its memberships, any stored connection and every recorded row go in the same
+ * - Remove soft-deletes the server (its memberships and every recorded row go in the same
  *   transaction) and stops its workers.
  */
 
@@ -72,7 +72,7 @@ export function createServerManagementService<TServices>(deps: ServerManagementD
         // connection, so an agent server the operator created could not be removed here (a 404). A self-serve server stays
         // its owner's to remove, even when the operator is a member of it (the same 404 as before).
         if (!(await isOperatorServer(deps.db, publicId))) throw new ServerNotFoundError();
-        // The row's memberships, any stored connection and its recorded data go in one transaction; then its workers stop.
+        // The row's memberships and its recorded data go in one transaction; then its workers stop.
         const removed = await softDeleteServer(deps.db, publicId, { actorUserId });
         if (!removed) throw new ServerNotFoundError();
         await deps.runtime.remove(publicId);
