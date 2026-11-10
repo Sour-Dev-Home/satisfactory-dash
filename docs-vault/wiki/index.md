@@ -23,7 +23,7 @@ added or removed.
   2026-09-25 and each PR since adds one fragment file in `log.d/` (ADR-0033); `npm run log` prints both in order.
 - [`runbooks/servers.md`](./runbooks/servers.md) — servers since ADR-0066 (mod only: no stored connections, no
   `import-servers`): the managed list, rename and remove, the `SERVER_SECRETS_KEY` (webhooks, push) and its offline
-  backup, key rotation and `verify-secrets` until PR 10 drops `servers.server_connections`.
+  backup, key rotation and `verify-secrets` (which opens the webhooks and push data since ADR-0066 PR 10a).
 - [`runbooks/history.md`](./runbooks/history.md) — production history (ADR-0027 PR 3): the deploy
   order (`db:migrate` first), what is stored and for how long, the recorder, the snapshot ingest and rollup worker.
 - [`runbooks/alerts.md`](./runbooks/alerts.md) — the alert engine (ADR-0027 PR 5): the deploy order (`db:migrate`

@@ -41,6 +41,8 @@ export type { AlertsDb } from "./services/alertEvaluatorWorker.js";
 export type { DeliveryDb } from "./services/alertDeliveryWorker.js";
 export { loadAlertDeliveryMode, type AlertDeliveryMode } from "./config.js";
 export { saveDiscordDestination, getDestinationSummary } from "./repositories/deliveryRepository.js";
+/** ADR-0066 PR 10a: the `verify-secrets` admin command's check (the restore drill), now the webhooks and push data. */
+export { checkStoredSecrets, type SecretsCheck, type SecretsCheckTable, type UnreadableSecret } from "./repositories/secretsCheck.js";
 /** ADR-0056 PR 4: alert quality per UTC month and kind (fired, flaps, median resolve time), for the operator metrics page. */
 export { alertQualitySummary, alertsFiredHourly, FLAP_MAX_SECONDS } from "./repositories/alertQualityRepository.js";
 export { sendAlertTest, type SendTestCode } from "./services/sendTest.js";

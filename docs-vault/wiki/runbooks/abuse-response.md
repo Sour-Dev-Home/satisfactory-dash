@@ -55,7 +55,7 @@ and can never reach a re-created id). **After a removal nothing is left for that
 |---|---|
 | `servers.servers` | kept, soft deleted; its `display_name` is set to NULL (ADR-0047 amendment) |
 | `servers.server_members` | deleted (memberships, including the owner) |
-| `servers.server_connections` | deleted (the encrypted game-server tokens) |
+| `servers.server_connections` | not touched since ADR-0066 PR 10a (the retired direct-poll tokens; PR 10b drops the whole table) |
 | `telemetry.power_samples`, `item_samples`, `power_rollups`, `item_rollups`, `building_transitions` | deleted |
 | `alerts.rules` | deleted; `alerts.alert_state` goes with it (cascade) |
 | `alerts.alert_events` | deleted; its `alerts.outbox` rows go with it (cascade) |

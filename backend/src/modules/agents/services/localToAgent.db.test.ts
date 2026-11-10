@@ -109,7 +109,9 @@ describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting
     expect(await kindOf(live.id)).toBe("agent");
   });
 
-  it("a converted server loads as one awaiting the mod, and a code can be minted and enrolled; the enrolment drops the stored connection", async () => {
+  // ADR-0066 PR 10a: enrolment and removal leave a leftover stored connection alone (nothing touches the table any more),
+  // which is what makes PR 10b's DROP safe for a rollback to this image.
+  it("a converted server loads as one awaiting the mod, can be enrolled and removed, and its stored connection is left alone throughout", async () => {
     const server = await localServer();
     await migrate();
     const { built, runtime } = await load();
@@ -119,10 +121,16 @@ describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting
     const { code } = await agents().createEnrollmentCode(server.publicId, operatorId);
     await expect(enrollment().enroll(code, "mod/0.3.0")).resolves.toMatchObject({ serverId: server.publicId });
     expect(await kindOf(server.id)).toBe("agent");
-    expect(await count("servers.server_connections", server.id)).toBe(0);
+    expect(await count("servers.server_connections", server.id)).toBe(1);
     // Its history and members are the same server's still.
     expect(await count("telemetry.power_samples", server.id)).toBe(2);
     expect(await getMemberRole(pool, { publicId: server.publicId, userId: viewerId })).toBe("viewer");
+
+    // Removing it purges what the server recorded and its members, but not the retired table.
+    await expect(softDeleteServer(pool, server.publicId)).resolves.toBe(true);
+    expect(await count("servers.server_members", server.id)).toBe(0);
+    expect(await count("telemetry.power_samples", server.id)).toBe(0);
+    expect(await count("servers.server_connections", server.id)).toBe(1);
   });
 
   it("a leftover `local` row (a backup restored from before the migration) loads the same way, its connection never read, and can be enrolled", async () => {
@@ -136,10 +144,10 @@ describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting
     expect(await count("telemetry.power_samples", leftover.id)).toBe(2);
     expect(await getMemberRole(pool, { publicId: leftover.publicId, userId: viewerId })).toBe("viewer");
 
-    // Enrolling on a `local` row is the operator's (it replaces stored tokens); enrolment makes it an agent server.
+    // Enrolling on a `local` row is the operator's; enrolment makes it an agent server and leaves the old row alone.
     const { code } = await agents().createEnrollmentCode(leftover.publicId, operatorId);
     await expect(enrollment().enroll(code, "mod/0.3.0")).resolves.toMatchObject({ serverId: leftover.publicId });
     expect(await kindOf(leftover.id)).toBe("agent");
-    expect(await count("servers.server_connections", leftover.id)).toBe(0);
+    expect(await count("servers.server_connections", leftover.id)).toBe(1);
   });
 });

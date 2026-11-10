@@ -21,8 +21,8 @@
 
 ## The key: `SERVER_SECRETS_KEY`
 
-It now seals the alert webhooks (`alerts.destinations`) and the web-push data (`alerts.push_subscriptions`), and still
-opens the old sealed tokens left in `servers.server_connections` until PR 10 drops that table.
+It seals the alert webhooks (`alerts.destinations`) and the web-push data (`alerts.push_subscriptions`). Since ADR-0066
+PR 10a nothing reads the old sealed tokens left in `servers.server_connections`; PR 10b drops that table.
 
 - 32 random bytes as base64. PowerShell 7: `[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))`
   (or `openssl rand -base64 32`).
@@ -41,13 +41,14 @@ and `SERVER_SECRETS_PREVIOUS_KEYS` (`id=base64,id2=base64`, retired keys kept on
    one to `SERVER_SECRETS_PREVIOUS_KEYS=k1=<old>`. Back the new key up offline.
 2. Restart. Old rows still open with the old key; new values are sealed with the current one.
 3. Only remove an old key from `SERVER_SECRETS_PREVIOUS_KEYS` once no row uses its id, in every table that carries a
-   `key_id` (as the admin role): `alerts.destinations`, `alerts.push_subscriptions` and, until PR 10,
-   `servers.server_connections`, e.g. `SELECT key_id, count(*) FROM alerts.destinations GROUP BY 1;`.
+   `key_id` (as the admin role): `alerts.destinations` and `alerts.push_subscriptions`, e.g.
+   `SELECT key_id, count(*) FROM alerts.destinations GROUP BY 1;`, or run `npm run admin -- verify-secrets` with only
+   the new key (below).
 
 ## Backup and restore
 
 The nightly backup covers these tables, encrypted twice over (values sealed by the key, the dump sealed by age). The
-restore rehearsal runs `npm run admin -- verify-secrets` against the scratch database (see `backups.md`): it opens every
-row of `servers.server_connections` with the backed-up key and prints how many opened and which could not (never a
-value), exiting 1 if any cannot be opened or there are none. After PR 10 drops the table that count is 0; see
-`backups.md` for what that means for the drill.
+restore rehearsal runs `npm run admin -- verify-secrets` against the scratch database (see `backups.md`): since ADR-0066
+PR 10a it opens every alert webhook (`alerts.destinations`) and web-push subscription (`alerts.push_subscriptions`) with
+the backed-up key and prints how many of each opened and which rows could not (row and key id, never a value), exiting
+1 if any cannot be opened or there are none at all. It no longer reads `servers.server_connections`.

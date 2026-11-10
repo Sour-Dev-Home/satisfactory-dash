@@ -33,7 +33,8 @@ const kinds = (log: { text: string }[]) =>
     if (text.includes("UPDATE agents.enrollment_codes")) return "consume";
     if (text.includes("INSERT INTO agents.agent_credentials")) return "credential";
     if (text.includes("SET connection_kind = 'agent'")) return "switch";
-    if (text.includes("DELETE FROM servers.server_connections")) return "delete-connection";
+    // ADR-0066 PR 10a: nothing may touch the retired table (PR 10b drops it); a statement that does shows up here.
+    if (text.includes("servers.server_connections")) return "touches-connections";
     if (text.includes("INSERT INTO audit.audit_events")) return "audit";
     if (text.includes("FOR NO KEY UPDATE")) return "lock";
     if (text.includes("DELETE FROM agents.enrollment_codes")) return "delete-codes";
@@ -55,13 +56,13 @@ describe("the enrolment transaction", () => {
   };
   const silent = createLogger({ level: "silent" }, { write: () => {} });
 
-  it("spends the code, stores the credential's hash, switches the server, drops its tokens and audits: all in one transaction", async () => {
+  it("spends the code, stores the credential's hash, switches the server and audits: all in one transaction", async () => {
     const { pool, log } = fakePool(happy);
     const attach = vi.fn(async () => undefined);
     const service = createEnrollmentService({ db: pool, cadence: () => CADENCE, attachAgentRuntime: attach, logger: silent });
     const result = await service.enroll("AB3D-7XQ2-K5MN", "0.1.0");
     // The server row is locked BEFORE the code is spent: the order code creation and revoke use, so they cannot deadlock.
-    expect(kinds(log)).toEqual(["BEGIN", "find-code", "lock", "consume", "credential", "switch", "delete-connection", "audit", "COMMIT"]);
+    expect(kinds(log)).toEqual(["BEGIN", "find-code", "lock", "consume", "credential", "switch", "audit", "COMMIT"]);
     expect(result).toMatchObject({ serverId: "alpha", cadence: CADENCE });
     expect(result.agentSecret).toMatch(/^[A-Za-z0-9_-]{43}$/);
     // The code is looked up by its hash, and the secret is stored as its hash.
