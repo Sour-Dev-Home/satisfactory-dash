@@ -294,10 +294,6 @@ export const METRIC_REGISTRY: Readonly<Record<string, MetricDefinition>> = Objec
     kind: "histogram",
     labels: { route: isBoundedToken(200), status_class: isStatusClass },
   },
-  "http.server.upstream.duration": {
-    kind: "histogram",
-    labels: { api: isOneOf("vanilla", "frm") },
-  },
   "db.client.operation.duration": {
     kind: "histogram",
     labels: { query: isOneOf(...QUERY_NAMES) },

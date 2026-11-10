@@ -65,7 +65,6 @@ function chartsSample(points: number, { gaps = true }: { gaps?: boolean } = {}) 
         p95: hours.map((i) => ms(i, 3)),
         p99: hours.map((i) => (gap(i) ? null : i === 10 ? 10000 : ms(i, 5))),
       },
-      upstreamP95Ms: { vanilla: hours.map((i) => ms(i, 4)), frm: hours.map((i) => ms(i, 5)) },
       dbP95Ms: hours.map((i) => ms(i, 1)),
       pollLagP95Ms: hours.map((i) => ms(i, 7)),
       agentLagP95Ms: hours.map((i) => ms(i, 6)),

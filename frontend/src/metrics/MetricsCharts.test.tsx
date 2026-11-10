@@ -72,7 +72,8 @@ describe("the charts and their Details", () => {
     expect(within(system).getAllByText(/^Hourly trend, last 24 h/)).toHaveLength(1);
     const alerts = screen.getByRole("region", { name: "Alert quality" });
     expect(within(alerts).getByRole("figure", { name: "Alerts fired per hour" })).toBeInTheDocument();
-    await waitFor(() => expect(plots().length - before).toBe(7));
+    // Five system trends (no game-server calls since ADR-0066 PR 8) and the alerts one.
+    await waitFor(() => expect(plots().length - before).toBe(6));
     expect(plots().at(-1)?.data[0]).toHaveLength(metricsChartsDay.trend.points);
     for (const chart of container.querySelectorAll(".trend-chart")) expect(chart).toHaveAttribute("aria-hidden", "true");
 

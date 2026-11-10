@@ -36,7 +36,7 @@ describe("server management in the demo", () => {
     const list = ServerListResponseSchema.parse(await (await call("GET", endpoints.servers.path())).json());
     expect(list.canManageServers).toBe(true);
     const answer = await managed();
-    expect(answer.servers).toEqual([]);
+    expect(Object.keys(answer)).toEqual(["agentServers"]);
     expect(answer.agentServers?.map((s) => [s.id, s.kind])).toEqual([[DEMO_SERVER_ID, "agent"]]);
   });
 
@@ -53,13 +53,15 @@ describe("server management in the demo", () => {
   it("serves none of the direct-poll routes ADR-0066 retires: each is the demo's own 404", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const connection = { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "typed-in-the-demo" };
+    // The contract dropped these entries (ADR-0066 PR 8), so the old paths are spelled out.
+    const scoped = `/api/servers/${encodeURIComponent(DEMO_SERVER_ID)}`;
     const retired = [
-      call("POST", endpoints.serverManagement.testConnection.path(), connection),
-      call("POST", endpoints.serverManagement.testSaved.path(DEMO_SERVER_ID)),
-      call("POST", endpoints.serverManagement.create.path(), { id: "second", displayName: "Second", ...connection }),
-      call("PATCH", endpoints.serverManagement.update.path(DEMO_SERVER_ID), { displayName: "New" }),
-      call("GET", endpoints.serverManagement.get.path(DEMO_SERVER_ID)),
-      call("POST", endpoints.serverManagement.switchToLocal.path(DEMO_SERVER_ID), connection),
+      call("POST", "/api/servers/test-connection", connection),
+      call("POST", `${scoped}/test-connection`),
+      call("POST", "/api/servers", { id: "second", displayName: "Second", ...connection }),
+      call("PATCH", scoped, { displayName: "New" }),
+      call("GET", `${scoped}/connection`),
+      call("POST", `${scoped}/local-connection`, connection),
     ];
     for (const res of await Promise.all(retired)) {
       expect(res.status).toBe(404);

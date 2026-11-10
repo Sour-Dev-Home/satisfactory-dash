@@ -729,7 +729,6 @@ const metricsFull = (() => {
       histograms: [
         histogram,
         { ...histogram, labels: { route: "/api/health", status_class: "5xx" }, count: 3, p50Ms: 200, p95Ms: 500, p99Ms: 500 },
-        { ...histogram, metric: "http.server.upstream.duration", labels: { api: "frm" }, p50Ms: 10, p95Ms: 50, p99Ms: 1000 },
         { ...histogram, metric: "db.client.operation.duration", labels: { query: "history.insertPowerSamples" }, p50Ms: 2, p95Ms: 10, p99Ms: 20 },
         { ...histogram, metric: "satis.poller.lag", labels: { group: "status" }, p50Ms: 1000, p95Ms: 2000, p99Ms: null },
       ],

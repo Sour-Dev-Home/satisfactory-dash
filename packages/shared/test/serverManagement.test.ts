@@ -4,111 +4,55 @@ import {
   CreateAgentServerRequestSchema,
   CreateAgentServerResponseSchema,
   RESERVED_SERVER_IDS,
-  CreateServerRequestSchema,
   DisplayNameSchema,
   NON_PRINTABLE_IN_NAME,
   ManagedServerListResponseSchema,
   RenameServerRequestSchema,
   RenameServerResponseSchema,
-  SwitchToLocalRequestSchema,
   KnownErrorCode,
-  ServerConnectionSchema,
   ServerListResponseSchema,
-  TestConnectionRequestSchema,
-  UpdateServerRequestSchema,
   endpoints,
 } from "../src";
+import * as contract from "../src";
 
-// ADR-0030: the contract for managing servers.
-const create = { id: "alt", displayName: "Alt", host: "192.168.1.30", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abc123" };
+// ADR-0030, narrowed by ADR-0066: the contract for managing servers.
 
-describe("CreateServerRequestSchema", () => {
-  it("accepts a hostname, an IPv4 address or an IPv6 literal, with an optional FRM token", () => {
-    for (const host of ["gaming-pc.lan", "192.168.1.30", "::1", "[::1]", "fd12::1"]) {
-      expect(CreateServerRequestSchema.safeParse({ ...create, host }).success, host).toBe(true);
+describe("ADR-0066 Decision 8 Step B: the direct-poll contract is gone", () => {
+  it("exports none of the direct-poll schemas", () => {
+    for (const name of [
+      "CreateServerRequestSchema",
+      "UpdateServerRequestSchema",
+      "TestConnectionRequestSchema",
+      "TestConnectionResponseSchema",
+      "ConnectionCheckSchema",
+      "ServerConnectionSchema",
+      "ServerConnectionResponseSchema",
+      "SwitchToLocalRequestSchema",
+    ]) {
+      expect(Object.hasOwn(contract, name), name).toBe(false);
     }
-    expect(CreateServerRequestSchema.safeParse({ ...create, frmToken: "frm-token-abc" }).success).toBe(true);
   });
 
-  it.each([
-    ["an unknown field", { extra: true }],
-    ["a URL as the host", { host: "https://192.168.1.30" }],
-    ["a host with a path", { host: "host/path" }],
-    ["a host with credentials", { host: "user:pw@host" }],
-    ["a host with a space", { host: "my host" }],
-    ["an empty host", { host: "" }],
-    ["port 0", { apiPort: 0 }],
-    ["port 65536", { frmPort: 65536 }],
-    ["a fractional port", { apiPort: 77.5 }],
-    ["a string port", { apiPort: "7777" }],
-    ["an empty API token", { apiToken: "" }],
-    ["an empty FRM token", { frmToken: "" }],
-    ["a token with a space", { apiToken: "a b" }],
-    ["a token with a newline", { apiToken: "a\nb" }],
-    ["a token with a non-ASCII character", { apiToken: "tökén" }],
-    ["a token over 4096 characters", { apiToken: "a".repeat(4097) }],
-    ["an id that is not a server id", { id: "Not Valid" }],
-    ["the reserved id test-connection", { id: "test-connection" }],
-    ["the reserved id managed (it is the list route)", { id: "managed" }],
-    ["a blank display name", { displayName: "   " }],
-    ["a display name over 64 characters", { displayName: "x".repeat(65) }],
-  ])("refuses %s", (_label, change) => {
-    expect(CreateServerRequestSchema.safeParse({ ...create, ...change }).success).toBe(false);
-  });
-});
-
-describe("UpdateServerRequestSchema", () => {
-  it("takes any subset of fields, and null clears the FRM token", () => {
-    expect(UpdateServerRequestSchema.safeParse({ displayName: "New" }).success).toBe(true);
-    expect(UpdateServerRequestSchema.safeParse({ frmToken: null }).success).toBe(true);
-    expect(UpdateServerRequestSchema.safeParse({ apiPort: 1, host: "h" }).success).toBe(true);
+  it("declares none of the direct-poll endpoints", () => {
+    expect(Object.keys(endpoints.serverManagement).sort()).toEqual(["list", "remove", "renameAgent"]);
   });
 
-  it.each([
-    ["nothing at all", {}],
-    ["only undefined values", { host: undefined }],
-    ["an empty FRM token", { frmToken: "" }],
-    ["a null API token", { apiToken: null }],
-    ["an id (it cannot change)", { id: "other" }],
-    ["an unknown field", { nope: 1 }],
-  ])("refuses %s", (_label, body) => {
-    expect(UpdateServerRequestSchema.safeParse(body).success).toBe(false);
+  it("the managed list has no `servers` field: an older backend's `servers` is stripped, never trusted", () => {
+    const parsed = ManagedServerListResponseSchema.parse({ servers: [{ id: "a" }], ...fixtures.managedServersWithAgent });
+    expect(Object.keys(parsed)).toEqual(["agentServers"]);
+    expect(ManagedServerListResponseSchema.parse(fixtures.managedServersEmpty)).toEqual({ agentServers: [] });
   });
-});
 
-describe("TestConnectionRequestSchema", () => {
-  it("is the connection fields only (no id or name)", () => {
-    const { id: _id, displayName: _name, ...candidate } = create;
-    expect(TestConnectionRequestSchema.safeParse(candidate).success).toBe(true);
-    expect(TestConnectionRequestSchema.safeParse(create).success).toBe(false);
-  });
-});
-
-describe("responses never carry a token", () => {
-  it("ServerConnectionSchema strips a token even if one is passed", () => {
-    const parsed = ServerConnectionSchema.parse({
-      id: "alt", displayName: "Alt", host: "h", apiPort: 1, frmPort: 2, apiTokenSet: true, apiTokenLast4: "1234",
-      frmTokenSet: false, frmTokenLast4: null, state: "ok", plainHttpOverLan: false, apiToken: "secret-token", frmToken: "secret-frm",
-    });
-    expect(JSON.stringify(parsed)).not.toContain("secret");
-  });
-});
-
-describe("ManagedServerListResponseSchema", () => {
-  const row = { id: "a", displayName: "A", host: "h", apiPort: 1, frmPort: 2, apiTokenSet: true, apiTokenLast4: null, frmTokenSet: false, frmTokenLast4: null, plainHttpOverLan: false };
-  it("carries every state, and refuses an unknown one", () => {
-    for (const state of ["ok", "unreadable", "refused"]) {
-      expect(ManagedServerListResponseSchema.safeParse({ servers: [{ ...row, state }] }).success, state).toBe(true);
-    }
-    expect(ManagedServerListResponseSchema.safeParse({ servers: [{ ...row, state: "gone" }] }).success).toBe(false);
+  it("keeps the error codes the removed routes used (stored clients may still see them during a rolling deploy)", () => {
+    expect(KnownErrorCode.safeParse("server_not_agent").success).toBe(true);
   });
 });
 
 // ADR-0046: self-serve agent servers.
 describe("self-serve agent servers", () => {
   it("reserves `agent` so no server id collides with POST /api/servers/agent", () => {
+    // An id once reserved stays reserved (ADR-0066), even though test-connection's route is gone.
     expect(RESERVED_SERVER_IDS).toEqual(["test-connection", "managed", "agent"]);
-    expect(CreateServerRequestSchema.safeParse({ ...create, id: "agent" }).success).toBe(false);
   });
 
   it("the create request is the display name only, with the existing bounds", () => {
@@ -147,28 +91,19 @@ describe("the contract's operator-only endpoints", () => {
         ? "operatorOnly" in value ? [group] : []
         : Object.entries(value).filter(([, e]) => "operatorOnly" in e).map(([name]) => `${group}.${name}`),
     );
-    expect(marked.sort()).toEqual([
-      "serverManagement.create",
-      "serverManagement.get",
-      "serverManagement.list",
-      "serverManagement.remove",
-      "serverManagement.renameAgent",
-      "serverManagement.switchToLocal",
-      "serverManagement.testConnection",
-      "serverManagement.testSaved",
-      "serverManagement.update",
-    ]);
+    expect(marked.sort()).toEqual(["serverManagement.list", "serverManagement.remove", "serverManagement.renameAgent"]);
   });
 
   it("keeps the managed list additive: `agentServers` is optional, and each entry is id, name and kind `agent` only", () => {
-    expect(ManagedServerListResponseSchema.safeParse({ servers: [] }).success).toBe(true); // an older backend
+    expect(ManagedServerListResponseSchema.safeParse({}).success).toBe(true); // an older backend that omits it
+    expect(ManagedServerListResponseSchema.safeParse({ servers: [] }).success).toBe(true); // a backend from before ADR-0066 PR 8
     expect(ManagedServerListResponseSchema.safeParse(fixtures.managedServersWithAgent).success).toBe(true);
     const entry = fixtures.managedServersWithAgent.agentServers[0];
     for (const bad of [{ ...entry, kind: "local" }, { ...entry, kind: undefined }, { id: entry.id, kind: "agent" }, { ...entry, id: "Not A Valid Id!" }]) {
-      expect(ManagedServerListResponseSchema.safeParse({ servers: [], agentServers: [bad] }).success, JSON.stringify(bad)).toBe(false);
+      expect(ManagedServerListResponseSchema.safeParse({ agentServers: [bad] }).success, JSON.stringify(bad)).toBe(false);
     }
     // No connection field can ride along (they are stripped, never trusted): an agent server has none.
-    const parsed = ManagedServerListResponseSchema.parse({ servers: [], agentServers: [{ ...entry, host: "10.0.0.1", apiPort: 7777 }] });
+    const parsed = ManagedServerListResponseSchema.parse({ agentServers: [{ ...entry, host: "10.0.0.1", apiPort: 7777 }] });
     expect(Object.keys(parsed.agentServers![0]!).sort()).toEqual(["displayName", "id", "kind"]);
   });
 
@@ -181,18 +116,6 @@ describe("the contract's operator-only endpoints", () => {
     expect(RenameServerResponseSchema.parse(fixtures.renameAgentServerResponse).server.kind).toBe("agent");
     expect(endpoints.serverManagement.renameAgent).toMatchObject({ method: "PATCH", route: "/api/servers/:serverId/name", operatorOnly: true });
     expect(endpoints.serverManagement.renameAgent.path("alex")).toBe("/api/servers/alex/name");
-  });
-
-  it("switch back to local (ADR-0031 amendment): the request is exactly the connection (no id, no name, no unknown field), and the endpoint is operator only", () => {
-    expect(SwitchToLocalRequestSchema.safeParse(fixtures.switchToLocalRequest).success).toBe(true);
-    const { frmToken: _frm, ...withoutFrm } = fixtures.switchToLocalRequest;
-    expect(SwitchToLocalRequestSchema.safeParse(withoutFrm).success).toBe(true); // FRM can run without a token
-    for (const bad of [{ ...fixtures.switchToLocalRequest, id: "x" }, { ...fixtures.switchToLocalRequest, displayName: "x" }, { ...fixtures.switchToLocalRequest, apiPort: 0 }, { ...fixtures.switchToLocalRequest, host: "https://10.0.0.1" }, { ...fixtures.switchToLocalRequest, apiToken: "has space" }, { host: "127.0.0.1", apiPort: 7777, frmPort: 8080 }]) {
-      expect(SwitchToLocalRequestSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
-    }
-    expect(endpoints.serverManagement.switchToLocal).toMatchObject({ method: "POST", route: "/api/servers/:serverId/local-connection", operatorOnly: true });
-    expect(endpoints.serverManagement.switchToLocal.path("alex")).toBe("/api/servers/alex/local-connection");
-    expect(KnownErrorCode.safeParse("server_not_agent").success).toBe(true);
   });
 
   it("keeps the list additive: canManageServers is optional", () => {
@@ -235,12 +158,11 @@ describe("a server's display name is printable text (issue #198)", () => {
     expect(accepted("   ")).toBe(false); // blank
   });
 
-  it("applies to create, update and rename alike, and the rule is exported so every entry point shares it", () => {
+  it("applies to create and rename alike, and the rule is exported so every entry point shares it", () => {
     const evil = "Home‮gpj.exe";
-    expect(CreateServerRequestSchema.safeParse({ ...create, displayName: evil }).success).toBe(false);
-    expect(UpdateServerRequestSchema.safeParse({ displayName: evil }).success).toBe(false);
+    expect(CreateAgentServerRequestSchema.safeParse({ displayName: evil }).success).toBe(false);
     expect(RenameServerRequestSchema.safeParse({ displayName: evil }).success).toBe(false);
-    expect(CreateServerRequestSchema.safeParse({ ...create, displayName: "Home" }).success).toBe(true);
+    expect(CreateAgentServerRequestSchema.safeParse({ displayName: "Home" }).success).toBe(true);
     expect(NON_PRINTABLE_IN_NAME.test("a‮b")).toBe(true);
     expect(NON_PRINTABLE_IN_NAME.test("plain")).toBe(false);
   });

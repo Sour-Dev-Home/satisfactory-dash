@@ -55,7 +55,6 @@ export function labelsText(labels: MetricLabels): string {
 
 const METRIC_NAME: ReadonlyMap<string, string> = new Map([
   ["http.server.request.duration", "Request"],
-  ["http.server.upstream.duration", "Game server call"],
   ["db.client.operation.duration", "Database query"],
   ["satis.poller.cycle.duration", "Poll cycle time"],
   ["satis.poller.lag", "Poll lag"],
@@ -85,7 +84,6 @@ export interface HistogramGroup {
 
 export const HISTOGRAM_GROUPS: readonly HistogramGroup[] = [
   { id: "requests", title: "Requests to the dashboard", metrics: ["http.server.request.duration"] },
-  { id: "upstream", title: "Calls to the game server", metrics: ["http.server.upstream.duration"] },
   { id: "database", title: "Database queries", metrics: ["db.client.operation.duration"] },
   {
     id: "lag",

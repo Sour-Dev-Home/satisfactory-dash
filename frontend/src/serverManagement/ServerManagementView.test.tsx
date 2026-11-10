@@ -2,7 +2,7 @@ import { act, fireEvent, screen, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
-import { errorOperatorOnly, managedServersAllStates, renameAgentServerResponse, serversSelfServe } from "@satisfactory-dash/shared/fixtures";
+import { errorOperatorOnly, renameAgentServerResponse, serversSelfServe } from "@satisfactory-dash/shared/fixtures";
 import { managedAgentNone, managedAgentOne, managedAgentSeveral } from "../test/managedMocks";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
@@ -85,19 +85,23 @@ describe("ServerManagementView: the list", () => {
     expect(await screen.findByText(/^No game servers yet\./)).toBeInTheDocument();
   });
 
-  // ADR-0066: the old backend still sends its stored direct-poll connections; nothing here can act on one, so they
-  // are not shown, never mind the tokens' suffixes or a LAN warning.
-  it("ignores stored connections the old backend still sends in `servers`", async () => {
-    serveManaged({ ...managedServersAllStates, agentServers: managedAgentOne.agentServers });
+  // ADR-0066: a backend from before the contract PR (8) may still send a `servers` field during a rolling deploy. The
+  // contract no longer has it, so it is stripped: nothing in it is shown, never mind the tokens' suffixes or a LAN warning.
+  const oldBackendServers = [
+    { id: "default", displayName: "Stored connection", host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiTokenSet: true, apiTokenLast4: "1a2b", frmTokenSet: false, frmTokenLast4: null, state: "ok", plainHttpOverLan: false },
+  ];
+
+  it("ignores a `servers` field an older backend still sends", async () => {
+    serveManaged({ servers: oldBackendServers, agentServers: managedAgentOne.agentServers });
     renderView();
     const list = await screen.findByRole("list", { name: "Game servers" });
     expect(within(list).getAllByRole("listitem")).toHaveLength(1);
-    for (const stored of managedServersAllStates.servers) expect(screen.queryByText(stored.displayName)).not.toBeInTheDocument();
+    expect(screen.queryByText("Stored connection")).not.toBeInTheDocument();
     expect(screen.queryByText(/token|FRM port|Test connection|saved address/i)).not.toBeInTheDocument();
   });
 
-  it("is the empty state when only stored connections are sent", async () => {
-    serveManaged(managedServersAllStates);
+  it("is the empty state when an older backend sends only `servers`", async () => {
+    serveManaged({ servers: oldBackendServers });
     renderView();
     expect(await screen.findByText(/^No game servers yet\./)).toBeInTheDocument();
   });

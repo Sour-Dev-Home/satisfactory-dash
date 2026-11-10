@@ -27,6 +27,14 @@ describe("the metrics charts section (ADR-0056 amendment 2026-10-26)", () => {
     expect(ok({ available: false, reason: "not_built" })).toBe(true);
   });
 
+  it("an older backend's trend that still carries upstreamP95Ms parses, and the field is stripped (ADR-0066 PR 8)", () => {
+    const old = withTrend((t) => {
+      Object.assign(t, { upstreamP95Ms: { vanilla: t.dbP95Ms, frm: t.dbP95Ms } });
+    });
+    const parsed = MetricsChartsSectionSchema.parse(old);
+    expect(parsed.available && Object.hasOwn(parsed.trend, "upstreamP95Ms")).toBe(false);
+  });
+
   it("has a day of hours for 1h and 24h, a week for 7d, never more", () => {
     expect([metricsTrendPoints("1h"), metricsTrendPoints("24h"), metricsTrendPoints("7d")]).toEqual([25, 25, METRICS_TREND_MAX_POINTS]);
     const tooLong = clone(metricsChartsWeekFull);

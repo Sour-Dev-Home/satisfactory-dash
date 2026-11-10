@@ -373,17 +373,6 @@ export function systemChartSpecs(trend: MetricsTrend): TrendChartSpec[] {
       ],
     },
     {
-      id: "upstream",
-      title: "Game server calls, p95",
-      summary: `Worst hourly p95: game server API ${trendMsText(worstMs(trend.upstreamP95Ms.vanilla))}, FRM ${trendMsText(worstMs(trend.upstreamP95Ms.frm))}.`,
-      unit: "ms",
-      bars: false,
-      series: [
-        line("Game server API", "--color-series-1", trend.upstreamP95Ms.vanilla, "ms"),
-        line("FRM", "--color-series-2", trend.upstreamP95Ms.frm, "ms"),
-      ],
-    },
-    {
       id: "database",
       title: "Database queries, p95",
       summary: `Worst hourly p95 ${trendMsText(worstMs(trend.dbP95Ms))}.`,
