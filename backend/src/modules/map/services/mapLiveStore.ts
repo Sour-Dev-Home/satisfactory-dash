@@ -23,7 +23,7 @@ export interface MapLiveSink {
  * Conform, don't reject (test-hunter, PR #374): an agent's `mapLive` reaches here only after
  * `SnapshotRequestSchema` already validated it at the wire (agentApi.ts's snapshot route), but the
  * LOCAL poller's `getTrains`/`getTrainStations` reach here with no such boundary in between — only
- * a coordinate-bounds check (game-adapter's trainsMapper.ts/stationsMapper.ts), never a string-length
+ * a coordinate-bounds check (the retired game-adapter's trainsMapper.ts/stationsMapper.ts), never a string-length
  * one. Without this, one oversized/malformed train or station name would store un-conforming data
  * that later fails `MapLiveResponseSchema` at GET .../map/live (a 500 for that whole server, until
  * a later, conforming reading overwrites it). A bad item is dropped, never the whole reading; the

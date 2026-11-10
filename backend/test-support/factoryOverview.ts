@@ -1,15 +1,16 @@
 import type { Factory, Power } from "@satisfactory-dash/shared";
-import { mapFactoryBuilding, mapPowerCircuit } from "../src/modules/gameserver/index.js";
 import type { FactoryBuilding, PowerCircuit } from "../src/modules/telemetry/domain.js";
 import { createUnitResolver } from "../src/modules/telemetry/itemForms.js";
 import type { UnitResolver } from "../src/modules/telemetry/itemForms.js";
 import { deriveFactory, derivePower } from "../src/modules/telemetry/services/snapshotDerive.js";
+import { mapFactoryBuilding, mapPowerCircuit } from "./snapshotMapping.js";
 
 /**
  * ADR-0066 build PR 5: the polled `ProductionService` and `PowerService` are gone, but their tests checked the backend's
  * derivation (each machine's state, units, counts, location, clock speed) over domain-shaped buildings. These are the two
  * steps those services ran, kept for the tests only: the shape mapping, then `deriveFactory` / `derivePower`, the same
- * classification a mod's snapshot goes through at ingest. Build PR 7 removes the mapping with the gameserver module.
+ * classification a mod's snapshot goes through at ingest. Build PR 7 moved the mapping from the removed game-adapter
+ * package into `snapshotMapping.ts`.
  */
 export function factoryOverviewOf(buildings: FactoryBuilding[], resolveUnit: UnitResolver = createUnitResolver(() => {})): Factory {
   // Keyed by the mapped object, not by id: building ids need not be unique, and each machine keeps the fuse it was sent with.

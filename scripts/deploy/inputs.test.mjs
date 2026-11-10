@@ -15,7 +15,6 @@ const BASE = {
   backend: ["040000", "tree", ID("1")],
   "package-lock.json": ["100644", "blob", ID("2")],
   "package.json": ["100644", "blob", ID("3")],
-  "packages/game-adapter": ["040000", "tree", ID("4")],
   "packages/shared": ["040000", "tree", ID("5")],
   ".github/workflows/image.yml": ["100644", "blob", ID("8")],
 };
@@ -39,7 +38,7 @@ test("any change to any input's id, mode or type changes the hash", () => {
     if (type === "blob") assert.notEqual(inputsHash(lsTree({ ...BASE, [p]: ["100755", type, id] })), h, `${p} mode`);
   }
   // Two inputs swapping ids is a change too (the path is hashed with its id).
-  assert.notEqual(inputsHash(lsTree({ ...BASE, "packages/shared": BASE["packages/game-adapter"], "packages/game-adapter": BASE["packages/shared"] })), h);
+  assert.notEqual(inputsHash(lsTree({ ...BASE, "packages/shared": BASE.backend, backend: BASE["packages/shared"] })), h);
 });
 
 test("adding a root .dockerignore changes the hash; it is optional today", () => {

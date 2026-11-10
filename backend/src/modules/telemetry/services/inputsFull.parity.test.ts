@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { AgentFactorySchema } from "@satisfactory-dash/shared";
 import type { FactoryBuilding } from "../domain.js";
-import { mapFactoryBuilding } from "../../gameserver/index.js";
+import { mapFactoryBuilding } from "../../../../test-support/snapshotMapping.js";
 import { areInputsFull, isBackedUp } from "../factoryStates.js";
 import { classifyBuilding } from "./classifyBuilding.js";
 import { deriveFactory } from "./snapshotDerive.js";
 
 // Issue 201 hunt. Parity: the local poller (domain building -> areInputsFull -> classifyBuilding) and the agent path
 // (mapFactoryBuilding -> AgentFactorySchema -> deriveFactory) must classify one building identically. Since ADR-0066
-// PR 3 the local side uses telemetry's factoryStates.ts and mapFactoryBuilding the adapter's own copy, so this also
-// holds the two copies of areInputsFull/isBackedUp to the same answers until the adapter goes.
+// build PR 7 the mapping is the test-only copy in test-support/snapshotMapping.ts, which uses telemetry's
+// factoryStates.ts, so both sides share one areInputsFull/isBackedUp.
 
 const rate = (className: string, percent: number) => ({ name: className, className, currentPerMinute: percent, maxPerMinute: 100, percent });
 const slot = (className: string, amount: number, maxAmount = 200) => ({ name: className, className, amount, maxAmount });

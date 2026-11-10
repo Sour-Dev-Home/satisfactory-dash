@@ -64,7 +64,7 @@ test("parseTestArgs: --clean takes an optional name; bad input throws one line",
 
 test("workspacesFor defaults to backend for --db and every workspace otherwise", () => {
   assert.deepEqual(workspacesFor({ workspaces: [], db: true }), ["backend"]);
-  assert.ok(workspacesFor({ workspaces: [], db: false }).length > 3);
+  assert.deepEqual(workspacesFor({ workspaces: [], db: false }), ["packages/shared", "frontend", "backend"]);
   assert.deepEqual(workspacesFor({ workspaces: ["frontend"], db: true }), ["frontend"]);
 });
 

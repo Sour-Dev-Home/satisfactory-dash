@@ -2,7 +2,7 @@
  * one since direct polling was retired. */
 
 /** A configuration the backend refuses to start with. server.ts reports it and exits.
- *  Shared by every module's config loader (gameserver, servers, identity). */
+ *  Shared by every module's config loader (servers, identity). */
 export class ConfigError extends Error {
   constructor(message: string) {
     super(message);

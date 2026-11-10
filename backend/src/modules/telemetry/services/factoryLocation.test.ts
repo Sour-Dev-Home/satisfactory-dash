@@ -5,7 +5,7 @@ import type { FactoryBuilding } from "../domain.js";
 import { FactoryOverviewHarness as ProductionService } from "../../../../test-support/factoryOverview.js";
 
 // ADR-0023: a building's location (metres, rotation in [0, 360)) and its circuit group id reach the contract. The
-// adapter's centimetre-to-metre and rotation cases moved to gameserver/frmFactoryMapping.test.ts (ADR-0066 PR 3). The
+// adapter's centimetre-to-metre and rotation cases went with the adapter (ADR-0066 build PR 7). The
 // locations below are what the adapter maps the 2026-09-22 capture's values to
 // (docs-vault/raw-sources/captured-responses/frm-getFactory-2026-09-22-01-running-trimmed.json).
 

@@ -1,11 +1,7 @@
 /**
  * ADR-0066 Decision 5: telemetry's own domain types for one server's factory and power, which the agent path and the
  * telemetry services read. They used to come from the game-adapter package through gameserver's facade; they live here
- * now so the agent path no longer depends on the adapter, which goes in a later PR.
- *
- * The polled path still produces these through gameserver's adapter. Its types are structurally identical, so the
- * adapter's output is assignable to these at the existing boundary (the ports in `services/*`) with no conversion;
- * `domain.test.ts` fails to compile if the two drift apart while both exist.
+ * so the agent path does not depend on the adapter, which build PR 7 removed.
  */
 
 export interface ProductionRate {

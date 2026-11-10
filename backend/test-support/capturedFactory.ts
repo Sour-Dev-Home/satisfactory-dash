@@ -2,7 +2,7 @@ import type { FactoryBuilding, PowerCircuit } from "../src/modules/telemetry/dom
 
 /**
  * ADR-0066 PR 3: domain-shaped test inputs for the telemetry services and routes, so no FRM-shaped data feeds them.
- * Each value is what the game adapter (packages/game-adapter, as of this PR) mapped the matching FRM fixture to,
+ * Each value is what the game adapter (packages/game-adapter, as of this PR; removed in build PR 7) mapped the matching FRM fixture to,
  * committed as its output, unchanged. Those FRM fixtures are real getFactory entries reduced to the fields the adapter
  * reads (no location, no ManuSpeed, no InputInventory, so the buildings below carry none of the three).
  */

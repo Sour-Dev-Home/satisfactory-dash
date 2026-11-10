@@ -16,7 +16,7 @@ import { snapshotEnvelope } from "./envelope";
  *
  * PROJECTION: every coordinate here is a WHOLE METRE (the game's own unit is the centimetre,
  * docs-vault/raw-sources/world-coordinates.md), rounded by whichever mapper produced the data
- * (`packages/game-adapter`, ADR-0038 M2 — not this PR). The contract only bounds the projected
+ * (the sender's, today the mod; ADR-0038 M2's was the since-removed game-adapter package). The contract only bounds the projected
  * shape; it does not do the projecting.
  *
  * DEPLOY SKEW: `layer`, `type` and `purity` below are plain strings with known values in
@@ -95,8 +95,8 @@ export const ResourceNodesLayerDataSchema = z.array(ResourceNodeSchema).max(MAP_
 // ---------------------------------------------------------------------------------------------------------------------
 // conveyors (ADR-0048 amendment, Decision 4): every belt, lift and pipe as one edge between the two ids at its ends, for
 // the bottleneck finder's connection graph. From FRM 1.5.4's getBelts/getLifts/getPipes `ConnectedTo0`/`ConnectedTo1`
-// (docs-vault/raw-sources/captured-responses/frm-get{Belts,Lifts,Pipes}-2026-10-21-*.json). The game-adapter projects
-// it (ADR-0048 amendment PR 2, not this contract): geometry and paint dropped, edges sorted by `id`, `at` rounded to whole
+// (docs-vault/raw-sources/captured-responses/frm-get{Belts,Lifts,Pipes}-2026-10-21-*.json). The sender projects
+// it (the mod; first the since-removed game-adapter, ADR-0048 amendment PR 2, not this contract): geometry and paint dropped, edges sorted by `id`, `at` rounded to whole
 // metres, so the backend's content hash (ADR-0038: an unchanged hash writes nothing) is stable between reads.
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -330,7 +330,7 @@ export const MAP_WORLD_LAYER_DATA_SCHEMAS = {
 /** The PER-ITEM schema for one layer (a single `RailSegment`/`ResourceNode`, not the capped array).
  *  M3's ingest route re-validates each item against this after truncating an over-cap `data` array
  *  to `MAP_WORLD_MAX_ITEMS` (conform, don't reject: an item that still fails is dropped and counted,
- *  logged at warn with the layer and server id as labels — defense in depth, since the game-adapter
+ *  logged at warn with the layer and server id as labels — defense in depth, since the sender's
  *  mappers already filter bad items before the wire). */
 export const MAP_WORLD_LAYER_ITEM_SCHEMAS = {
   rails: RailSegmentSchema,
@@ -360,7 +360,7 @@ export const DroneRoutesWorldIngestRequestSchema = z.strictObject({ observedAt: 
 export const MapMarkersWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: MapMarkersLayerDataSchema });
 export const PowerLinesWorldIngestRequestSchema = z.strictObject({ observedAt: IsoTimeSchema, data: PowerLinesLayerDataSchema });
 
-/** Why the conveyors projection has no layer this cycle (game-adapter's `mapConveyors` `skip`): an FRM without connection
+/** Why the conveyors projection has no layer this cycle (the sender's projection `skip`, as the removed game-adapter's `mapConveyors` had): an FRM without connection
  *  fields, or a graph over `CONVEYORS_MAX_EDGES`. */
 export const CONVEYORS_SKIP_REASONS = ["unsupportedFrm", "tooManyEdges"] as const;
 export const ConveyorsSkipReasonSchema = z.enum(CONVEYORS_SKIP_REASONS);

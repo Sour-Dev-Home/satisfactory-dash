@@ -19,7 +19,8 @@ const base = (o: Partial<ClassifiableBuilding> = {}): ClassifiableBuilding => ({
   ...o,
 });
 
-// The adapter's fuseTriggered mapping cases moved to gameserver/frmFactoryMapping.test.ts (ADR-0066 PR 3).
+// The adapter's fuseTriggered mapping cases moved to gameserver/frmFactoryMapping.test.ts (ADR-0066 PR 3) and went
+// with the adapter in build PR 7.
 describe("classifyBuilding edge cases", () => {
   it("does not treat Infinity as a usable percent", () => {
     expect(classifyBuilding(base({ production: [rate("A", Infinity)] }), false)).toBeUndefined();

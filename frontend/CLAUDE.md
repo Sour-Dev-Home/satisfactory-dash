@@ -6,8 +6,8 @@ TypeScript SPA.
 ## Ownership boundary
 
 This is the "frontend" module for future multi-agent work: an agent scoped to this
-directory should never need to know FRM/vanilla-API response shapes, database schema,
-or polling logic — only the types exported from `@satisfactory-dash/shared` and
+directory should never need to know the game's or the mod's data shapes, database schema,
+or ingest logic — only the types exported from `@satisfactory-dash/shared` and
 whatever REST/WebSocket endpoints `backend/` documents. If you find yourself reaching
 for a type or shape that isn't in `@satisfactory-dash/shared`, that's a signal the
 contract needs to grow, not that this module should special-case a backend detail.

@@ -52,7 +52,7 @@ export function classifyPowerCircuit(circuit: PowerCircuit): PowerCircuitRespons
   if (circuit.fuseTriggered === true) {
     return "outage";
   }
-  // Defense in depth: the adapter validates every field (gameserver/rawSchemas.ts), so
+  // Defense in depth: the snapshot's wire schema validates every field (packages/shared), so
   // this shouldn't fire. If a malformed value ever did slip through, a NaN would make
   // every comparison below silently false and fall through to "ok" -- the worst
   // failure mode for something meant to raise an alarm -- so fail toward at_risk.

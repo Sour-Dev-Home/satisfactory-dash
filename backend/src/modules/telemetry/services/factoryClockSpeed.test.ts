@@ -5,7 +5,7 @@ import type { FactoryBuilding } from "../domain.js";
 import { FactoryOverviewHarness as ProductionService } from "../../../../test-support/factoryOverview.js";
 
 // ADR-0027 amendment 2: the optional `clockSpeedPercent` (FRM's ManuSpeed on the polled path) reaches the factory
-// overview. The adapter's ManuSpeed mapping cases moved to gameserver/frmFactoryMapping.test.ts (ADR-0066 PR 3); the
+// overview. The adapter's ManuSpeed mapping cases went with the adapter (ADR-0066 build PR 7); the
 // inputs here are domain-shaped: the 160 below is what the adapter maps ManuSpeed 160 to.
 
 function adapterFor(...buildings: FactoryBuilding[]) {
