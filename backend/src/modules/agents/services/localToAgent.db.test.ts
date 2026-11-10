@@ -150,4 +150,20 @@ describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting
     expect(await kindOf(leftover.id)).toBe("agent");
     expect(await count("servers.server_connections", leftover.id)).toBe(1);
   });
+
+  // ADR-0066 PR 10a criterion: once PR 10b drops the table, the app must still load, enrol and remove. Last in the file
+  // because it drops the table from this file's database.
+  it("with servers.server_connections dropped, loading, enrolling and removing a server still work", async () => {
+    const server = await localServer();
+    await admin.query("DROP TABLE servers.server_connections");
+
+    const { built, runtime } = await load();
+    expect(built).toContain(server.publicId);
+    expect(runtime.describe(server.publicId)?.kind).toBe("agent");
+    const { code } = await agents().createEnrollmentCode(server.publicId, operatorId);
+    await expect(enrollment().enroll(code, "mod/0.3.0")).resolves.toMatchObject({ serverId: server.publicId });
+    expect(await kindOf(server.id)).toBe("agent");
+    await expect(softDeleteServer(pool, server.publicId)).resolves.toBe(true);
+    expect(await count("servers.server_members", server.id)).toBe(0);
+  });
 });
