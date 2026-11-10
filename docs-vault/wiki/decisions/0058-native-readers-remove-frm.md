@@ -178,13 +178,9 @@ start>/`, full bundles as CI artifacts, and a new row per claim in `wiki/mod-cla
 **Kept:** the driver, snapshot assembly, pusher, world sender, request and response types, the task worker, the mod-test
 harness and recorder, and the `*.expected.json` goldens (our output, used as the native reader's acceptance test).
 
-**The Node agent keeps FRM (decided).** ADR-0057 Decision 1 keeps the agent for hosts where the player controls a process
-(the owner's FRM-as-API-client allowance covers it), and the owner stopped the Linux-specific agent only because the mod
-is to cover Linux (ADR-0057 Decision 8, step 3). So nothing in `packages/game-adapter` or `agent/` is removed by this ADR:
-its FRM adapter paths exist for as long as the agent and the local poller exist, and the agent's users keep installing
-FRM themselves, as today. What changes is that the agent is **frozen on FRM for today's data**: no new FRM endpoint is
-added to the adapter (Decision 7). The agent is retired by its own ADR if the mod ever serves every host it serves;
-that is not proposed here.
+**Superseded by [ADR-0066](./0066-mod-only-retire-node-agent-and-direct-poll.md):** the Node agent, `packages/game-adapter`
+and the local poller are retired. The mod is the only sender; Linux and unmodded hosts have no path until the mod serves them
+(mod #86). (The replaced paragraph, "The Node agent keeps FRM (decided)", is in this file's git history.)
 
 ### 6. The clean-room process
 

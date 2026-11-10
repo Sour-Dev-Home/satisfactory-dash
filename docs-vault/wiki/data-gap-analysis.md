@@ -1,32 +1,46 @@
 # Data gap analysis
 
-Tracks which player-facing metrics are covered by an existing API vs. which require a
-custom mod. Phase 2 spike run 2026-09-21: local dedicated server (GameVersion 1.2.4.0,
-CL 502094) + SML 3.12.0 + FRM 1.5.3, both APIs hit with real requests. See
-`vanilla-dedicated-server-api.md` and `frm-api.md` for the full writeup; this table is
-the summary.
+Tracks which player-facing metrics the SatisDashAgent mod sends, and which it does not yet send. Since ADR-0066 the mod is
+the only data source: the backend never calls the game's HTTPS API or FicsitRemoteMonitoring (FRM), and a server reaches
+the dashboard only through `/agent/v1`. A **gap** here means "the mod does not yet send it"; closing one is a mod change
+(CLAUDE.md ground rule 4), not a new API call in the backend.
 
-| Metric | Source | Status |
-|---|---|---|
-| Production rate per building | FRM `getFactory` (`production[].CurrentProd`/`MaxProd`/`ProdPercent`) | **Covered and live-verified (2026-09-22).** Per minute, clock speed already included, percent on a 0-100 scale; fluids in m³/min matching the game UI. See `frm-api.md`. Gap: `getFactory` gives no per-item solid-vs-fluid flag, so the unit (items/min vs m³/min) can't be labelled reliably yet ([NEEDS VERIFICATION] whether another FRM endpoint provides it). |
-| Overflow (belt backed up) | FRM `getFactory` (`OutputInventory[].Amount` == `MaxAmount`, machine configured and not paused) | **Covered, indirectly; live-checked 2026-09-22.** No direct "belt full" field exists anywhere, including `getBelts`. The original proxy also required `IsProducing: true`, which never matches: a machine with a full output stops producing (71 of 71 full-output machines read `IsProducing: false`). `OutputInventory` lists only non-empty slots, and fluid outputs do appear there, so refineries are probably covered too. [NEEDS VERIFICATION] with a deliberately blocked refinery before relying on it for fluids. |
-| Power outage / deficit | FRM `getPower` (`FuseTriggered`, `PowerConsumed` vs `PowerCapacity`, `PowerMaxConsumed`, battery fields) | **Covered and live-verified (2026-09-22).** MW values match the in-game panel; a tripped fuse reads `FuseTriggered: true` with production/consumption/capacity at 0; battery units confirmed. `getPower` is keyed by circuit *group* (`CircuitGroupID`), which differs from a building's `CircuitID` when a switch is involved. FRM also has a built-in webhook (`DiscIT.OutageJSON`) that could be used instead of/alongside polling — undecided, see `frm-config.md`. |
-| Player position/inventory | FRM `getPlayer` | **Covered.** Schema confirmed from docs; endpoint reachable live (empty, no players connected during the spike). |
-| Server health / uptime | Vanilla HTTPS API `HealthCheck` + `QueryServerState` | **Covered and live-confirmed.** Both hit successfully against the running server; response casing is camelCase in practice (docs show PascalCase) — see `vanilla-dedicated-server-api.md`. |
-| Simulation paused (values frozen) | Vanilla `QueryServerState` (`isGamePaused`) | **Covered and live-verified (2026-09-22).** True when the server's auto-pause has paused the game with no players connected; FRM values are frozen while it is. |
+The source for every row is the mod's native reader, as inventoried in ADR-0058 Decision 1 (rows 1-10) and shipped in mod
+**0.2.0** (ADR-0058 "Done", 2026-11-06: no FRM code, settings or traffic; SML `^3.12.0` its one dependency). The game-side
+facts behind each reader are in `mod-claims.md` and the `raw-sources/` files ADR-0058 cites; the per-reader evidence (parity,
+tick cost, soak) is in ADR-0058. The FRM and vanilla API pages (`frm-api.md`, `vanilla-dedicated-server-api.md`) are kept
+as historical reference and as the parity record.
 
-No row currently needs a custom mod — every stated metric has a documented, reachable
-API source. Open items: the blocked-refinery check for fluid overflow, a per-item
-solid/fluid source for labelling units, and confirming whether FRM's tunneled Game Port
-transport (documented as a fallback) actually works on this version — it returned
-`404` in the 2026-09-21 spike, so the adapter targets FRM's direct Web Server instead
-(see `frm-api.md`).
+## What the mod sends
 
-## Power: FRM `PowerProduction` is base production, not total (#620)
+| Metric | Mod reader (ADR-0058 Decision 1 row) | Contract | Status |
+|---|---|---|---|
+| Server health, running, paused, session, players and limit, tick rate | Status (row 1) | `status.ts` | **Sent.** Proven in S6 (ADR-0058 row 1). |
+| Auto-pause setting, and the `set_auto_pause` command | Server options (row 2) | `agent.ts` settings | **Sent.** Proven (ADR-0058 row 2). |
+| Power: production, consumption, capacity, max consumption, batteries, fuse | Power circuits (row 3) | `power.ts` | **Sent** (R0). Whether `productionMW` is the circuit's total produced or base production on the native path is [NEEDS VERIFICATION]; see the historical note below. |
+| Production rate per building, machine states, clock speed, inventory fullness | Factory machines (row 4, R2a and R2b) | `factory.ts` | **Sent.** Derived values (`state`, backed-up thresholds) stay in the backend (ADR-0058 Decision 1). |
+| Overflow (output backed up) | Factory machines (row 4): inventory slot fullness | `factory.ts` | **Sent, indirectly**, as before: no direct "belt full" fact; the backend derives it from slot fullness. Fluid overflow (a blocked refinery) is still an open item. |
+| Who is connected | Players (row 5): name and online only (ADR-0029) | `players.ts` | **Sent.** |
+| Map: live trains and stations; planner train routes | Trains (rows 6 and 7) | `map.ts` | **Sent.** |
+| Map: resource nodes; planner extractors | Resource nodes (row 8) | `map.ts` | **Sent.** |
+| Map: rails | Rails (row 9) | `map.ts` | **Sent.** |
+| Planner and bottleneck finder: belts, lifts, pipes | Conveyors (row 10) | `map.ts` | **Sent.** |
+
+## Gaps (the mod does not yet send it)
+
+| Gap | Notes |
+|---|---|
+| Any Linux dedicated server | Mod 0.2.0 is a Windows server build only; the Linux build is mod #86. A Linux or unmodded host has no path to the dashboard until then (ADR-0066). |
+| Storage contents, drone routes, truck routes | Planned layers (ADR-0055 PRs 11-12), not parity; ADR-0058 Decision 7 assigns them to the mod. The header facts are in `raw-sources/factorygame-drone-truck-classes-2026-10-25.md`; whether and how the mod reads them is [NEEDS VERIFICATION] until a reader passes its gate. |
+| Fluid overflow (blocked refinery) | Open since the 2026-09-21 spike; no source names a native fact for it yet [NEEDS VERIFICATION]. |
+| A per-item solid/fluid source for labelling units | Open since the 2026-09-21 spike [NEEDS VERIFICATION]. |
+
+## Historical: the FRM path's power production (#620, before ADR-0066)
 
 Owner decision (2026-10-24, option A): the dash's circuit "production" (`productionMW`) is the TOTAL produced, as the
-in-game power graph shows "Produced". It is derived on the FRM path as `max(PowerProduction, PowerConsumed)` per circuit
-group (`packages/game-adapter/src/totalPowerProduction.ts`).
+in-game power graph shows "Produced". On the FRM path it was derived as `max(PowerProduction, PowerConsumed)` per circuit
+group, in `packages/game-adapter` (removed by ADR-0066 PR 7). Nothing reads FRM now; the evidence below is kept because the
+owner's decision (total, not base) still holds for whatever the mod sends.
 
 Evidence (none of it is in `raw-sources/` yet, so all of it is [NEEDS VERIFICATION]):
 
@@ -38,15 +52,8 @@ Evidence (none of it is in `raw-sources/` yet, so all of it is [NEEDS VERIFICATI
   consumed, while the game showed 4 MW produced. The owner's grid read 3,633 base with 1,314 used (base above draw, so
   the total equals base). [NEEDS VERIFICATION: no capture file]
 
-Derivation rule: a circuit cannot consume more than it produces, so `max(base, consumed)` is exact when the grid follows
-demand and when base exceeds the draw. Fits both observations above.
+Battery caveat [NEEDS VERIFICATION]: with batteries, discharge may be counted as production in the game's figure.
 
-Battery caveat [NEEDS VERIFICATION]: with batteries, discharge may be counted as production in the game's figure. The
-same rule is kept; no battery heuristic is invented.
-
-Follow-ups:
-
-- Capture `getPower` + `getGenerators` on a demand-following grid, with and without batteries, into `raw-sources/`, and
-  check the rule against the in-game graph.
-- Exact alternative if the rule proves wrong: sum `getGenerators` `BaseProd` + `RegulatedDemandProd` per circuit
-  (FRM `Power.cpp:382-385`). [NEEDS VERIFICATION]
+Before ADR-0066, the 2026-09-21 Phase 2 spike (game 1.2.4.0, CL 502094, SML 3.12.0, FRM 1.5.3) found every stated metric
+covered by the vanilla API or FRM; that table is in this file's git history and in `frm-api.md` and
+`vanilla-dedicated-server-api.md`.

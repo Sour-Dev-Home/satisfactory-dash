@@ -232,6 +232,11 @@ by the first worker run after the backend starts (the privacy policy's 1-year re
 restored data can be decrypted with the key you backed up: put the backed-up `SERVER_SECRETS_KEY` in the environment,
 point `DATABASE_URL` at the scratch database, and run `npm run admin -- verify-secrets` from `backend\`. It must report
 every connection opened and none unreadable (it prints no token). A key that only exists on this PC is not a backup.
+Since ADR-0066 no server is stored with game tokens any more: the rows left in `servers.server_connections` are the
+converted `local` servers' old sealed tokens, kept only until ADR-0066 PR 10 drops the table. **After PR 10 the
+"stored connection(s) opened" count is 0**, because there is no table to read, so this check has nothing left to verify
+and `verify-secrets` as written today exits 1. The key itself is still needed (it seals the alert webhooks and the web
+push data), so keep its offline backup; how the drill checks it after PR 10 is that PR's to settle.
 
 **Rehearsal record (2026-09-25): passed.** The newest S3 object was decrypted with the offline age key and
 restored into a scratch database. Row counts matched the live database (users 1/1, servers 1/1, members 1/1,
@@ -246,7 +251,8 @@ and the plaintext deleted. The nightly task then ran against B2 with result 0 ("
 bucket is read-only from that day and is deleted, with the `satis-backup` IAM user, on or after **2026-11-02**.
 
 **Secrets check record (2026-09-26):** `verify-secrets` against a scratch restore of the newest B2 backup, using the
-OFFLINE copy of `SERVER_SECRETS_KEY`, passed: 1 stored connection opened, 0 unreadable.
+OFFLINE copy of `SERVER_SECRETS_KEY`, passed: 1 stored connection opened, 0 unreadable. (That count becomes 0 after
+ADR-0066 PR 10 drops `servers.server_connections`; see above.)
 
 To restore for real after a loss, the same steps apply, restoring into a fresh database that the backend
 role owns (or run `npm run db:init -w backend` first for the roles), and only after stopping the backend.

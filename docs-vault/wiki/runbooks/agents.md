@@ -1,7 +1,8 @@
 # Runbook: edge agents (ADR-0031 PR 5a and 5b)
 
-The backend side of the edge agent. The agent program itself is a later PR (ADR-0031 PR 6); this page covers what the
-backend does today, so the pieces can be tried with a hand-made client and operated once the agent exists.
+The backend side of the edge agent. Since ADR-0066 the only sender is the SatisDashAgent mod (ADR-0058); the Node agent
+(ADR-0031 PR 6) is retired and every server is an `agent` server. This page covers what the backend does; the pieces can
+also be tried with a hand-made client.
 
 ## Deploy order
 
@@ -21,19 +22,15 @@ backend does today, so the pieces can be tried with a hand-made client and opera
 
 The agent's secret and a code are never stored or logged in clear. A removed server's rows go with it.
 
-## Enrolling, and what enrolling does to a local server
+## Enrolling
 
 `POST /api/servers/:serverId/agent/enrollment-codes` (owner or admin) makes a code `XXXX-XXXX-XXXX` (12 base32
-characters, 60 bits; #524, ADR-0046 section 4), valid for 10 minutes, single use. **For a server this backend reaches directly (`local`), only the operator can create one**, because
-enrolling deletes the server's stored game-server tokens and makes it an `agent` server (its pollers stop). Saving a
-local connection also drops that server's unspent codes.
+characters, 60 bits; #524, ADR-0046 section 4), valid for 10 minutes, single use. Direct-poll (`local`) servers are gone
+(ADR-0066): PR 5 converted the old `local` rows to `agent`, with history and members kept, and the loader treats any
+leftover `local` row as an `agent` server awaiting the mod, so a code is minted and enrolled the same way for every server.
 
-**Code format change (#524): an already-enrolled agent keeps working, but re-enrolling needs an agent build with this
-change.** Enrolment is the only place a code is used, and an agent's credential is a separate secret, so nothing
-enrolled stops. But the agent checks the code's shape locally before it sends anything, so an older build rejects a
-12-character code ("Usage: agent enroll ...") and never reaches the backend; the backend in turn rejects the old
-8-character form with a 400. Update the agent (and the mod, which pins the same format) before the next enrolment or
-re-enrolment of any server.
+**Code format (#524):** the backend rejects the old 8-character form with a 400. An already-enrolled mod keeps working
+(its credential is a separate secret); a mod build that pins the old format cannot re-enrol until it is updated.
 
 ## Revoking, and the way back
 
@@ -41,8 +38,8 @@ re-enrolment of any server.
 
 **After a revoke the server stays an `agent` server with no data until an agent is enrolled again.** Its live routes
 answer `upstream_unreachable` once the last snapshot is stale, its auto-pause can no longer be changed (`not_editable`),
-and it stays that way until you either create a new enrollment code and enrol an agent, or switch the server back to
-`local` with `POST /api/servers/:serverId/local-connection` ([`servers.md`](./servers.md), ADR-0031 amendment 2).
+and it stays that way until you create a new enrollment code and enrol the mod again. (The old way back, switching the
+server to `local`, was removed by ADR-0066.)
 
 ## Self-serve servers (ADR-0046, #525): shipped dark
 
@@ -93,8 +90,7 @@ It writes `server.deleted` with the owner's user id and `detail: { reason: "owne
 is a plain INSERT, so the same id is a unique violation. **Rename and remove keep working while `SELF_SERVE_ENABLED=false`**
 (intended: the switch stops new servers, and an owner can always delete their data).
 
-A self-serve server is agent-only: the operator's `POST /api/servers/:serverId/local-connection` refuses it with 403
-`forbidden`. The owner's rename and remove, the sweep and the operator's management writes take one shared in-process
+The owner's rename and remove, the sweep and the operator's management writes take one shared in-process
 lock, so their runtime changes never interleave, and every runtime entry added after a commit (a create, an enrolment,
 a first snapshot) is checked against the database again and dropped if the server was removed meanwhile.
 
@@ -124,7 +120,8 @@ The dashboard cannot reach into a player's network, so the auto-pause change of 
 long-poll of up to 25 s that is answered the moment a command exists), runs it and reports a result **code**
 (`POST /agent/v1/commands/:id/result`; never free text). The dashboard follows it with `GET
 /api/servers/:serverId/commands/:commandId`. A command left unanswered for 60 s is `expired` and must not be run; a
-server can have at most 5 open commands. A `local` server still answers `200` with the new setting.
+server can have at most 5 open commands. Every server is an agent server since ADR-0066, so the toggle is always this
+command (`202`).
 
 **Rule for command types (architect, 2026-09-26): commands must be idempotent, and the agent de-duplicates by id.** A
 command that the agent has received but not yet reported (`sent`) is handed out again on every poll until it is reported
@@ -151,7 +148,7 @@ Restarting the backend forgets the reading until the next snapshot.
 A snapshot carries raw readings only. `power` has no circuit `status` and no `hasOutage`; `factory` has no machine
 `state`, no `stateCounts`, no `backedUpCount`, and its rates have no `unit` (`isBackedUp` stays: it is a raw fact that
 needs the output inventory, which only the agent sees). The backend derives all of them at ingest
-(`telemetry/services/snapshotDerive.ts`) with the same rules a polled server uses, so a rule change never needs an agent
+(`telemetry/services/snapshotDerive.ts`) with one set of rules, so a rule change never needs a mod
 update. A field an agent still sends is dropped by the schema and, as a second guard, never copied by the derivation.
 A machine's fuse is joined from the latest power reading by circuit; if that reading is older than three power
 intervals (or none arrived) the fuse is unknown and the machine gets no `state`, never a guess. A stored factory keeps

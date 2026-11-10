@@ -57,21 +57,21 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | Passwords use scrypt (N=2^15, r=8, p=1), a random salt and a constant-time compare; parameters are checked at startup | `identity/passwordHash.ts` | PASS |
 | Session, login-attempt and agent secrets are 32 random bytes stored as SHA-256. Enrolment codes are 60 bits of unbiased base32 | `sessionRepository.ts`, `loginAttemptRepository.ts`, `agents/services/enrollmentCode.ts` | PASS |
 | Web push uses RFC 8291 aes128gcm plus RFC 8292 VAPID, from node:crypto primitives only | `alerts/services/webPushCrypto.ts` | PASS |
-| The agent keeps its secrets with DPAPI (CurrentUser), passed over stdin and never in argv | `agent/src/dpapi.ts` | PASS |
+| ~~The agent keeps its secrets with DPAPI~~: the Node agent is retired (ADR-0066); the mod keeps its own credential | (`agent/` removed) | n/a since ADR-0066 |
 | Backups are age-encrypted, and the database connection supports `verify-full` | `platform/backup/backup.ts`, `platform/db/tlsUrl.ts` | PASS |
-| **Direct (non-agent) game connections on a LAN:** the self-signed cert is trusted for any private host, and the FRM token goes over plain HTTP | `gameserver/connectionConfig.ts`, `game-adapter/src/frmApiClient.ts` (startup warns) | GAP Low, accepted, #562 |
+| **Direct (non-agent) game connections on a LAN:** the self-signed cert was trusted for any private host, and the FRM token went over plain HTTP | removed with direct-poll servers (ADR-0066 PRs 5-7) | closed by ADR-0066 (was GAP Low, #562) |
 
 ## A05 Injection
 
 | Check | Where | Status |
 |---|---|---|
 | All SQL is parameterised, and a guard test fails on interpolated `query(` calls | `sqlGuard.test.ts`, `platform/db/admin.ts` (DDL with `escapeIdentifier`) | PASS |
-| No shell: server-manager and ops use argument arrays with `shell:false` and constant scripts | `server-manager/src/*`, `backend/scripts/*` | PASS |
+| No shell: ops scripts use argument arrays with `shell:false` and constant scripts (the server manager is retired, ADR-0066) | `backend/scripts/*` | PASS |
 | No `dangerouslySetInnerHTML`, innerHTML or eval. Map tooltips are built from text nodes | `frontend/src/map/*Layer.tsx` | PASS |
 | Discord and push payloads are cleaned (`plainAlertText`), with `allowed_mentions.parse = []` | `alerts/services/alertMessage.ts` | PASS |
-| zod checks every boundary: request bodies, agent snapshots, game and FRM responses, backend replies to the agent | `agents/routes/agentApi.ts`, `game-adapter/src/rawSchemas.ts`, `agent/src/backendClient.ts` | PASS |
+| zod checks every boundary: request bodies and the mod's snapshots (no game or FRM responses are read since ADR-0066) | `agents/routes/agentApi.ts` | PASS |
 | **Lookups keyed by external strings use a Map or `Object.create(null)`** | `telemetry/parseGameDocs.ts` uses `Object.create(null)` (branch `chore/561-562-hardening`) | PASS |
-| Logs are structured, with redaction; the agent's log keys are allowlisted | `platform/logger.ts`, `agent/src/logger.ts` | PASS |
+| Logs are structured, with redaction | `platform/logger.ts` | PASS |
 
 ## A06 Insecure Design
 
@@ -129,7 +129,7 @@ Status key: **PASS** holds today, **GAP** needs work (severity and issue), **N/A
 | Retries are bounded (exponential, capped at 30 min, dead after 24 h), and a dead webhook is disabled | `alerts/services/retryPolicy.ts`, `alertDeliveryWorker.ts` | PASS |
 | Missing readings hold the last state, so they never cause flapping | `serverAlertEvaluator.ts` | PASS |
 | Body and snapshot size limits (100 kB, 4 kB, 5 MiB after decompression) | `app.ts`, `agents/routes/agentApi.ts`, `agents/config.ts` | PASS |
-| A fatal handler for unhandled rejections and exceptions: one JSON `fatal` line, a flush, exit 1 (the agent: a no-detail line, exit 1) | `platform/fatalHandlers.ts`, `server.ts`, `agent/src/fatal.ts` | PASS (#560) |
+| A fatal handler for unhandled rejections and exceptions: one JSON `fatal` line, a flush, exit 1 | `platform/fatalHandlers.ts`, `server.ts` | PASS (#560) |
 
 ## Runs
 

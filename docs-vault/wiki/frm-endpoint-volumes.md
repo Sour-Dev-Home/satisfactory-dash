@@ -1,5 +1,7 @@
 # FRM endpoint volumes and coverage (groundwork for #329 and #330)
 
+> **Historical:** nothing reads this API since [ADR-0066](./decisions/0066-mod-only-retire-node-agent-and-direct-poll.md); the mod is the only data source. Kept for reference.
+
 Thirteen FicsitRemoteMonitoring read endpoints captured from the live game server on 2026-09-27 over loopback
 (`GET http://127.0.0.1:8080/<endpoint>`, no token needed), for the Players card (#329) and the map overlays (#330).
 The captures are in `docs-vault/raw-sources/captured-responses/frm-<endpoint>-2026-09-27-*.json`; each file's header

@@ -1,5 +1,7 @@
 # FicsitRemoteMonitoring (FRM) API
 
+> **Historical:** nothing reads this API since [ADR-0066](./decisions/0066-mod-only-retire-node-agent-and-direct-poll.md); the mod is the only data source. Kept for reference.
+
 Summary derived from `docs-vault/raw-sources/frm-read-api.md` and
 `docs-vault/raw-sources/frm-dedicated-server.md` (both captured 2026-09-21 from
 docs.ficsit.app).

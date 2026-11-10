@@ -33,9 +33,9 @@ Fill it in; `.env.example` says what each key is. `.env` is git-ignored: never c
   contains `$`, which compose otherwise reads as a variable (and then the login never matches).
 - `TUNNEL_TOKEN`: only for the `tunnel` profile (see "Switching the tunnel route").
 
-The game-server keys (`SATISFACTORY_*`, `FRM_*`) are deliberately not passed to the backend: in this
-stack servers live in the database and the edge agent pushes their data (`runbooks/servers.md`,
-`runbooks/agent-app.md`).
+No game-server keys are passed to the backend: since ADR-0066 the backend reads none (the old `SATISFACTORY_*` and
+`FRM_*` are gone), servers live in the database and the mod pushes their data (`runbooks/servers.md`,
+`runbooks/agents.md`).
 
 ## Start
 
