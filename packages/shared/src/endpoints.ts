@@ -3,16 +3,10 @@ import { ServerListResponseSchema } from "./servers";
 import {
   CreateAgentServerRequestSchema,
   CreateAgentServerResponseSchema,
-  CreateServerRequestSchema,
   DeleteServerResponseSchema,
   ManagedServerListResponseSchema,
   RenameServerRequestSchema,
-  SwitchToLocalRequestSchema,
   RenameServerResponseSchema,
-  ServerConnectionResponseSchema,
-  TestConnectionRequestSchema,
-  TestConnectionResponseSchema,
-  UpdateServerRequestSchema,
 } from "./serverManagement";
 import { StatusResponseSchema } from "./status";
 import { FactoryResponseSchema } from "./factory";
@@ -297,20 +291,11 @@ export const endpoints = {
       memberSelfService: true,
     },
   },
-  // ADR-0030 phase 1: the operator manages the local servers. Every entry is `operatorOnly`: the
-  // seeded operator account, not merely an owner or admin (a non-operator answers 403, a non-member
-  // of a scoped route 404). Tokens are write-only: requests carry them, responses never do.
+  // ADR-0030 phase 1, narrowed by ADR-0066: the operator manages the servers the mod connects. Every entry is
+  // `operatorOnly`: the seeded operator account, not merely an owner or admin (a non-operator answers 403, a non-member
+  // of a scoped route 404).
   serverManagement: {
-    create: {
-      method: "POST",
-      route: "/api/servers",
-      path: () => "/api/servers",
-      request: CreateServerRequestSchema,
-      response: ServerConnectionResponseSchema,
-      operatorOnly: true,
-    },
-    // Every stored connection, including those the backend is not serving (unreadable or refused).
-    // "managed" is a reserved id, so this is never read as a server.
+    // The servers the mod connects. "managed" is a reserved id, so this is never read as a server.
     list: {
       method: "GET",
       route: "/api/servers/managed",
@@ -318,41 +303,7 @@ export const endpoints = {
       response: ManagedServerListResponseSchema,
       operatorOnly: true,
     },
-    // Try entered values before saving. Not server-scoped (there is no server yet).
-    testConnection: {
-      method: "POST",
-      route: "/api/servers/test-connection",
-      path: () => "/api/servers/test-connection",
-      request: TestConnectionRequestSchema,
-      response: TestConnectionResponseSchema,
-      operatorOnly: true,
-    },
-    // The stored connection for the edit form: host, ports, token set + last 4.
-    get: {
-      method: "GET",
-      route: "/api/servers/:serverId/connection",
-      path: scoped("connection"),
-      response: ServerConnectionResponseSchema,
-      operatorOnly: true,
-    },
-    update: {
-      method: "PATCH",
-      route: "/api/servers/:serverId",
-      path: (serverId: string) => `/api/servers/${encodeURIComponent(serverId)}`,
-      request: UpdateServerRequestSchema,
-      response: ServerConnectionResponseSchema,
-      operatorOnly: true,
-    },
-    // ADR-0031 amendment: an agent server goes back to being read by this backend (the way back from an agent).
-    switchToLocal: {
-      method: "POST",
-      route: "/api/servers/:serverId/local-connection",
-      path: scoped("local-connection"),
-      request: SwitchToLocalRequestSchema,
-      response: ServerConnectionResponseSchema,
-      operatorOnly: true,
-    },
-    // ADR-0031: renames a server reached through an edge agent (it has no stored connection, so `update` cannot).
+    // ADR-0031: renames a server reached through an edge agent.
     renameAgent: {
       method: "PATCH",
       route: "/api/servers/:serverId/name",
@@ -370,14 +321,6 @@ export const endpoints = {
       response: DeleteServerResponseSchema,
       operatorOnly: true,
       selfServeOwner: true,
-    },
-    // Test the stored connection (the tokens are write-only, so the client cannot resend them).
-    testSaved: {
-      method: "POST",
-      route: "/api/servers/:serverId/test-connection",
-      path: scoped("test-connection"),
-      response: TestConnectionResponseSchema,
-      operatorOnly: true,
     },
   },
   // ADR-0046 (self-serve agent servers): any signed-in user (not `operatorOnly`) creates an agent server and becomes its owner.
@@ -551,8 +494,8 @@ export const endpoints = {
       route: "/api/servers/:serverId/settings/auto-pause",
       path: scoped("settings/auto-pause"),
       request: SetAutoPauseRequestSchema,
-      // ADR-0031 PR 3: today's 200 with the setting, OR (for a server reached through an agent) a 202 with the command
-      // to poll. The backend keeps sending 200 until PR 5; a client handles both.
+      // ADR-0031 PR 3, ADR-0066: the backend always answers 202 with the command to poll. The 200 with the setting stays
+      // in the schema only because the demo build's simulated write still answers that way.
       response: SetAutoPauseResponseSchema,
     },
   },

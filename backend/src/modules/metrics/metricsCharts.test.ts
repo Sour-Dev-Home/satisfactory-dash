@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { METRICS_TREND_OVER_MS, MetricsChartsSectionSchema } from "@satisfactory-dash/shared";
-import { buildCharts, chartsBounds } from "./metricsCharts.js";
+import { buildCharts, chartsBounds, TREND_HISTOGRAMS } from "./metricsCharts.js";
 import type { HourlyCounter, HourlyHistogram } from "./metricsRepository.js";
 
 const H = 60 * 60 * 1000;
@@ -72,15 +72,12 @@ describe("buildCharts", () => {
     expect(out.trend.pollLagP95Ms.at(-3)).toBeNull();
   });
 
-  it("splits game-server calls by upstream and ignores an unknown one", () => {
-    const out = available(
-      build([
-        hist(0, "http.server.upstream.duration", at(3), { api: "vanilla" }),
-        hist(0, "http.server.upstream.duration", at(6), { api: "frm" }),
-        hist(0, "http.server.upstream.duration", at(12), { api: "other" }),
-      ]),
-    );
-    expect([out.trend.upstreamP95Ms.vanilla.at(-1), out.trend.upstreamP95Ms.frm.at(-1)]).toEqual([10, 100]);
+  it("has no game-server call series (ADR-0066 PR 8), and an old upstream histogram row changes nothing", () => {
+    const out = available(build([hist(0, "http.server.upstream.duration", at(3), { api: "vanilla" })]));
+    expect(Object.hasOwn(out.trend, "upstreamP95Ms")).toBe(false);
+    expect(TREND_HISTOGRAMS).not.toContain("http.server.upstream.duration");
+    expect(out.trend.dbP95Ms.at(-1)).toBeNull();
+    expect(out.trend.requestMs.p95.at(-1)).toBeNull();
   });
 
   it("fills counters and fired alerts with 0 for quiet hours", () => {

@@ -27,7 +27,11 @@ describe("validateRecording (ADR-0037 §1: a fixed registry, closed-set labels)"
 
   it("refuses a label value outside its allowed set", () => {
     expect(() => validateRecording("http.server.request.duration", "histogram", { route: "/x", status_class: "banana" })).toThrow(InvalidLabelError);
-    expect(() => validateRecording("http.server.upstream.duration", "histogram", { api: "not-a-real-api" })).toThrow(InvalidLabelError);
+    expect(() => validateRecording("db.client.operation.duration", "histogram", { query: "not-a-real-query" })).toThrow(InvalidLabelError);
+  });
+
+  it("no longer knows the game-server call histogram: nothing records it since ADR-0066", () => {
+    expect(() => validateRecording("http.server.upstream.duration", "histogram", { api: "frm" })).toThrow(UnknownMetricError);
   });
 
   it("refuses a label key that shadows an inherited Object.prototype member (no bypass via `in`)", () => {

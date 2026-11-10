@@ -68,7 +68,7 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
     const res = await request(appWith(runtime)).get("/api/servers/managed");
     expect(res.status).toBe(200);
     const body = ManagedServerListResponseSchema.parse(res.body);
-    expect(body.servers).toEqual([]);
+    expect(Object.hasOwn(res.body as object, "servers")).toBe(false);
     expect(body.agentServers).toContainEqual({ id: publicId, displayName: `Name ${publicId}`, kind: "agent" });
   });
 

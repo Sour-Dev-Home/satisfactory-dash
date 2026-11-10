@@ -14,11 +14,10 @@ import { bucketTotal, percentileUpperBound } from "./percentiles.js";
 const HOUR_MS = 60 * 60 * 1000;
 
 export const REQUEST = "http.server.request.duration";
-export const UPSTREAM = "http.server.upstream.duration";
 export const DB = "db.client.operation.duration";
 export const POLL_LAG = "satis.poller.lag";
 export const AGENT_LAG = "satis.agent.ingest.lag";
-export const TREND_HISTOGRAMS = [REQUEST, UPSTREAM, DB, POLL_LAG, AGENT_LAG] as const;
+export const TREND_HISTOGRAMS = [REQUEST, DB, POLL_LAG, AGENT_LAG] as const;
 
 /** The five refused/dropped counters, in the trend's field order. */
 const COUNTER_FIELDS = [
@@ -85,13 +84,9 @@ export function buildCharts(input: ChartsInput): MetricsChartsSection {
   const { points, trendFrom, currentFrom, previousFrom } = chartsBounds(input.window, input.lengthMs, input.nowMs);
   const generatedAt = new Date(input.nowMs).toISOString();
 
-  // Per metric (and per class or upstream where kept), the summed buckets of each hour.
+  // Per metric (and per class where kept), the summed buckets of each hour.
   const requestAll = new Map<number, number[]>();
   const requestClass = new Map<string, Map<number, number>>(CLASSES.map((c) => [c, new Map()]));
-  const upstream = new Map<string, Map<number, number[]>>([
-    ["vanilla", new Map()],
-    ["frm", new Map()],
-  ]);
   const plain = new Map<string, Map<number, number[]>>([
     [DB, new Map()],
     [POLL_LAG, new Map()],
@@ -102,9 +97,6 @@ export function buildCharts(input: ChartsInput): MetricsChartsSection {
       addInto(requestAll, h.hourMs, h.buckets);
       const byHour = requestClass.get(h.statusClass);
       if (byHour) byHour.set(h.hourMs, (byHour.get(h.hourMs) ?? 0) + bucketTotal(h.buckets));
-    } else if (h.metric === UPSTREAM) {
-      const byHour = upstream.get(h.api);
-      if (byHour) addInto(byHour, h.hourMs, h.buckets);
     } else {
       const byHour = plain.get(h.metric);
       if (byHour) addInto(byHour, h.hourMs, h.buckets);
@@ -127,7 +119,6 @@ export function buildCharts(input: ChartsInput): MetricsChartsSection {
     points,
     requests: { c2xx: requestSeries("2xx"), c3xx: requestSeries("3xx"), c4xx: requestSeries("4xx"), c5xx: requestSeries("5xx") },
     requestMs: { p50: msSeries(requestAll, 0.5), p95: msSeries(requestAll, 0.95), p99: msSeries(requestAll, 0.99) },
-    upstreamP95Ms: { vanilla: msSeries(upstream.get("vanilla")!, 0.95), frm: msSeries(upstream.get("frm")!, 0.95) },
     dbP95Ms: msSeries(plain.get(DB)!, 0.95),
     pollLagP95Ms: msSeries(plain.get(POLL_LAG)!, 0.95),
     agentLagP95Ms: msSeries(plain.get(AGENT_LAG)!, 0.95),

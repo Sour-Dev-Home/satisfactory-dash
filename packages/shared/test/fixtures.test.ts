@@ -56,10 +56,7 @@ import {
   HistoryTransitionsResponseSchema,
   ManagedServerListResponseSchema,
   RenameServerRequestSchema,
-  SwitchToLocalRequestSchema,
   RenameServerResponseSchema,
-  ServerConnectionResponseSchema,
-  TestConnectionResponseSchema,
   HealthResponseSchema,
   KnownErrorCode,
   LoginRequestSchema,
@@ -204,14 +201,10 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["autoPauseResponse", SetAutoPauseResponseSchema],
   ["status", StatusResponseSchema],
   ["factory", FactoryResponseSchema],
-  // ADR-0030: the management fixtures. "serverConnection" does not start with "servers", so order does not matter here.
-  ["serverConnection", ServerConnectionResponseSchema],
+  // ADR-0030: the management fixtures.
   ["managedServers", ManagedServerListResponseSchema],
-  ["managedServersWithAgent", ManagedServerListResponseSchema],
   ["renameAgentServerRequest", RenameServerRequestSchema],
-  ["switchToLocalRequest", SwitchToLocalRequestSchema],
   ["renameAgentServerResponse", RenameServerResponseSchema],
-  ["testConnection", TestConnectionResponseSchema],
   ["deleteServer", DeleteServerResponseSchema],
   ["servers", ServerListResponseSchema],
   ["error", ApiErrorResponseSchema],
@@ -308,29 +301,10 @@ describe("server management fixtures (ADR-0030) show what their names say", () =
     expect(fixtures.serversMemberCannotManage.canManageServers).toBe(false);
   });
 
-  it("the managed list has every state, and only the refused one is over the LAN with no suffixes", () => {
-    const states = fixtures.managedServersAllStates.servers.map((server) => server.state);
-    expect(states).toEqual(["ok", "unreadable", "refused"]);
-    const [ok, unreadable, refused] = fixtures.managedServersAllStates.servers;
-    expect([ok.apiTokenLast4, ok.frmTokenLast4]).toEqual(["1a2b", "3c4d"]);
-    expect([unreadable.apiTokenLast4, unreadable.frmTokenLast4]).toEqual([null, null]);
-    expect([refused.apiTokenLast4, refused.plainHttpOverLan]).toEqual([null, true]);
-    expect(fixtures.managedServersEmpty.servers).toEqual([]);
-  });
-
-  it("the connection fixtures are loopback, and the variant has no FRM token", () => {
-    expect(fixtures.serverConnectionOk.server.plainHttpOverLan).toBe(false);
-    expect(fixtures.serverConnectionNoFrmToken.server).toMatchObject({ frmTokenSet: false, frmTokenLast4: null });
-  });
-
-  it("each failed test names the failing side by a stable code", () => {
-    expect(fixtures.testConnectionPassed.ok).toBe(true);
-    expect(fixtures.testConnectionApiUnauthorized.api.error).toBe("unauthorized");
-    expect(fixtures.testConnectionFrmUnreachable.frm.error).toBe("unreachable");
-    expect(fixtures.testConnectionApiInvalidResponse.api.error).toBe("invalid_response");
-    for (const failed of [fixtures.testConnectionApiUnauthorized, fixtures.testConnectionFrmUnreachable, fixtures.testConnectionApiInvalidResponse]) {
-      expect(failed.ok).toBe(false);
-    }
+  it("the managed list holds only agent servers (ADR-0066): empty, or one agent server", () => {
+    expect(fixtures.managedServersEmpty).toEqual({ agentServers: [] });
+    expect(fixtures.managedServersWithAgent.agentServers.map((s) => s.kind)).toEqual(["agent"]);
+    for (const list of [fixtures.managedServersEmpty, fixtures.managedServersWithAgent]) expect(Object.hasOwn(list, "servers")).toBe(false);
   });
 
   it("the error envelopes carry the stable management codes, and none of them names a host, an address or a token", () => {
@@ -561,7 +535,7 @@ describe("endpoints", () => {
     const all = flatEndpoints();
     // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 5 agent
     // endpoints (ADR-0031 PR 3, + world ingest ADR-0038 M3) + the 2 map endpoints (ADR-0038 M3, #353).
-    expect(all.length).toBe(74); // + the 2 agent pairing, 2 dashboard pairing and compat endpoints (ADR-0051, ADR-0057), + the metrics overview and the delivery ingest (ADR-0056), + serverManagement.renameAgent and switchToLocal (ADR-0031), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050), + the 5 plannerDesignations endpoints (ADR-0055, replace in its 2026-10-27 amendment)
+    expect(all.length).toBe(68); // - the 6 direct-poll serverManagement endpoints (ADR-0066 PR 8), + the 2 agent pairing, 2 dashboard pairing and compat endpoints (ADR-0051, ADR-0057), + the metrics overview and the delivery ingest (ADR-0056), + serverManagement.renameAgent and switchToLocal (ADR-0031), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050), + the 5 plannerDesignations endpoints (ADR-0055, replace in its 2026-10-27 amendment)
     for (const [name, endpoint] of all) {
       // The agent API has its own path builders (no server id; agent.test.ts checks them).
       if (name.startsWith("agentApi.")) continue;

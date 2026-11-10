@@ -1,19 +1,11 @@
-import type {
-  ApiErrorResponse,
-  DeleteServerResponse,
-  ManagedServerListResponse,
-  ServerConnection,
-  ServerConnectionResponse,
-  ServerListResponse,
-  TestConnectionResponse,
-} from "../src/index";
+import type { ApiErrorResponse, DeleteServerResponse, ManagedServerListResponse, ServerListResponse } from "../src/index";
 
-// ADR-0030: managing servers (operator only). Invented values only: fake ids, fake token suffixes, and hosts limited
-// to 127.0.0.1 and RFC 1918 examples. Tokens never appear in any response, so none appears here.
+// ADR-0030, narrowed by ADR-0066: managing servers (operator only). Invented values only: fake ids. Since ADR-0066 the
+// managed list holds only the servers the mod connects; the direct-poll connection fixtures are gone with their routes.
 
 // --- the members' list, with the operator flag (GET /api/servers) ---------------------------------------------------
 
-/** The operator: `canManageServers` is true, so the screen offers add, edit and remove. */
+/** The operator: `canManageServers` is true, so the screen offers rename and remove. */
 export const serversOperator = {
   servers: [
     { id: "default", displayName: "Satisfactory server" },
@@ -28,102 +20,18 @@ export const serversMemberCannotManage = {
   canManageServers: false,
 } satisfies ServerListResponse;
 
-// --- one stored connection (GET .../connection, POST /api/servers, PATCH /api/servers/:serverId) ---------------------
+// --- the operator's list (GET /api/servers/managed) ---------------------------------------------------------------------
 
-const connectionOk = {
-  id: "default",
-  displayName: "Satisfactory server",
-  host: "127.0.0.1",
-  apiPort: 7777,
-  frmPort: 8080,
-  apiTokenSet: true,
-  apiTokenLast4: "1a2b",
-  frmTokenSet: true,
-  frmTokenLast4: "3c4d",
-  state: "ok",
-  plainHttpOverLan: false,
-} satisfies ServerConnection;
+export const managedServersEmpty = { agentServers: [] } satisfies ManagedServerListResponse;
 
-/** A loopback server with both tokens set: only the last 4 characters are ever shown. */
-export const serverConnectionOk = { server: connectionOk } satisfies ServerConnectionResponse;
-
-/** FRM runs without a token here (`frmTokenSet: false`, no suffix). */
-export const serverConnectionNoFrmToken = {
-  server: { ...connectionOk, frmTokenSet: false, frmTokenLast4: null },
-} satisfies ServerConnectionResponse;
-
-// --- the operator's list of every stored connection (GET /api/servers/managed) -----------------------------------------
-
-/** All three states: ok, unreadable (tokens cannot be opened; host and ports still shown, no suffixes) and refused
- *  (a stored address the backend will not connect to; `plainHttpOverLan` true because it is not loopback). */
-export const managedServersAllStates = {
-  servers: [
-    connectionOk,
-    {
-      id: "creative-test",
-      displayName: "Creative test world",
-      host: "127.0.0.1",
-      apiPort: 7778,
-      frmPort: 8081,
-      apiTokenSet: true,
-      apiTokenLast4: null,
-      frmTokenSet: true,
-      frmTokenLast4: null,
-      state: "unreadable",
-      plainHttpOverLan: false,
-    },
-    {
-      id: "friends-2",
-      displayName: "Friends' save",
-      host: "192.168.1.20",
-      apiPort: 7777,
-      frmPort: 8080,
-      apiTokenSet: true,
-      apiTokenLast4: null,
-      frmTokenSet: false,
-      frmTokenLast4: null,
-      state: "refused",
-      plainHttpOverLan: true,
-    },
-  ],
-} satisfies ManagedServerListResponse;
-
-export const managedServersEmpty = { servers: [] } satisfies ManagedServerListResponse;
-
-/** ADR-0031: one polled server and one reached through an edge agent, which has no connection fields and only a name to edit. */
+/** ADR-0031: one server reached through an edge agent, which has no connection fields and only a name to edit. */
 export const managedServersWithAgent = {
-  servers: [connectionOk],
   agentServers: [{ id: "factory-two", displayName: "Factory two", kind: "agent" }],
 } satisfies ManagedServerListResponse;
 
 /** PATCH /api/servers/:serverId/name */
 export const renameAgentServerRequest = { displayName: "Factory two (renamed)" };
 export const renameAgentServerResponse = { server: { id: "factory-two", displayName: "Factory two (renamed)", kind: "agent" } };
-
-// --- test connection (POST /api/servers/test-connection and /api/servers/:serverId/test-connection) ---------------------
-
-export const testConnectionPassed = { ok: true, api: { ok: true }, frm: { ok: true } } satisfies TestConnectionResponse;
-
-/** The API token was rejected: the vanilla API answered 401 or 403. */
-export const testConnectionApiUnauthorized = {
-  ok: false,
-  api: { ok: false, error: "unauthorized" },
-  frm: { ok: true },
-} satisfies TestConnectionResponse;
-
-/** FRM did not answer (not running, wrong port, or a firewall). */
-export const testConnectionFrmUnreachable = {
-  ok: false,
-  api: { ok: true },
-  frm: { ok: false, error: "unreachable" },
-} satisfies TestConnectionResponse;
-
-/** The port answers, but not with what the vanilla API returns (something else is listening there). */
-export const testConnectionApiInvalidResponse = {
-  ok: false,
-  api: { ok: false, error: "invalid_response" },
-  frm: { ok: true },
-} satisfies TestConnectionResponse;
 
 // --- remove (DELETE /api/servers/:serverId) ------------------------------------------------------------------------------
 
@@ -195,9 +103,6 @@ export const errorConnectionUnreadable = {
     requestId: "00000000-0000-4000-8000-000000000027",
   },
 } satisfies ApiErrorResponse;
-
-/** POST /api/servers/:serverId/local-connection: the way back from an agent (ADR-0031 amendment). The answer is `serverConnection`. */
-export const switchToLocalRequest = { host: "127.0.0.1", apiPort: 7777, frmPort: 8080, apiToken: "api-token-abcdef123456", frmToken: "frm-token-abcdef123456" };
 
 /** 409: the server is not reached through an agent, so there is nothing to switch back from. */
 export const errorServerNotAgent = {

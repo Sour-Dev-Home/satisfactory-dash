@@ -89,13 +89,13 @@ describe("the deleted direct-poll routes (ADR-0066 build PR 6)", () => {
 });
 
 describe("GET /api/servers/managed", () => {
-  it("is not read as a server id: the operator gets `servers: []` and the agent servers, a non-operator 403, no session 401", async () => {
+  it("is not read as a server id: the operator gets the agent servers (no `servers` field), a non-operator 403, no session 401", async () => {
     const service = fakeService();
     const app = build(service);
     const ok = await send(app, "get", "/api/servers/managed", OPERATOR);
     expect(ok.status).toBe(200);
+    expect(Object.keys(ok.body as object)).toEqual(["agentServers"]);
     const parsed = ManagedServerListResponseSchema.parse(ok.body);
-    expect(parsed.servers).toEqual([]);
     expect(parsed.agentServers).toEqual([{ id: "agent-one", displayName: "Agent One", kind: "agent" }]);
     expect(Object.keys(parsed.agentServers![0]!).sort()).toEqual(["displayName", "id", "kind"]); // nothing of a connection
     const refused = await send(app, "get", "/api/servers/managed", OTHER);

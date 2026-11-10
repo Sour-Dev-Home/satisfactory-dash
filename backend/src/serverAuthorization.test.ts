@@ -67,11 +67,10 @@ import type { Method } from "../test-support/scopedEndpoints.js";
 // /commands/:commandId`), so nothing is exempt any more: the generated tests cover every scoped route.
 // ADR-0047 (#311 task 2a) added `members.leave` to the contract before its route; task 2b mounted it, so nothing is
 // exempt again. Leave is a member's own write (`memberSelfService`), and the owner is refused with 409 would_orphan.
-// ADR-0066 build PR 6 deleted the backend's direct-poll management routes; the contract keeps their entries until build
-// PR 8 (ground rule 6). They are not mounted, so they are left out of the generated tests and checked below to be 404s.
-const DELETED_ON_BACKEND = new Set(["serverManagement.get", "serverManagement.update", "serverManagement.switchToLocal", "serverManagement.testSaved"]);
-const CONTRACT_SCOPED = scopedEndpoints(endpoints);
-const SCOPED = CONTRACT_SCOPED.filter((e) => !DELETED_ON_BACKEND.has(e.name));
+// ADR-0066 build PR 6 deleted the backend's direct-poll management routes and build PR 8 their contract entries, so
+// nothing is exempt: the generated tests cover every scoped route in the contract (the old paths' 404s are checked in
+// serverManagementRouter.test.ts).
+const SCOPED = scopedEndpoints(endpoints);
 const RULE_ID = "3f0c2a1e-7b4d-4c8a-9e51-1a2b3c4d5e04";
 const urlFor = (route: string, serverId: string) =>
   route.replace(":serverId", serverId).replace(":ruleId", RULE_ID).replace(":commandId", "cmd-1").replace(":layer", "rails").replace(":designationId", plannerDesignationIronLine.id);
@@ -470,30 +469,9 @@ describe("the selfServeOwner endpoints", () => {
 });
 
 describe("the operator-only endpoints in the contract", () => {
-  it("are exactly the server-management ones, and the generated tests cover the scoped ones still mounted", () => {
-    const operatorOnlyNames = CONTRACT_SCOPED.filter((e) => e.operatorOnly).map((e) => e.name).sort();
-    expect(operatorOnlyNames).toEqual([
-      "serverManagement.get",
-      "serverManagement.remove",
-      "serverManagement.renameAgent",
-      "serverManagement.switchToLocal",
-      "serverManagement.testSaved",
-      "serverManagement.update",
-    ]);
+  it("are exactly the scoped server-management ones, and the generated tests cover them", () => {
     expect(SCOPED.filter((e) => e.operatorOnly).map((e) => e.name).sort()).toEqual(["serverManagement.remove", "serverManagement.renameAgent"]);
-    expect(CONTRACT_SCOPED.filter((e) => !e.operatorOnly).some((e) => e.name.startsWith("serverManagement"))).toBe(false);
-  });
-});
-
-// ADR-0066 build PR 6: the deleted direct-poll routes are not mounted. Every caller, the operator included, gets a 404
-// with the shared envelope; nothing is read or written. (Their contract entries go in build PR 8.)
-describe.each(CONTRACT_SCOPED.filter((e) => DELETED_ON_BACKEND.has(e.name)))("deleted: $method $route ($name)", ({ name, method, route }) => {
-  const app = buildApp();
-
-  it.each([OPERATOR, OWNER, OUTSIDER])("answers %s with a 404", async (user) => {
-    const res = await call(app, name, method, urlFor(route, "alpha"), user);
-    expect(res.status).toBe(404);
-    expect(["not_found", "server_not_found"]).toContain(ApiErrorResponseSchema.parse(res.body).error.code);
+    expect(SCOPED.filter((e) => !e.operatorOnly).some((e) => e.name.startsWith("serverManagement"))).toBe(false);
   });
 });
 

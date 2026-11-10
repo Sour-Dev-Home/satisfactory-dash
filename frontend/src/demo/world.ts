@@ -67,10 +67,8 @@ export const servers: ServerListResponse = {
   canManageServers: true,
 };
 
-// ADR-0066: every server connects through the mod, so the demo server is an agent server and no stored
-// connection is listed (`servers` stays in the contract, empty, until the contract PR removes it).
+// ADR-0066: every server connects through the mod, so the demo server is an agent server.
 export const managedServers: ManagedServerListResponse = {
-  servers: [],
   agentServers: [{ id: DEMO_SERVER_ID, displayName: "Demo factory", kind: "agent" }],
 };
 

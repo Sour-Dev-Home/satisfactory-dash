@@ -35,9 +35,9 @@ import type { SelfServeService } from "./selfServe.js";
  * - `scoped`: the routes under /servers/:serverId. Mount AFTER the servers router, so its membership
  *   check runs first (a non-member gets the same 404 as an unknown server, a viewer's write a 403).
  *
- * ADR-0066: direct polling is retired. The managed list sends `servers: []` (the field is still required by the contract
- * until build PR 8). The direct-poll routes (create, get, update, test-connection, test the saved connection, switch to
- * local) answered 410 for one release (build PR 5) and are deleted (build PR 6): a call to one now falls through to the
+ * ADR-0066: direct polling is retired. The managed list sends the agent servers only (the `servers` field left the
+ * contract in build PR 8). The direct-poll routes (create, get, update, test-connection, test the saved connection, switch
+ * to local) answered 410 for one release (build PR 5) and are deleted (build PR 6): a call to one now falls through to the
  * app's normal 404. The write routes are rate limited per user.
  *
  * #526 (ADR-0046 section 1.8): the two routes the contract flags `selfServeOwner` (rename an agent server, remove) also
@@ -114,9 +114,9 @@ export function createServerManagementRouters(
   // "managed" is a reserved server id, and this router is mounted before the servers router, so the
   // list is never read as GET /servers/:serverId.
   collection.get(routePath(list.route), operatorOnly, async (_req, res) => {
-    // ADR-0066 Decision 8 step A: no server has a stored connection any more; `servers` stays, empty, until the contract PR.
+    // ADR-0066 Decision 8 Step B: every server is reached through the mod, so the list is the agent servers only.
     const agentServers = await orUnavailable(() => service.listAgentServers());
-    sendValidated(res, ManagedServerListResponseSchema, { servers: [], agentServers });
+    sendValidated(res, ManagedServerListResponseSchema, { agentServers });
   });
 
   const scoped = Router();

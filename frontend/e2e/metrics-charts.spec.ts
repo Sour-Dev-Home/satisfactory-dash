@@ -15,7 +15,7 @@ test("the metrics charts load one chunk, only on the metrics page, and draw unde
   expect(chunks, "chart chunk requested on the Overview").toEqual([]);
 
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Metrics" }).click();
-  await expect(page.locator(".trend-chart canvas")).toHaveCount(7);
+  await expect(page.locator(".trend-chart canvas")).toHaveCount(6);
   expect(chunks).toHaveLength(1);
 
   // Hover the latency chart: the legend shows bucket bounds in words.

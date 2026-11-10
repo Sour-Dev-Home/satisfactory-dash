@@ -322,8 +322,9 @@ export const CommandResponseSchema = z.object({ command: CommandSchema });
 
 /**
  * The auto-pause PUT's ADDITIVE 202: for a server reached through an agent the change is a command, so the answer is the
- * command (poll `GET /commands/:commandId`), not the new setting. The backend keeps answering 200 with the setting
- * (`SettingsResponseSchema`) until PR 5; a client handles both.
+ * command (poll `GET /commands/:commandId`), not the new setting. Since ADR-0066 the backend always answers 202. The 200
+ * member (the setting, `SettingsResponseSchema`) is kept only for the demo build, whose simulated write still answers 200
+ * (ADR-0066 Decision 8 lists it for removal; it goes once the demo simulates a command).
  */
 export const CommandAcceptedResponseSchema = z.object({ command: CommandSchema });
 export const SetAutoPauseResponseSchema = z.union([SettingsResponseSchema, CommandAcceptedResponseSchema]);

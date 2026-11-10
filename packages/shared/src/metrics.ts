@@ -220,7 +220,6 @@ export const MetricsTrendSchema = z
     points: z.number().int().min(1).max(METRICS_TREND_MAX_POINTS),
     requests: z.object({ c2xx: requestSeries, c3xx: requestSeries, c4xx: requestSeries, c5xx: requestSeries }),
     requestMs: z.object({ p50: msSeries, p95: msSeries, p99: msSeries }),
-    upstreamP95Ms: z.object({ vanilla: msSeries, frm: msSeries }),
     dbP95Ms: msSeries,
     pollLagP95Ms: msSeries,
     agentLagP95Ms: msSeries,
@@ -235,7 +234,6 @@ export const MetricsTrendSchema = z
     const series: [string, readonly unknown[]][] = [
       ...Object.entries(t.requests).map(([k, v]) => [`requests.${k}`, v] as [string, readonly unknown[]]),
       ...Object.entries(t.requestMs).map(([k, v]) => [`requestMs.${k}`, v] as [string, readonly unknown[]]),
-      ...Object.entries(t.upstreamP95Ms).map(([k, v]) => [`upstreamP95Ms.${k}`, v] as [string, readonly unknown[]]),
       ["dbP95Ms", t.dbP95Ms],
       ["pollLagP95Ms", t.pollLagP95Ms],
       ["agentLagP95Ms", t.agentLagP95Ms],

@@ -239,7 +239,8 @@ describe("trend chart specs", () => {
   });
 
   it("covers every trend in the contract, one chart each", () => {
-    expect([...specs.keys()]).toEqual(["requests", "request-latency", "upstream", "database", "lag", "refused"]);
+    // No game-server call chart since ADR-0066 PR 8: the backend never calls a game server.
+    expect([...specs.keys()]).toEqual(["requests", "request-latency", "database", "lag", "refused"]);
     expect(specs.get("refused")?.series).toHaveLength(5);
     expect(specs.get("refused")?.summary).toBe("2 in all: agent uploads refused 2.");
     expect(alertsChartSpec(metricsChartsDay.trend).summary).toBe("4 alerts fired in 4 hours.");
