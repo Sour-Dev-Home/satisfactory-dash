@@ -1,0 +1,4 @@
+- **The landing page drops its Overview still** (owner, 2026-11-09: the walkthrough video shows the same factory).
+  - `Hero` gets a `preview` prop that defaults to true; `Landing` passes false.
+  - The demo gate (`DemoEntry`) has no video, so it keeps the still, along with `overview-preview.png` and its asset script.
+  - `Landing.test.tsx` now checks there is no still on the landing page.

@@ -93,7 +93,7 @@ test.describe("production build", () => {
     expect(manifest.icons.length).toBeGreaterThanOrEqual(2);
     for (const { src } of manifest.icons) expect(files).toContain(join(DIST, src));
     expect(files).toContain(join(DIST, PREVIEW.src));
-    // The landing's largest paint: keep it light (the asset script checks the same budget).
+    // The demo gate's still (the landing page dropped it for the video): keep it light (the asset script checks the same budget).
     expect(statSync(join(DIST, PREVIEW.src)).size).toBeLessThan(200 * 1024);
   });
 });

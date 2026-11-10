@@ -6,8 +6,20 @@ import { PREVIEW } from "./preview";
  * The landing page's and the demo gate's opening (#444): the logo, one sentence on what Satis Manager
  * does, its actions, and the Overview still below. Static and presentational: no queries, no auth.
  * Nothing in it animates in: the text is the first paint, and the still keeps its box while it loads.
+ * `preview` false leaves the still out: the landing page shows the walkthrough video of the same factory instead
+ * (owner, 2026-11-09); the demo gate, which has no video, keeps it.
  */
-export function Hero({ headingId, title, children }: { headingId: string; title: ReactNode; children: ReactNode }) {
+export function Hero({
+  headingId,
+  title,
+  children,
+  preview = true,
+}: {
+  headingId: string;
+  title: ReactNode;
+  children: ReactNode;
+  preview?: boolean;
+}) {
   return (
     <div className="grid gap-8">
       <section aria-labelledby={headingId} className="grid max-w-3xl justify-items-start gap-5">
@@ -23,6 +35,7 @@ export function Hero({ headingId, title, children }: { headingId: string; title:
         </h2>
         {children}
       </section>
+      {preview && (
       <figure className="m-0 grid gap-2">
         <img
           src={PREVIEW.src}
@@ -36,6 +49,7 @@ export function Hero({ headingId, title, children }: { headingId: string; title:
         />
         <figcaption className="text-sm text-muted">The Overview, from the live demo's made-up factory.</figcaption>
       </figure>
+      )}
     </div>
   );
 }
