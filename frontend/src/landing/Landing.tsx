@@ -39,6 +39,7 @@ export function Landing() {
     <div className="grid gap-12 pt-2 sm:pt-6">
       <Hero
         headingId="landing-heading"
+        preview={false}
         title="A live dashboard for your Satisfactory dedicated server: power, production and machine health."
       >
         <div className="flex flex-wrap items-center gap-3">
