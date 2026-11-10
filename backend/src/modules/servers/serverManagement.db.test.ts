@@ -135,6 +135,5 @@ describe.skipIf(!available)("server management against a real Postgres", () => {
     expect((await pool.query("SELECT connection_kind, display_name FROM servers.servers WHERE id = $1", [id])).rows).toEqual([
       { connection_kind: "agent", display_name: `Name ${publicId}` },
     ]);
-    expect((await pool.query("SELECT 1 FROM servers.server_connections WHERE server_id = $1", [id])).rowCount).toBe(0);
   });
 });

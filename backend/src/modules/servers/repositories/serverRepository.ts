@@ -208,8 +208,7 @@ const DELETE_HISTORY = [
   "DELETE FROM agents.commands WHERE server_id = $1",
   // #516 (ADR-0045 "Retention"): the saved world layers and the push opt-ins also belong to the server, so a revived
   // id must not inherit them either. Every table that references servers.servers (migrations) is on this list:
-  // server_members above (ADR-0066 PR 10a: nothing touches the retired servers.server_connections, which PR 10b
-  // drops); telemetry (5 tables), alerts (rules and alert_state, alert_events,
+  // server_members above (the retired servers.server_connections was dropped in ADR-0066 PR 10b); telemetry (5 tables), alerts (rules and alert_state, alert_events,
   // server_mutes, destinations and outbox, push_optins), agents (4 tables), map.world_layers and map.factory_designations here. The audit trail
   // keeps its server_id on purpose. metrics.series_hourly has no server_id column, but a `server` label holds
   // the public id until the 90-day purge (a random id, not personal on its own; ADR-0056 section 5).
@@ -278,8 +277,8 @@ const SWITCH_TO_AGENT = `
   RETURNING public_id`;
 
 /**
- * ADR-0031 PR 5a: a server is now reached through an agent. Its kind becomes 'agent' (ADR-0066 PR 10a: it no longer
- * touches the retired `servers.server_connections`), and it returns the public id, or undefined when the server is
+ * ADR-0031 PR 5a: a server is now reached through an agent. Its kind becomes 'agent' (the retired
+ * `servers.server_connections` was dropped in ADR-0066 PR 10b), and it returns the public id, or undefined when the server is
  * unknown or removed (nothing is written then). The caller runs it in the enrolment transaction, so the switch, the
  * credential and the audit event commit together.
  */

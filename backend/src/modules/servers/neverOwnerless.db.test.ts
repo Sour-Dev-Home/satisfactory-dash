@@ -116,20 +116,12 @@ describe.skipIf(!available)("a live server is never ownerless (database trigger)
   });
 
   // ADR-0066: the startup seed loads every stored server as one awaiting (or running) the mod; these rows are leftover
-  // `local` ones with a stored connection, which is never read.
+  // `local` ones (their stored connections went with servers.server_connections in build PR 10b).
   const buildAgent = ({ publicId, displayName }: { publicId: string; displayName: string }) => ({ id: publicId, displayName, services: "agent", workers: [] });
-  // ADR-0066 build PR 6: the write path is gone, so the leftover row goes in directly. Its ciphertext is never opened.
-  const storeLeftoverConnection = (serverId: string, ip: string) =>
-    app.query(
-      `INSERT INTO servers.server_connections (server_id, host, pinned_ip, api_port, frm_port, api_token_enc, key_id)
-       VALUES ($1, 'gaming-pc.lan', $2::inet, 7777, 8080, $3, 'k1')`,
-      [serverId, ip, Buffer.alloc(40, 1)],
-    );
 
   it("the startup seed only adds owners, still works, and reports each seeded server with source startup_seed", async () => {
     const operator = await user();
     const server = await upsertConfiguredServer(app, { publicId: "nov-seeded", displayName: "Seeded" });
-    await storeLeftoverConnection(server.id, "192.168.1.20");
     const load = () => loadDatabaseServers({ db: app, runtime: new ServerRuntime<string>(), operatorUserId: operator, buildAgent });
     expect((await load()).ownershipSeeded).toEqual(["nov-seeded"]);
     expect(await getMemberRole(app, { publicId: "nov-seeded", userId: operator })).toBe("owner");
@@ -176,7 +168,6 @@ describe.skipIf(!available)("a live server is never ownerless (database trigger)
     const [operator, realOwner] = [await user(), await user()];
     const server = await upsertConfiguredServer(app, { publicId: "nov-owned", displayName: "Owned" });
     await addMember(app, { serverId: server.id, userId: realOwner, role: "owner", actorUserId: null });
-    await storeLeftoverConnection(server.id, "192.168.1.21");
     const res = await loadDatabaseServers({ db: app, runtime: new ServerRuntime<string>(), operatorUserId: operator, buildAgent });
     expect(res.ownershipSeeded).not.toContain("nov-owned");
     expect(await getMemberRole(app, { publicId: "nov-owned", userId: realOwner })).toBe("owner");

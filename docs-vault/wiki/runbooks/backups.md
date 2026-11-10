@@ -234,8 +234,9 @@ run `npm run admin -- verify-secrets` from `backend\`. It prints one line for th
 and one for the web-push subscriptions (`alerts.push_subscriptions`): how many opened and how many could not (row and
 key id only, never a value). It must report none unreadable, and it exits 1 if there is nothing sealed at all (then the
 drill proves nothing about the key: set a webhook on a server first). A key that only exists on this PC is not a backup.
-The old "stored connection(s) opened" count is gone: since PR 10a nothing reads `servers.server_connections` (the
-converted `local` servers' old sealed tokens), and PR 10b drops that table.
+The old "stored connection(s) opened" count is gone: since PR 10a nothing read `servers.server_connections` (the
+converted `local` servers' old sealed tokens), and PR 10b dropped that table. A backup taken before PR 10b still holds it;
+a restore of one brings the table back unread, and the next deploy's migration drops it again.
 
 **Rehearsal record (2026-09-25): passed.** The newest S3 object was decrypted with the offline age key and
 restored into a scratch database. Row counts matched the live database (users 1/1, servers 1/1, members 1/1,

@@ -21,8 +21,8 @@
 
 ## The key: `SERVER_SECRETS_KEY`
 
-It seals the alert webhooks (`alerts.destinations`) and the web-push data (`alerts.push_subscriptions`). Since ADR-0066
-PR 10a nothing reads the old sealed tokens left in `servers.server_connections`; PR 10b drops that table.
+It seals the alert webhooks (`alerts.destinations`) and the web-push data (`alerts.push_subscriptions`). The old sealed
+game tokens are gone: nothing read `servers.server_connections` after ADR-0066 PR 10a, and PR 10b dropped that table.
 
 - 32 random bytes as base64. PowerShell 7: `[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))`
   (or `openssl rand -base64 32`).
@@ -51,4 +51,4 @@ The nightly backup covers these tables, encrypted twice over (values sealed by t
 restore rehearsal runs `npm run admin -- verify-secrets` against the scratch database (see `backups.md`): since ADR-0066
 PR 10a it opens every alert webhook (`alerts.destinations`) and web-push subscription (`alerts.push_subscriptions`) with
 the backed-up key and prints how many of each opened and which rows could not (row and key id, never a value), exiting
-1 if any cannot be opened or there are none at all. It no longer reads `servers.server_connections`.
+1 if any cannot be opened or there are none at all. `servers.server_connections`, which it used to read, was dropped in ADR-0066 PR 10b.

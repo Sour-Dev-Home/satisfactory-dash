@@ -33,7 +33,7 @@ const kinds = (log: { text: string }[]) =>
     if (text.includes("UPDATE agents.enrollment_codes")) return "consume";
     if (text.includes("INSERT INTO agents.agent_credentials")) return "credential";
     if (text.includes("SET connection_kind = 'agent'")) return "switch";
-    // ADR-0066 PR 10a: nothing may touch the retired table (PR 10b drops it); a statement that does shows up here.
+    // ADR-0066: the table was dropped in PR 10b, so nothing may touch it; a statement that does shows up here.
     if (text.includes("servers.server_connections")) return "touches-connections";
     if (text.includes("INSERT INTO audit.audit_events")) return "audit";
     if (text.includes("FOR NO KEY UPDATE")) return "lock";
