@@ -18,10 +18,11 @@ const available = dbTestsAvailable();
 const CADENCE = { statusSeconds: 5, powerSeconds: 5, factorySeconds: 30 };
 const MIGRATION = fileURLToPath(new URL("../../../../migrations/1792540800000_local_servers_to_agent.sql", import.meta.url));
 
-// ADR-0066 Decision 7 step 1 (build PR 5), against a real Postgres: direct polling is retired, so a `local` server becomes
+// ADR-0066 Decision 7, against a real Postgres. Step 1 (build PR 5): direct polling is retired, so a `local` server becomes
 // an agent server awaiting the mod. The migration converts the live rows; the loader treats a leftover one (a backup
-// restored from before it) the same way. History, members, alert rules and the stored connection stay; the operator
-// then mints an enrolment code and the mod enrols.
+// restored from before it) the same way. History, members and alert rules stay; the operator then mints an enrolment code
+// and the mod enrols. Step 2 (build PR 10b) dropped `servers.server_connections`, so the migrated schema has no stored
+// connection at all.
 describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting the mod", () => {
   let db: TestDatabase;
   let pool: pg.Pool;
@@ -44,15 +45,10 @@ describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting
     await db?.drop();
   });
 
-  /** A `local` server as a build before ADR-0066 left it: a stored connection, two members, history and an alert rule. */
+  /** A `local` server as a build before ADR-0066 left it: two members, history and an alert rule. */
   const localServer = async () => {
     const publicId = `lta-${++counter}`;
     const server = await upsertConfiguredServer(pool, { publicId, displayName: `Local ${publicId}` });
-    await admin.query(
-      `INSERT INTO servers.server_connections (server_id, host, pinned_ip, api_port, frm_port, api_token_enc, key_id)
-       VALUES ($1, '127.0.0.1', '127.0.0.1', 7777, 8080, decode(repeat('ab', 40), 'hex'), 'k1')`,
-      [server.id],
-    );
     await addMember(pool, { serverId: server.id, userId: operatorId, role: "owner", actorUserId: null });
     await addMember(pool, { serverId: server.id, userId: viewerId, role: "viewer", actorUserId: null });
     await admin.query(
@@ -88,7 +84,15 @@ describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting
   const enrollment = () =>
     createEnrollmentService({ db: pool, cadence: () => CADENCE, logger: createLogger({ level: "silent" }, { write: () => {} }), attachAgentRuntime: async () => {} });
 
-  it("the migration converts every live `local` row to `agent`, keeping history, members, rules and the sealed tokens; a removed row is left as it is", async () => {
+  it("the migrated schema has no servers.server_connections (ADR-0066 PR 10b) and keeps connection_kind", async () => {
+    expect((await admin.query("SELECT to_regclass('servers.server_connections') AS t")).rows[0].t).toBeNull();
+    const column = await admin.query(
+      "SELECT 1 FROM information_schema.columns WHERE table_schema = 'servers' AND table_name = 'servers' AND column_name = 'connection_kind'",
+    );
+    expect(column.rowCount).toBe(1);
+  });
+
+  it("the migration converts every live `local` row to `agent`, keeping history, members and rules; a removed row is left as it is", async () => {
     const live = await localServer();
     const removed = await localServer();
     await softDeleteServer(pool, removed.publicId);
@@ -102,16 +106,13 @@ describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting
     expect(await getMemberRole(pool, { publicId: live.publicId, userId: viewerId })).toBe("viewer");
     expect(await count("telemetry.power_samples", live.id)).toBe(2);
     expect(await count("alerts.rules", live.id)).toBe(1);
-    // Kept, unread, until the owner-gated contract step (build PR 10) drops the table: the step stays reversible.
-    expect(await count("servers.server_connections", live.id)).toBe(1);
     // Running it again changes nothing.
     await migrate();
     expect(await kindOf(live.id)).toBe("agent");
   });
 
-  // ADR-0066 PR 10a: enrolment and removal leave a leftover stored connection alone (nothing touches the table any more),
-  // which is what makes PR 10b's DROP safe for a rollback to this image.
-  it("a converted server loads as one awaiting the mod, can be enrolled and removed, and its stored connection is left alone throughout", async () => {
+  // With the migrated schema (the table dropped), the app still loads, enrols and soft-deletes a converted server.
+  it("a converted server loads as one awaiting the mod, can be enrolled and removed", async () => {
     const server = await localServer();
     await migrate();
     const { built, runtime } = await load();
@@ -121,19 +122,17 @@ describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting
     const { code } = await agents().createEnrollmentCode(server.publicId, operatorId);
     await expect(enrollment().enroll(code, "mod/0.3.0")).resolves.toMatchObject({ serverId: server.publicId });
     expect(await kindOf(server.id)).toBe("agent");
-    expect(await count("servers.server_connections", server.id)).toBe(1);
     // Its history and members are the same server's still.
     expect(await count("telemetry.power_samples", server.id)).toBe(2);
     expect(await getMemberRole(pool, { publicId: server.publicId, userId: viewerId })).toBe("viewer");
 
-    // Removing it purges what the server recorded and its members, but not the retired table.
+    // Removing it purges what the server recorded and its members.
     await expect(softDeleteServer(pool, server.publicId)).resolves.toBe(true);
     expect(await count("servers.server_members", server.id)).toBe(0);
     expect(await count("telemetry.power_samples", server.id)).toBe(0);
-    expect(await count("servers.server_connections", server.id)).toBe(1);
   });
 
-  it("a leftover `local` row (a backup restored from before the migration) loads the same way, its connection never read, and can be enrolled", async () => {
+  it("a leftover `local` row (a backup restored from before the migration) loads the same way and can be enrolled", async () => {
     await migrate(); // what a newer backend's database has run; this row is written after it, as a restore would leave it
     const leftover = await localServer();
     expect(await kindOf(leftover.id)).toBe("local");
@@ -144,26 +143,9 @@ describe.skipIf(!available)("a direct-poll (`local`) server becomes one awaiting
     expect(await count("telemetry.power_samples", leftover.id)).toBe(2);
     expect(await getMemberRole(pool, { publicId: leftover.publicId, userId: viewerId })).toBe("viewer");
 
-    // Enrolling on a `local` row is the operator's; enrolment makes it an agent server and leaves the old row alone.
+    // Enrolling on a `local` row is the operator's; enrolment makes it an agent server.
     const { code } = await agents().createEnrollmentCode(leftover.publicId, operatorId);
     await expect(enrollment().enroll(code, "mod/0.3.0")).resolves.toMatchObject({ serverId: leftover.publicId });
     expect(await kindOf(leftover.id)).toBe("agent");
-    expect(await count("servers.server_connections", leftover.id)).toBe(1);
-  });
-
-  // ADR-0066 PR 10a criterion: once PR 10b drops the table, the app must still load, enrol and remove. Last in the file
-  // because it drops the table from this file's database.
-  it("with servers.server_connections dropped, loading, enrolling and removing a server still work", async () => {
-    const server = await localServer();
-    await admin.query("DROP TABLE servers.server_connections");
-
-    const { built, runtime } = await load();
-    expect(built).toContain(server.publicId);
-    expect(runtime.describe(server.publicId)?.kind).toBe("agent");
-    const { code } = await agents().createEnrollmentCode(server.publicId, operatorId);
-    await expect(enrollment().enroll(code, "mod/0.3.0")).resolves.toMatchObject({ serverId: server.publicId });
-    expect(await kindOf(server.id)).toBe("agent");
-    await expect(softDeleteServer(pool, server.publicId)).resolves.toBe(true);
-    expect(await count("servers.server_members", server.id)).toBe(0);
   });
 });

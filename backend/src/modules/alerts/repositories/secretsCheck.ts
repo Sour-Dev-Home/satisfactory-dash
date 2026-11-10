@@ -7,8 +7,8 @@ import { openPushSubscription } from "../services/pushSender.js";
 import { openWebhook } from "./deliveryRepository.js";
 
 /**
- * ADR-0066 PR 10a: what `npm run admin -- verify-secrets` (the restore drill) opens now that the retired
- * `servers.server_connections` is no longer read. Every value `SERVER_SECRETS_KEY` seals: the Discord webhooks
+ * ADR-0066: what `npm run admin -- verify-secrets` (the restore drill) opens now that the retired
+ * `servers.server_connections` is gone (no longer read since PR 10a, dropped in PR 10b). Every value `SERVER_SECRETS_KEY` seals: the Discord webhooks
  * (`alerts.destinations`) and the web-push subscriptions (`alerts.push_subscriptions`). It reports counts and the ids and
  * key ids of rows that cannot be opened, never a value.
  */
