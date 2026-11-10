@@ -5,8 +5,7 @@ import type { ItemSampleRow, TransitionRow } from "./repositories/historyReposit
  * ADR-0066 Decision 5: the pure factory-state helpers the agent path and the polled path share. `isBackedUp` and
  * `areInputsFull` came from the game-adapter package (through gameserver's facade), `sumItemRates` and
  * `diffDecidedStates` from the polled `services/factoryHistoryPoller.ts`; they live here so the agent path imports
- * neither. The adapter keeps its own copy of the first two for its shape mapping until it goes;
- * `services/inputsFull.parity.test.ts` holds the two copies to the same answers.
+ * neither. Build PR 7 removed the package and its copy of the first two; this is the only copy.
  */
 
 /** A poll that turns up more transitions than this drops the rest: a mass change (a reload, a tripped grid) is noise. */

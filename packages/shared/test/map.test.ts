@@ -296,7 +296,7 @@ describe("map fixtures independently recomputed from the raw FRM captures (fresh
   ];
   const rawRailYCentimetres = -150400;
 
-  // M2's mapper (game-adapter) collapses consecutive duplicate points after rounding — the game's
+  // M2's mapper (the since-removed game-adapter) collapsed consecutive duplicate points after rounding — the game's
   // spline is far finer than a whole metre, so several adjacent raw points round to the same
   // value. This fixture represents that mapper's real output, so the recomputation dedupes too.
   it("rails: recomputing x/100 rounded to the nearest whole metre, with consecutive duplicates collapsed, matches the fixture exactly", () => {

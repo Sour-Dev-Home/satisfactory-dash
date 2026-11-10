@@ -1,8 +1,8 @@
 /**
  * The map module's public API (ADR-0014, ADR-0038 M3, #353): the map's world layers
  * (rails, resourceNodes — stored, latest only) and mapLive (trains, stations — read-through,
- * never stored). Reaches game data only through gameserver's facade (never the game-adapter
- * package directly) and resolves servers only through servers' index.ts.
+ * never stored). Its game data is what the mod pushes (ADR-0066), and it resolves servers only
+ * through servers' index.ts.
  */
 export { createWorldRoutes } from "./routes/worldRoutes.js";
 export type { WorldRoutesDeps } from "./routes/worldRoutes.js";

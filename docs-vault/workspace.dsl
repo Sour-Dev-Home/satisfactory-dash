@@ -73,14 +73,8 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
                         "code" "modules/map"
                     }
                 }
-                gameserver = component "gameserver" "Thin facade over the game-adapter package, plus the backend-only config (environment and servers file); no Express." "TypeScript" {
-                    properties {
-                        "code" "modules/gameserver"
-                    }
-                }
             }
 
-            gameAdapter = container "game-adapter package" "packages/game-adapter (ADR-0031 PR 2): the vanilla HTTPS API and FRM clients, raw zod schemas and the adapter for ONE game server. Imports only shared, zod and node; the backend uses it through gameserver, and the edge agent uses it directly." "TypeScript"
             agent = container "Edge agent" "The SatisDashAgent mod (ADR-0058, ADR-0066; the Node agent in agent/ is retired): runs inside a player's game server, reads it natively, pushes snapshots outbound over /agent/v1 and executes commands." "Unreal Engine mod (SML)"
             database = container "Database" "Users, sessions, servers, memberships, audit events (ADR-0025); agents, commands and latest snapshots (ADR-0020); history, world layers, alert log and metrics series." "PostgreSQL 18" "Database"
             provisioning = container "Provisioning service" "Creates and manages paid game servers as async jobs (ADR-0014)." "Node.js, TypeScript" "planned"
@@ -89,8 +83,6 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         # Current relationships
         owner -> satis.spa "Uses" "HTTPS"
         satis.spa -> satis.api "Calls the API" "HTTPS JSON, HttpOnly session cookie"
-        satis.api -> game "Reads server state; writes auto-pause" "Game HTTPS API :7777, application token" "direct-game-access"
-        satis.api -> game "Reads factory, power and buildings" "FRM HTTP API :8080 (loopback), FRM token" "direct-game-access"
         github -> satis "Builds, tests and deploys" "GitHub Actions, Workers Builds"
         satis.api -> discord "Delivers alerts" "HTTPS webhook"
         satis.api -> pushServices "Delivers alerts" "Web Push (RFC 8030), VAPID"
@@ -125,29 +117,21 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
         satis.api.agents -> satis.api.telemetry "Hands each snapshot to an agent server's telemetry services" "In-process call"
         satis.api.agents -> satis.api.servers "Switches a server to the agent connection kind" "In-process call"
         satis.api.agents -> satis.api.platform "Uses" "In-process call" "platform-use"
-        satis.api.root -> satis.api.gameserver "Wires" "In-process call" "wiring"
         satis.api.root -> satis.api.map "Wires" "In-process call" "wiring"
-        satis.api.map -> satis.api.gameserver "Reads the mapped world types" "In-process call"
         satis.api.map -> satis.api.servers "Resolves the requested server" "In-process call"
         satis.api.map -> satis.api.platform "Uses" "In-process call" "platform-use"
-        satis.api.telemetry -> satis.api.gameserver "Reads through ports" "In-process call"
         satis.api.telemetry -> satis.api.servers "Resolves the requested server" "In-process call"
-        satis.api.settings -> satis.api.gameserver "Reads and writes via ServerOptionsPort" "In-process call"
         satis.api.settings -> satis.api.servers "Resolves the requested server" "In-process call"
         satis.api.identity -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.servers -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.telemetry -> satis.api.platform "Uses" "In-process call" "platform-use"
         satis.api.settings -> satis.api.platform "Uses" "In-process call" "platform-use"
-        satis.api.gameserver -> satis.api.platform "Uses error types" "In-process call" "platform-use"
         satis.api.root -> satis.api.platform "Uses" "In-process call" "platform-use"
-        satis.api.gameserver -> satis.gameAdapter "Uses" "In-process call"
-        satis.gameAdapter -> game "Calls the game and FRM APIs" "HTTPS :7777, HTTP :8080 (loopback)"
 
         player -> satis.spa "Uses" "HTTPS"
         satis.api -> google "Signs users in" "OpenID Connect"
         satis.api -> satis.database "Reads and writes" "SQL over TCP"
         satis.agent -> satis.api "Pushes snapshots and world layers; polls commands" "HTTPS, outbound only"
-        satis.agent -> game "Reads state and data; applies commands" "HTTPS and HTTP (loopback)"
 
         # Planned relationships (ADR-0014, ADR-0017)
         satis.provisioning -> satis.database "Records provisioning jobs" "SQL" "planned"
@@ -186,12 +170,10 @@ workspace "Satis Manager" "Live monitoring dashboard for Satisfactory dedicated 
             b2 = deploymentNode "Backblaze B2" "Off-site: a different provider from the hosting (ADR-0035)." "Backblaze" {
                 bucket = infrastructureNode "Backup bucket" "Private; Object Lock, 30 days; encrypted dumps kept up to 37 days." "Backblaze B2"
             }
-            pc = deploymentNode "Owner's gaming PC" "Runs only the game and the edge agent; no inbound ports open." "Windows" {
-                agentNode = deploymentNode "Edge agent" "The mod, loaded by the game server; outbound only (ADR-0031, ADR-0066)." "Satisfactory dedicated server" {
-                    agentInstance = containerInstance satis.agent
-                }
-                gameNode = deploymentNode "Dedicated server process" "Game server with the FRM mod; FRM listens on loopback only." "Satisfactory 1.x" {
+            pc = deploymentNode "Owner's gaming PC" "Runs only the game server and its mod; no inbound ports open." "Windows" {
+                gameNode = deploymentNode "Dedicated server process" "The game server; it loads the mod, which pushes outbound only (ADR-0058, ADR-0066)." "Satisfactory 1.x" {
                     gameInstance = softwareSystemInstance game
+                    agentInstance = containerInstance satis.agent
                 }
             }
             cloudflare.edge -> amazon.vpc.task.tunnel "Routes API traffic over the tunnel cloudflared opened" "Cloudflare Tunnel"

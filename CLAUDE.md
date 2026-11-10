@@ -98,7 +98,7 @@ and Satisfactory's EULA directly — don't assume either is settled.
 
 ## Stack (current)
 
-npm workspaces monorepo: `frontend`, `backend`, `packages/shared`, `packages/game-adapter`. One install, one
+npm workspaces monorepo: `frontend`, `backend`, `packages/shared`. One install, one
 lockfile, one `node_modules` at the root (workspace packages are symlinked in).
 
 - `frontend/` — Vite + React + TypeScript SPA. Plain client-side React (hooks,
@@ -106,9 +106,6 @@ lockfile, one `node_modules` at the root (workspace packages are symlinked in).
 - `backend/` — Express + TypeScript API server, bundled by `esbuild` into a single
   self-contained `dist/server.cjs` (no `node_modules` needed at runtime). Has a
   `Dockerfile` for portability to Render/Railway/AWS ECS later.
-- `packages/game-adapter/` — the vanilla-API and FRM clients, raw schemas and adapter for
-  one game server (ADR-0031 PR 2). Source-only; imports only shared, zod and node; the
-  backend uses it through `modules/gameserver/`, and the edge agent will lift it.
 - `packages/shared/` — TypeScript types shared between `frontend` and `backend`
   (the API contract). Source-only, no build step.
 

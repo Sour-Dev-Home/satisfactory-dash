@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Every npm workspace, in the order the root scripts run them. A test checks this against package.json. */
-export const WORKSPACES = ["packages/shared", "packages/game-adapter", "frontend", "backend"];
+export const WORKSPACES = ["packages/shared", "frontend", "backend"];
 
 /** Files that decide how the tests run rather than what they test: any change runs everything. */
 export const SETUP = [
@@ -44,7 +44,7 @@ export const SETUP = [
  */
 export const INPUTS = [
   // captured responses the tests replay; frontend/src/planner/graph/itemIcons.test.ts checks their item classes have icons
-  [/^docs-vault\/raw-sources\//, ["packages/game-adapter", "backend", "frontend"]],
+  [/^docs-vault\/raw-sources\//, ["backend", "frontend"]],
   // frontend/src/planner/graph/itemIcons.test.ts checks every mapped class is a real item class against it
   [/^backend\/src\/modules\/telemetry\/itemForms\.generated\.json$/, ["frontend"]],
   [/^load\//, ["backend", "load"]], // backend/scripts/load-seed.ts imports load/lib

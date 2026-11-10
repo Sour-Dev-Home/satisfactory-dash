@@ -1,0 +1,491 @@
+{
+  "01-running": [
+    {
+      "id": "Build_AssemblerMk1_C_2147069774",
+      "name": "Assembler",
+      "className": "Build_AssemblerMk1_C",
+      "recipe": "Reinforced Iron Plate",
+      "isProducing": false,
+      "isPaused": false,
+      "production": [
+        {
+          "name": "Reinforced Iron Plate",
+          "className": "Desc_IronPlateReinforced_C",
+          "currentPerMinute": 0,
+          "maxPerMinute": 5,
+          "percent": 0
+        }
+      ],
+      "consumption": [
+        {
+          "name": "Iron Plate",
+          "className": "Desc_IronPlate_C",
+          "currentPerMinute": 0,
+          "maxPerMinute": 30,
+          "percent": 0
+        },
+        {
+          "name": "Screws",
+          "className": "Desc_IronScrew_C",
+          "currentPerMinute": 0,
+          "maxPerMinute": 60,
+          "percent": 0
+        }
+      ],
+      "outputInventory": [
+        {
+          "name": "Reinforced Iron Plate",
+          "className": "Desc_IronPlateReinforced_C",
+          "amount": 100,
+          "maxAmount": 100
+        }
+      ],
+      "inputInventory": [
+        {
+          "name": "Iron Plate",
+          "className": "Desc_IronPlate_C",
+          "amount": 200,
+          "maxAmount": 200
+        },
+        {
+          "name": "Screws",
+          "className": "Desc_IronScrew_C",
+          "amount": 500,
+          "maxAmount": 500
+        }
+      ],
+      "circuitGroupId": 0,
+      "powerConsumed": 0.10000000149011612,
+      "maxPowerConsumed": 15,
+      "fuseTriggered": false,
+      "location": {
+        "xM": -436,
+        "yM": -1439,
+        "zM": 118.000087890625,
+        "rotationDeg": 180
+      },
+      "clockSpeedPercent": 100
+    },
+    {
+      "id": "Build_AssemblerMk1_C_2147397136",
+      "name": "Assembler",
+      "className": "Build_AssemblerMk1_C",
+      "recipe": "Alternate: Coated Iron Canister",
+      "isProducing": false,
+      "isPaused": false,
+      "production": [
+        {
+          "name": "Empty Canister",
+          "className": "Desc_FluidCanister_C",
+          "currentPerMinute": 5.647059440612793,
+          "maxPerMinute": 60,
+          "percent": 9.411765734354654
+        }
+      ],
+      "consumption": [
+        {
+          "name": "Iron Plate",
+          "className": "Desc_IronPlate_C",
+          "currentPerMinute": 2.8235297203063965,
+          "maxPerMinute": 30,
+          "percent": 9.411765734354654
+        },
+        {
+          "name": "Copper Sheet",
+          "className": "Desc_CopperSheet_C",
+          "currentPerMinute": 1.4117648601531982,
+          "maxPerMinute": 15,
+          "percent": 9.411765734354654
+        }
+      ],
+      "outputInventory": [
+        {
+          "name": "Empty Canister",
+          "className": "Desc_FluidCanister_C",
+          "amount": 98,
+          "maxAmount": 100
+        }
+      ],
+      "inputInventory": [
+        {
+          "name": "Iron Plate",
+          "className": "Desc_IronPlate_C",
+          "amount": 200,
+          "maxAmount": 200
+        },
+        {
+          "name": "Copper Sheet",
+          "className": "Desc_CopperSheet_C",
+          "amount": 200,
+          "maxAmount": 200
+        }
+      ],
+      "circuitGroupId": 0,
+      "powerConsumed": 0.10000000149011612,
+      "maxPowerConsumed": 15,
+      "fuseTriggered": false,
+      "location": {
+        "xM": -400,
+        "yM": -1488,
+        "zM": 82.0001171875,
+        "rotationDeg": 180
+      },
+      "clockSpeedPercent": 100
+    },
+    {
+      "id": "Build_AssemblerMk1_C_2146597364",
+      "name": "Assembler",
+      "className": "Build_AssemblerMk1_C",
+      "recipe": "Stator",
+      "isProducing": true,
+      "isPaused": false,
+      "production": [
+        {
+          "name": "Stator",
+          "className": "Desc_Stator_C",
+          "currentPerMinute": 5,
+          "maxPerMinute": 5,
+          "percent": 100
+        }
+      ],
+      "consumption": [
+        {
+          "name": "Steel Pipe",
+          "className": "Desc_SteelPipe_C",
+          "currentPerMinute": 15,
+          "maxPerMinute": 15,
+          "percent": 100
+        },
+        {
+          "name": "Wire",
+          "className": "Desc_Wire_C",
+          "currentPerMinute": 40,
+          "maxPerMinute": 40,
+          "percent": 100
+        }
+      ],
+      "outputInventory": [],
+      "inputInventory": [
+        {
+          "name": "Steel Pipe",
+          "className": "Desc_SteelPipe_C",
+          "amount": 118,
+          "maxAmount": 200
+        },
+        {
+          "name": "Wire",
+          "className": "Desc_Wire_C",
+          "amount": 49,
+          "maxAmount": 500
+        }
+      ],
+      "circuitGroupId": 0,
+      "powerConsumed": 15,
+      "maxPowerConsumed": 15,
+      "fuseTriggered": false,
+      "location": {
+        "xM": 576,
+        "yM": -679,
+        "zM": 140,
+        "rotationDeg": 270
+      },
+      "clockSpeedPercent": 100
+    },
+    {
+      "id": "Build_AssemblerMk1_C_2147356083",
+      "name": "Assembler",
+      "className": "Build_AssemblerMk1_C",
+      "recipe": "Stator",
+      "isProducing": false,
+      "isPaused": false,
+      "production": [
+        {
+          "name": "Stator",
+          "className": "Desc_Stator_C",
+          "currentPerMinute": 1.9764708280563354,
+          "maxPerMinute": 8,
+          "percent": 24.705885350704193
+        }
+      ],
+      "consumption": [
+        {
+          "name": "Steel Pipe",
+          "className": "Desc_SteelPipe_C",
+          "currentPerMinute": 5.929412364959717,
+          "maxPerMinute": 24,
+          "percent": 24.705884853998818
+        },
+        {
+          "name": "Wire",
+          "className": "Desc_Wire_C",
+          "currentPerMinute": 15.811766624450684,
+          "maxPerMinute": 64,
+          "percent": 24.705885350704193
+        }
+      ],
+      "outputInventory": [
+        {
+          "name": "Stator",
+          "className": "Desc_Stator_C",
+          "amount": 100,
+          "maxAmount": 100
+        }
+      ],
+      "inputInventory": [
+        {
+          "name": "Steel Pipe",
+          "className": "Desc_SteelPipe_C",
+          "amount": 200,
+          "maxAmount": 200
+        },
+        {
+          "name": "Wire",
+          "className": "Desc_Wire_C",
+          "amount": 500,
+          "maxAmount": 500
+        }
+      ],
+      "circuitGroupId": 0,
+      "powerConsumed": 0.10000000149011612,
+      "maxPowerConsumed": 27.92051124572754,
+      "fuseTriggered": false,
+      "location": {
+        "xM": 582,
+        "yM": -619,
+        "zM": 140,
+        "rotationDeg": 90
+      },
+      "clockSpeedPercent": 160
+    },
+    {
+      "id": "Build_AssemblerMk1_C_2145959128",
+      "name": "Assembler",
+      "className": "Build_AssemblerMk1_C",
+      "recipe": null,
+      "isProducing": false,
+      "isPaused": false,
+      "production": [],
+      "consumption": [],
+      "outputInventory": [],
+      "inputInventory": [],
+      "circuitGroupId": 0,
+      "powerConsumed": 0.10000000149011612,
+      "maxPowerConsumed": 15,
+      "fuseTriggered": false,
+      "location": {
+        "xM": -1957,
+        "yM": -1056,
+        "zM": 86,
+        "rotationDeg": 90
+      },
+      "clockSpeedPercent": 100
+    },
+    {
+      "id": "Build_ConstructorMk1_C_2147160359",
+      "name": "Constructor",
+      "className": "Build_ConstructorMk1_C",
+      "recipe": "Quickwire",
+      "isProducing": false,
+      "isPaused": false,
+      "production": [
+        {
+          "name": "Quickwire",
+          "className": "Desc_HighSpeedWire_C",
+          "currentPerMinute": 0,
+          "maxPerMinute": 60,
+          "percent": 0
+        }
+      ],
+      "consumption": [
+        {
+          "name": "Caterium Ingot",
+          "className": "Desc_GoldIngot_C",
+          "currentPerMinute": 0,
+          "maxPerMinute": 12,
+          "percent": 0
+        }
+      ],
+      "outputInventory": [],
+      "inputInventory": [],
+      "circuitGroupId": -1,
+      "powerConsumed": 0,
+      "maxPowerConsumed": 0,
+      "fuseTriggered": false,
+      "location": {
+        "xM": -142,
+        "yM": -1128,
+        "zM": 112.0001171875,
+        "rotationDeg": 0
+      },
+      "clockSpeedPercent": 100
+    },
+    {
+      "id": "Build_OilRefinery_C_2146613066",
+      "name": "Refinery",
+      "className": "Build_OilRefinery_C",
+      "recipe": "Fuel",
+      "isProducing": true,
+      "isPaused": false,
+      "production": [
+        {
+          "name": "Fuel",
+          "className": "Desc_LiquidFuel_C",
+          "currentPerMinute": 40,
+          "maxPerMinute": 40,
+          "percent": 100
+        },
+        {
+          "name": "Polymer Resin",
+          "className": "Desc_PolymerResin_C",
+          "currentPerMinute": 30,
+          "maxPerMinute": 30,
+          "percent": 100
+        }
+      ],
+      "consumption": [
+        {
+          "name": "Crude Oil",
+          "className": "Desc_LiquidOil_C",
+          "currentPerMinute": 60,
+          "maxPerMinute": 60,
+          "percent": 100
+        }
+      ],
+      "outputInventory": [
+        {
+          "name": "Fuel",
+          "className": "Desc_LiquidFuel_C",
+          "amount": 3.1999998092651367,
+          "maxAmount": 50
+        }
+      ],
+      "inputInventory": [
+        {
+          "name": "Crude Oil",
+          "className": "Desc_LiquidOil_C",
+          "amount": 50,
+          "maxAmount": 50
+        }
+      ],
+      "circuitGroupId": 0,
+      "powerConsumed": 30,
+      "maxPowerConsumed": 30,
+      "fuseTriggered": false,
+      "location": {
+        "xM": -328,
+        "yM": -1909,
+        "zM": 48.0000439453125,
+        "rotationDeg": 180
+      },
+      "clockSpeedPercent": 100
+    }
+  ],
+  "CJ-norecipe-fuse": [
+    {
+      "id": "Build_OilRefinery_C_2147458064",
+      "name": "Refinery",
+      "className": "Build_OilRefinery_C",
+      "recipe": null,
+      "isProducing": false,
+      "isPaused": false,
+      "production": [],
+      "consumption": [],
+      "outputInventory": [],
+      "inputInventory": [],
+      "circuitGroupId": 1,
+      "powerConsumed": 0,
+      "maxPowerConsumed": 30,
+      "fuseTriggered": true,
+      "location": {
+        "xM": -1849,
+        "yM": -1133,
+        "zM": 48.00008437196724,
+        "rotationDeg": 0
+      },
+      "clockSpeedPercent": 100
+    },
+    {
+      "id": "Build_ConstructorMk1_C_2147456649",
+      "name": "Constructor",
+      "className": "Build_ConstructorMk1_C",
+      "recipe": null,
+      "isProducing": false,
+      "isPaused": false,
+      "production": [],
+      "consumption": [],
+      "outputInventory": [],
+      "inputInventory": [],
+      "circuitGroupId": -1,
+      "powerConsumed": 0,
+      "maxPowerConsumed": 0,
+      "fuseTriggered": false,
+      "location": {
+        "xM": -1834,
+        "yM": -1143,
+        "zM": 48.000070718452335,
+        "rotationDeg": 180
+      },
+      "clockSpeedPercent": 100
+    },
+    {
+      "id": "Build_OilRefinery_C_2146846128",
+      "name": "Refinery",
+      "className": "Build_OilRefinery_C",
+      "recipe": "Plastic",
+      "isProducing": true,
+      "isPaused": false,
+      "production": [
+        {
+          "name": "Plastic",
+          "className": "Desc_Plastic_C",
+          "currentPerMinute": 20,
+          "maxPerMinute": 20,
+          "percent": 100
+        },
+        {
+          "name": "Heavy Oil Residue",
+          "className": "Desc_HeavyOilResidue_C",
+          "currentPerMinute": 10,
+          "maxPerMinute": 10,
+          "percent": 100
+        }
+      ],
+      "consumption": [
+        {
+          "name": "Crude Oil",
+          "className": "Desc_LiquidOil_C",
+          "currentPerMinute": 30,
+          "maxPerMinute": 30,
+          "percent": 100
+        }
+      ],
+      "outputInventory": [
+        {
+          "name": "Plastic",
+          "className": "Desc_Plastic_C",
+          "amount": 1,
+          "maxAmount": 200
+        }
+      ],
+      "inputInventory": [
+        {
+          "name": "Crude Oil",
+          "className": "Desc_LiquidOil_C",
+          "amount": 50,
+          "maxAmount": 50
+        }
+      ],
+      "circuitGroupId": 0,
+      "powerConsumed": 30,
+      "maxPowerConsumed": 30,
+      "fuseTriggered": false,
+      "location": {
+        "xM": -389,
+        "yM": -1894,
+        "zM": 48.000126953125,
+        "rotationDeg": 90
+      },
+      "clockSpeedPercent": 100
+    }
+  ]
+}

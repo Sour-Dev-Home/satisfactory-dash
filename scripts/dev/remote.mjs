@@ -128,7 +128,7 @@ export function parseTestArgs(argv) {
 }
 
 /** The workspaces to test: the ones asked for, else backend for --db, else every workspace that has tests. */
-export const ALL_WORKSPACES = ["packages/shared", "packages/game-adapter", "frontend", "backend"];
+export const ALL_WORKSPACES = ["packages/shared", "frontend", "backend"];
 export function workspacesFor({ workspaces, db }) {
   if (workspaces.length) return workspaces;
   return db ? ["backend"] : ALL_WORKSPACES;

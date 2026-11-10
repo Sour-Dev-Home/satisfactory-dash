@@ -24,14 +24,14 @@ api = container "Backend API" {
             "code" "modules/telemetry"
         }
     }
-    gameserver = component "gameserver" "x" "TypeScript" {
+    servers = component "servers" "x" "TypeScript" {
         properties {
-            "code" "modules/gameserver"
+            "code" "modules/servers"
         }
     }
 }
 satis.api.root -> satis.api.telemetry "Wires" "call" "wiring"
-satis.api.telemetry -> satis.api.gameserver "Reads" "call"
+satis.api.telemetry -> satis.api.servers "Reads" "call"
 satis.api.telemetry -> satis.api.platform "Uses" "call" "platform-use"
 satis.spa -> satis.api.telemetry "Reads" "HTTPS"
 satis.api -> game "Reads" "HTTPS"
@@ -42,7 +42,7 @@ test("parseWorkspace keeps only edges between Backend API components, keyed by c
   assert.equal(codes.get("root"), "root");
   assert.equal(codes.get("telemetry"), "modules/telemetry");
   assert.deepEqual([...edges].sort(), [
-    "modules/telemetry->modules/gameserver",
+    "modules/telemetry->modules/servers",
     "modules/telemetry->platform",
     "root->modules/telemetry",
   ]);
@@ -70,11 +70,11 @@ const mod = (source, ...deps) => ({
 
 test("codeEdges collapses file imports to component edges and ignores same-component and external ones", () => {
   const { edges, problems } = codeEdges([
-    mod("backend/src/modules/telemetry/a.ts", "backend/src/modules/telemetry/b.ts", "backend/src/modules/gameserver/index.ts"),
-    mod("backend/src/modules/gameserver/index.ts", "backend/src/platform/errors.ts", { module: "zod", resolved: "node_modules/zod/index.js" }),
+    mod("backend/src/modules/telemetry/a.ts", "backend/src/modules/telemetry/b.ts", "backend/src/modules/servers/index.ts"),
+    mod("backend/src/modules/servers/index.ts", "backend/src/platform/errors.ts", { module: "zod", resolved: "node_modules/zod/index.js" }),
     mod("net", "node:fs"),
   ]);
-  assert.deepEqual([...edges].sort(), ["modules/gameserver->platform", "modules/telemetry->modules/gameserver"]);
+  assert.deepEqual([...edges].sort(), ["modules/servers->platform", "modules/telemetry->modules/servers"]);
   assert.deepEqual(problems, []);
 });
 
@@ -103,7 +103,6 @@ test("the committed workspace.dsl gives every backend component a code mapping a
   assert.deepEqual([...codes.values()].sort(), [
     "modules/agents",
     "modules/alerts",
-    "modules/gameserver",
     "modules/identity",
     "modules/map",
     "modules/metrics",
@@ -114,15 +113,17 @@ test("the committed workspace.dsl gives every backend component a code mapping a
     "root",
   ]);
   assert.ok(edges.has("root->platform"));
-  assert.ok(edges.has("modules/telemetry->modules/gameserver"));
+  assert.ok(edges.has("modules/telemetry->modules/servers"));
+  // ADR-0066 build PR 7: the gameserver module and the game-adapter package are gone from the model too.
+  assert.ok(![...edges].some((e) => e.includes("gameserver")));
 });
 
 test("parseWorkspace ignores commented-out relationships and declarations, and tolerates CRLF", () => {
   const dsl = `${DSL}
-// satis.api.gameserver -> satis.api.platform "Uses" "call"
-# satis.api.gameserver -> satis.api.telemetry "Uses" "call"
+// satis.api.servers -> satis.api.platform "Uses" "call"
+# satis.api.servers -> satis.api.telemetry "Uses" "call"
 /*
-satis.api.gameserver -> satis.api.root "Uses" "call"
+satis.api.servers -> satis.api.root "Uses" "call"
 ghost = component "ghost" "x" "TS" {
     properties {
         "code" "modules/ghost"

@@ -88,17 +88,15 @@ test("the retired agent and server-manager workspaces (ADR-0066) are gone from t
 });
 
 test("dependents follow the package.json graph", () => {
-  assert.deepEqual(pick("packages/game-adapter/src/index.ts").workspaces, ["packages/game-adapter", "backend"]);
+  // ADR-0066 build PR 7: with the game-adapter package gone, a change to the contract still selects both consumers.
+  assert.deepEqual(pick("packages/shared/src/index.ts").workspaces, ["packages/shared", "frontend", "backend"]);
+  assert.equal(pick("packages/game-adapter/src/index.ts").workspaces.includes("packages/game-adapter"), false);
   assert.deepEqual([...withDependents(["x"], new Map([["y", ["x"]], ["z", ["y"]]]))].sort(), ["x", "y", "z"]);
 });
 
 test("inputs outside a workspace select the workspaces that read them", () => {
   assert.deepEqual(pick("frontend/src/index.css").workspaces, ["frontend"]);
-  assert.deepEqual(pick("docs-vault/raw-sources/captured-responses/x.json").workspaces, [
-    "packages/game-adapter",
-    "frontend",
-    "backend",
-  ]);
+  assert.deepEqual(pick("docs-vault/raw-sources/captured-responses/x.json").workspaces, ["frontend", "backend"]);
   assert.ok(pick("backend/src/modules/telemetry/itemForms.generated.json").workspaces.includes("frontend"));
   assert.deepEqual(pick("LICENSE").workspaces, ["frontend"]);
   const load = outputs(pick("scripts/load-report.mjs"));
@@ -203,11 +201,11 @@ test("readGraph finds undeclared and type-only imports of scoped and unscoped wo
     };
     for (const dir of WORKSPACES) put(`${dir}/package.json`, JSON.stringify({ name: dir === "backend" ? "backend" : `@x/${dir.replace("/", "-")}` }));
     put("frontend/src/a.ts", `import type { T } from "backend/src/types";`); // unscoped, type-only, undeclared
-    put("packages/game-adapter/src/a.ts", "const s = await import(`@x/packages-shared`);"); // template literal
+    put("backend/src/a.ts", "const s = await import(`@x/packages-shared`);"); // template literal
     put("packages/shared/src/a.ts", `export const kind = "backend";`); // a bare word is not an import
     const graph = readGraph(tmp);
     assert.deepEqual(graph.get("frontend"), ["backend"]);
-    assert.deepEqual(graph.get("packages/game-adapter"), ["packages/shared"]);
+    assert.deepEqual(graph.get("backend"), ["packages/shared"]);
     assert.deepEqual(graph.get("packages/shared"), []);
     assert.ok(select(["backend/src/x.ts"], graph).workspaces.includes("frontend"));
   } finally {

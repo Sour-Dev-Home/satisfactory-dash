@@ -26,8 +26,8 @@ export interface WorldIngestPort {
  * "Conform, don't reject" (docs-vault/wiki/runbooks/agent-app.md): an over-cap item COUNT is
  * truncated to `MAP_WORLD_MAX_ITEMS` (`truncated: true`), never rejected outright; then EACH
  * surviving item is re-validated against its layer's per-item schema
- * (`MAP_WORLD_LAYER_ITEM_SCHEMAS`) — defense in depth against a local poller or a stale agent
- * sending something the game-adapter mappers didn't already filter — and one that still fails is
+ * (`MAP_WORLD_LAYER_ITEM_SCHEMAS`) — defense in depth against a sender (a stale or buggy mod)
+ * sending something it didn't already filter — and one that still fails is
  * dropped and counted, logged at warn with the layer and server id as labels. The 2 MB byte cap
  * (`MAP_WORLD_LAYER_MAX_BYTES`) is enforced by the route's body-size limit, not here (map.ts).
  */

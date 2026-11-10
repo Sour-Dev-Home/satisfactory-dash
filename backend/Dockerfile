@@ -16,11 +16,9 @@ FROM --platform=$BUILDPLATFORM node:26-slim@sha256:36793bcbb160a6a16cede1e62b93f
 WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/package.json
-COPY packages/game-adapter/package.json packages/game-adapter/package.json
 COPY backend/package.json backend/package.json
 RUN npm ci
 COPY packages/shared packages/shared
-COPY packages/game-adapter packages/game-adapter
 COPY backend backend
 RUN npm run build -w backend
 
@@ -59,7 +57,6 @@ WORKDIR /repo
 COPY --from=ops-deps /repo/package.json /repo/package-lock.json ./
 COPY --from=ops-deps /repo/node_modules node_modules
 COPY --from=ops-deps /repo/packages/shared packages/shared
-COPY --from=ops-deps /repo/packages/game-adapter packages/game-adapter
 COPY --from=ops-deps /repo/backend/package.json /repo/backend/tsconfig.json backend/
 COPY --from=ops-deps /repo/backend/node_modules backend/node_modules
 COPY --from=ops-deps /repo/backend/scripts backend/scripts

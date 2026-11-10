@@ -25,7 +25,6 @@ export const INPUTS_LABEL = "dev.satis-manager.inputs";
 export const INPUT_PATHS = [
   { path: "backend", required: true },
   { path: "packages/shared", required: true },
-  { path: "packages/game-adapter", required: true },
   { path: "package.json", required: true },
   { path: "package-lock.json", required: true },
   { path: ".dockerignore", required: false },

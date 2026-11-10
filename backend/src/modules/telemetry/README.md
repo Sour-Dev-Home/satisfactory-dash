@@ -1,19 +1,18 @@
 # telemetry module
 
 Status, factory and power for one game server (ADR-0014), as `services/` plus the
-`routes/` that expose them. It consumes the gameserver module through its `index.ts`
-and the servers module for `:serverId` scoping, and is consumed by the composition root
+`routes/` that expose them. Its data is the mod's snapshots, handed in by the agents
+module; it uses the servers module for `:serverId` scoping, and is consumed by the composition root
 (`server.ts`) through `index.ts`. Business logic: production-rate math, overflow
 detection, power-outage detection, alerting thresholds. Deterministic code (scheduled
 poll + comparison), not LLM calls — see ground rule 3 in the root `CLAUDE.md`. Should be
-testable without a live game server by feeding in fixture data shaped like an adapter's
-output.
+testable without a live game server by feeding in domain-shaped fixture data.
 
 - `index.ts` — the public API: `createTelemetryServices(ports)` and
   `createTelemetryRouters(directory)`.
 - `serverStatusService.ts` — merges `ServerHealth` + `ServerStatus` into one response.
 - `domain.ts` — telemetry's own `FactoryBuilding`, `PowerCircuit`, `BuildingPowerUsage` and
-  `InventorySlot` (ADR-0066 Decision 5); the gameserver adapter's output has the same shape.
+  `InventorySlot` (ADR-0066 Decision 5), moved here from the game-adapter package that build PR 7 removed.
 - `factoryStates.ts` — the pure helpers the agent and polled paths share: `isBackedUp` (the
   overflow proxy — see `docs-vault/wiki/frm-api.md`, no direct "belt full" field
   exists in either API), `areInputsFull`, `sumItemRates` and `diffDecidedStates`.
@@ -45,6 +44,5 @@ npm run update-item-forms -w backend -- "<install>/CommunityResources/Docs/en-US
 - The script fails, rather than writing a wrong catalog, if the file isn't the expected
   shape, is truncated, or gives one className two different forms.
 
-Each service takes a narrow `*AdapterLike` interface (structurally satisfied by
-`SatisfactoryServerAdapter`) so tests construct plain fixture objects instead of a
-real adapter — no live game server, no network mocking required.
+Tests construct plain domain-shaped fixture objects (`backend/test-support/`) — no live
+game server, no network mocking required.
