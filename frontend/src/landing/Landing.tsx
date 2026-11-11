@@ -103,8 +103,9 @@ export function Landing() {
       <section aria-labelledby="built-heading" className="grid max-w-3xl gap-3">
         <h2 id="built-heading">How it's built</h2>
         <p className="text-muted">
-          A React single-page app on Cloudflare, a Node and Express API reached through a Cloudflare Tunnel, Postgres,
-          and one shared zod contract that both sides validate against.
+          A React single-page app on Cloudflare, a Node and Express API on AWS Fargate reached through a Cloudflare
+          Tunnel, Postgres on RDS, and one shared zod contract that both sides validate against. Game data comes from
+          our own server mod, which pushes it out, so the dashboard never needs a port opened on the game server.
         </p>
         <ul className="flex flex-wrap gap-x-6 gap-y-2">
           <li>

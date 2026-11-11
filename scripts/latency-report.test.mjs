@@ -31,35 +31,26 @@ test("on the fixture log: p50, p95 and p99 per route, exactly", () => {
 
   const status = route("GET /api/servers/:serverId/status");
   assert.deepEqual(status.total, { n: 5, p50: 60, p95: 100, p99: 100 });
-  assert.deepEqual(status.app, { n: 5, p50: 6, p95: 10, p99: 10 });
-  assert.deepEqual(status.upstream, { n: 5, p50: 54, p95: 90, p99: 90 });
+  assert.deepEqual(status.app, { n: 5, p50: 59, p95: 99, p99: 99 });
   assert.equal(status.failed, 0);
 
   const factory = route("GET /api/servers/:serverId/factory");
   assert.deepEqual(factory.total, { n: 3, p50: 400, p95: 600, p99: 600 });
-  assert.deepEqual(factory.app, { n: 3, p50: 40, p95: 60, p99: 60 });
-  assert.deepEqual(factory.upstream, { n: 3, p50: 360, p95: 540, p99: 540 });
+  assert.deepEqual(factory.app, { n: 3, p50: 399, p95: 599, p99: 599 });
   assert.equal(factory.failed, 1); // the 503
 
   const health = route("GET /api/health/ready");
   assert.deepEqual(health.total, { n: 2, p50: 1, p95: 3, p99: 3 });
-  assert.deepEqual(health.upstream, { n: 2, p50: 0, p95: 0, p99: 0 });
+  assert.deepEqual(health.app, { n: 2, p50: 1, p95: 3, p99: 3 });
+  // ADR-0066: no game-server split, per route or overall.
+  assert.equal("upstream" in status, false);
+  assert.equal("upstreams" in result, false);
 });
 
-test("a line from before the split counts in the total only, and a request no route handled is (unmatched)", () => {
+test("a line with no appMs counts in the total only, and a request no route handled is (unmatched)", () => {
   const unmatched = aggregate(fixtureLines()).routes.find((r) => r.route === "GET (unmatched)");
   assert.deepEqual(unmatched.total, { n: 1, p50: 5, p95: 5, p99: 5 });
   assert.deepEqual(unmatched.app, { n: 0, p50: undefined, p95: undefined, p99: undefined });
-});
-
-test("per game-server API: only the requests that waited on it, vanilla and frm apart", () => {
-  const { upstreams } = aggregate(fixtureLines());
-  const [vanilla, frm] = upstreams;
-  assert.equal(vanilla.upstream, "vanilla");
-  // 18 36 54 72 90 (status) and 50 100 150 (factory), 8 requests; the two health checks used no upstream.
-  assert.deepEqual({ n: vanilla.n, p50: vanilla.p50, p95: vanilla.p95, p99: vanilla.p99 }, { n: 8, p50: 54, p95: 150, p99: 150 });
-  assert.equal(frm.upstream, "frm");
-  assert.deepEqual({ n: frm.n, p50: frm.p50, p95: frm.p95, p99: frm.p99 }, { n: 3, p50: 300, p95: 390, p99: 390 });
 });
 
 test("routes come slowest p95 first, and the route pattern (not the URL) is what is grouped", () => {
@@ -88,11 +79,14 @@ test("parseRequestLine skips what is not a request line", () => {
   assert.equal(parseRequestLine('{"responseTime":null}'), undefined);
 });
 
-test("a half-filled split (appMs without upstreamMs) is treated as no split rather than guessed", () => {
-  const record = parseRequestLine('{"responseTime":10,"appMs":4,"req":{"method":"GET"},"route":"/x"}');
-  assert.equal(record.appMs, undefined);
-  assert.equal(record.upstreamMs, undefined);
-  assert.equal(record.totalMs, 10);
+test("an older line that still carries the retired game-server fields reads its appMs and ignores the rest", () => {
+  const record = parseRequestLine('{"responseTime":10,"appMs":4,"upstreamMs":6,"vanillaMs":6,"frmMs":0,"upstreamCalls":1,"req":{"method":"GET"},"route":"/x"}');
+  assert.deepEqual(record, { key: "GET /x", totalMs: 10, failed: false, appMs: 4 });
+});
+
+test("an appMs that is not a non-negative number is left out, not guessed", () => {
+  assert.equal(parseRequestLine('{"responseTime":10,"appMs":"4","req":{"method":"GET"},"route":"/x"}').appMs, undefined);
+  assert.equal(parseRequestLine('{"responseTime":10,"appMs":-1,"req":{"method":"GET"},"route":"/x"}').appMs, undefined);
 });
 
 test("blank lines are ignored, not counted as skipped", () => {
@@ -131,7 +125,7 @@ test("selectLogFiles takes the daily files inside the window (UTC), in date orde
 test("the report prints routes, counts and times, and never a URL", () => {
   const text = formatReport(aggregate(fixtureLines()));
   assert.match(text, /GET \/api\/servers\/:serverId\/factory/);
-  assert.match(text, /Per game-server API/);
+  assert.equal(/upstream|game-server API/i.test(text), false);
   assert.match(text, /^11 requests \(4 log lines skipped\)/);
   assert.equal(text.includes("bravo"), false);
   assert.equal(text.includes("alpha"), false);
@@ -152,7 +146,8 @@ test("CLI: --json prints the aggregate as JSON", () => {
   const result = run(["--file", FIXTURE, "--json"]);
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.requests, 11);
-  assert.equal(parsed.upstreams[1].upstream, "frm");
+  assert.equal(parsed.routes.length, 4);
+  assert.equal(parsed.upstreams, undefined);
 });
 
 test("CLI: --dir reads the daily files in the window (a copy of the fixture named for today)", () => {

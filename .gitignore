@@ -10,7 +10,7 @@ build/
 .env.*
 !.env.example
 
-# per-server connection config with tokens (ADR-0025); commit servers.example.json instead
+# retired per-server connection config with tokens (ADR-0025, retired by ADR-0066); still ignored so a leftover copy is never committed
 backend/servers.json
 
 # misc

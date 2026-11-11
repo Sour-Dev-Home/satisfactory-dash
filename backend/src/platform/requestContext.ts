@@ -33,7 +33,7 @@ export function createRequestLogger(logger: Logger): RequestHandler {
     logger,
     // Data hygiene (2026-10-21): a normal request line carries no client IP (privacy page: IPs are logged only on
     // sign-in and rate-limit events, which log it themselves). The default req serializer's remoteAddress is dropped below.
-    // ADR-0032: where the request's time went (appMs, upstreamMs, vanillaMs, frmMs, upstreamCalls) and the route pattern it
+    // ADR-0032: how long the request took (appMs) and the route pattern it
     // matched (`/api/servers/:serverId/status`, never the concrete URL), which `npm run latency-report` groups by.
     customProps: (req, res) => ({
       ...timingLogFields(res as Response),

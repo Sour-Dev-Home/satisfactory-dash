@@ -1,10 +1,11 @@
-// `npm run latency-report` (ADR-0032 step 1): p50, p95 and p99 per route and per game-server API, from the backend's
-// daily log files (`backend-YYYY-MM-DD.log`, one JSON object per line, kept 14 days).
+// `npm run latency-report` (ADR-0032 step 1): p50, p95 and p99 per route, from the backend's daily log files
+// (`backend-YYYY-MM-DD.log`, one JSON object per line, kept 14 days).
 //
 // What it reads: the request lines pino-http writes ("request completed" / "request errored"), which carry
-//   responseTime (ms, the whole request), route (the pattern it matched, never the URL),
-//   appMs / upstreamMs / vanillaMs / frmMs (how the request's time split, ADR-0032) and upstreamCalls.
-// Lines from before the split have no appMs and count only in the total. Lines that are not JSON, and JSON lines that
+//   responseTime (ms, the whole request), route (the pattern it matched, never the URL) and appMs (the request's time as
+//   the `Server-Timing` header gives it, ADR-0032). ADR-0066 removed the game-server split (upstreamMs, vanillaMs, frmMs,
+//   upstreamCalls): the backend no longer calls a game server. Older lines that still carry those fields are read, and
+//   the fields ignored. Lines with no appMs count only in the total. Lines that are not JSON, and JSON lines that
 // are not request lines, are skipped (and counted). It never prints a URL, a user or an address: routes, counts and times.
 //
 // Usage:
@@ -39,7 +40,7 @@ export function selectLogFiles(names, days, now) {
 
 /**
  * One request line, or undefined for anything else. The route is the matched pattern, "(unmatched)" for a request no
- * route handled (a 404, a rejected body). The split fields are present only on lines written after ADR-0032.
+ * route handled (a 404, a rejected body). appMs is present only on lines written after ADR-0032.
  */
 export function parseRequestLine(line) {
   let entry;
@@ -51,15 +52,11 @@ export function parseRequestLine(line) {
   if (typeof entry !== "object" || entry === null || !isNumber(entry.responseTime)) return undefined;
   const method = typeof entry.req?.method === "string" ? entry.req.method : "?";
   const route = typeof entry.route === "string" ? entry.route : "(unmatched)";
-  const split = isNumber(entry.appMs) && isNumber(entry.upstreamMs);
   return {
     key: `${method} ${route}`,
     totalMs: entry.responseTime,
     failed: typeof entry.res?.statusCode === "number" && entry.res.statusCode >= 500,
-    appMs: split ? entry.appMs : undefined,
-    upstreamMs: split ? entry.upstreamMs : undefined,
-    vanillaMs: split && isNumber(entry.vanillaMs) ? entry.vanillaMs : undefined,
-    frmMs: split && isNumber(entry.frmMs) ? entry.frmMs : undefined,
+    appMs: isNumber(entry.appMs) ? entry.appMs : undefined,
   };
 }
 
@@ -78,14 +75,11 @@ const stats = (values) => {
 
 /**
  * @param {string[]} lines every line of every log file
- * @returns {{ requests: number; skipped: number; routes: object[]; upstreams: object[] }}
+ * @returns {{ requests: number; skipped: number; routes: object[] }}
  *   routes: per "METHOD route", sorted by p95 total time (slowest first)
- *   upstreams: vanilla and frm, over the requests that waited on that API at all
  */
 export function aggregate(lines) {
   const byRoute = new Map();
-  const vanilla = [];
-  const frm = [];
   let requests = 0;
   let skipped = 0;
   for (const line of lines) {
@@ -96,26 +90,16 @@ export function aggregate(lines) {
       continue;
     }
     requests++;
-    const route = byRoute.get(record.key) ?? { key: record.key, total: [], app: [], upstream: [], failed: 0 };
+    const route = byRoute.get(record.key) ?? { key: record.key, total: [], app: [], failed: 0 };
     route.total.push(record.totalMs);
-    if (record.appMs !== undefined) {
-      route.app.push(record.appMs);
-      route.upstream.push(record.upstreamMs);
-    }
+    if (record.appMs !== undefined) route.app.push(record.appMs);
     if (record.failed) route.failed++;
     byRoute.set(record.key, route);
-    if (record.vanillaMs > 0) vanilla.push(record.vanillaMs);
-    if (record.frmMs > 0) frm.push(record.frmMs);
   }
   const routes = [...byRoute.values()]
-    .map((route) => ({ route: route.key, failed: route.failed, total: stats(route.total), app: stats(route.app), upstream: stats(route.upstream) }))
+    .map((route) => ({ route: route.key, failed: route.failed, total: stats(route.total), app: stats(route.app) }))
     .sort((a, b) => b.total.p95 - a.total.p95 || a.route.localeCompare(b.route));
-  return {
-    requests,
-    skipped,
-    routes,
-    upstreams: [{ upstream: "vanilla", ...stats(vanilla) }, { upstream: "frm", ...stats(frm) }],
-  };
+  return { requests, skipped, routes };
 }
 
 const cell = (value) => (value === undefined ? "-" : String(Math.round(value * 10) / 10));
@@ -123,7 +107,7 @@ const cell = (value) => (value === undefined ? "-" : String(Math.round(value * 1
 /** The aggregate as plain-text tables. Times are milliseconds. */
 export function formatReport(result) {
   const rows = [
-    ["route", "n", "failed", "total p50", "p95", "p99", "app p50", "p95", "p99", "upstream p50", "p95", "p99"],
+    ["route", "n", "failed", "total p50", "p95", "p99", "app p50", "p95", "p99"],
     ...result.routes.map((r) => [
       r.route,
       r.total.n,
@@ -134,27 +118,17 @@ export function formatReport(result) {
       cell(r.app.p50),
       cell(r.app.p95),
       cell(r.app.p99),
-      cell(r.upstream.p50),
-      cell(r.upstream.p95),
-      cell(r.upstream.p99),
     ]),
-  ];
-  const upstreamRows = [
-    ["game server API", "requests that used it", "p50", "p95", "p99"],
-    ...result.upstreams.map((u) => [u.upstream, u.n, cell(u.p50), cell(u.p95), cell(u.p99)]),
   ];
   const table = (matrix) => {
     const widths = matrix[0].map((_, column) => Math.max(...matrix.map((row) => String(row[column]).length)));
     return matrix.map((row) => row.map((value, column) => (column === 0 ? String(value).padEnd(widths[column]) : String(value).padStart(widths[column]))).join("  ")).join("\n");
   };
   return [
-    `${result.requests} requests (${result.skipped} log lines skipped). Times in ms; app + upstream = total.`,
+    `${result.requests} requests (${result.skipped} log lines skipped). Times in ms.`,
     "",
     "Per route (slowest p95 first)",
     table(rows),
-    "",
-    "Per game-server API (time the request waited on it; parallel calls overlap)",
-    table(upstreamRows),
     "",
   ].join("\n");
 }

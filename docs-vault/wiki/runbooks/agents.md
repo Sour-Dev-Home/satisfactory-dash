@@ -217,5 +217,5 @@ kill switch (`ALERT_DELIVERY`, default off) and the shadow week as every alert (
 ## Reading what happened
 
 The audit trail has `agent.enrollment_code_created`, `agent.enrolled`, `agent.revoked`, `agent.command.created`,
-`agent.command.succeeded` and `agent.command.failed` (ids and codes only). The request log lines carry `appMs` and
-`upstreamMs` (ADR-0032), and no snapshot, code, secret or player name is ever logged.
+`agent.command.succeeded` and `agent.command.failed` (ids and codes only). The request log lines carry `appMs` (ADR-0032;
+the game-server `upstreamMs` split went with ADR-0066), and no snapshot, code, secret or player name is ever logged.
