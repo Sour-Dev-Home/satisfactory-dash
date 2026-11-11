@@ -128,6 +128,26 @@ describe("the demo transport", () => {
     expect((await call("GET", endpoints.commands.get.path(DEMO_SERVER_ID, first.command.id))).status).toBe(200);
   });
 
+  it("keeps each command separate when toggled twice quickly: both land, the setting shows the last value, no timer is left", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    await enter();
+    const put = async (enabled: boolean) =>
+      SetAutoPauseResponseSchema.parse(await (await call("PUT", endpoints.settings.setAutoPause.path(DEMO_SERVER_ID), { enabled })).json()).command;
+    const first = await put(true);
+    vi.advanceTimersByTime(500);
+    const second = await put(false);
+    const status = async (id: string) =>
+      CommandResponseSchema.parse(await (await call("GET", endpoints.commands.get.path(DEMO_SERVER_ID, id))).json()).command.status;
+    vi.advanceTimersByTime(COMMAND_DELAY_MS - 500);
+    expect(await status(first.id)).toBe("succeeded");
+    expect(await status(second.id)).toBe("pending");
+    vi.advanceTimersByTime(500);
+    expect(await status(second.id)).toBe("succeeded");
+    expect(vi.getTimerCount()).toBe(0);
+    const settings = SettingsResponseSchema.parse(await (await call("GET", endpoints.settings.get.path(DEMO_SERVER_ID))).json());
+    expect(settings.data).toMatchObject({ autoPause: false, pending: true });
+  });
+
   it("forgets its commands on a reset, and a reset stops a command's pending timer", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     await enter();
