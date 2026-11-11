@@ -496,16 +496,9 @@ describe("agent contract: what the user sees", () => {
 });
 
 describe("agent contract: edge cases found by the fresh-eyes pass", () => {
-  it("a settings body that also carries a stray `command` key parses as the setting with the key stripped, so `\"command\" in x` stays a sound narrowing", () => {
-    const parsed = SetAutoPauseResponseSchema.parse({ ...fixtures.autoPauseResponseSetting, command: fixtures.commandPending.command });
-    expect("command" in parsed).toBe(false);
-    expect(parsed).toEqual(fixtures.autoPauseResponseSetting);
-  });
-
-  it("a 202 body tolerates extra fields (also inside the command) and is never read as a setting", () => {
+  it("a 202 body tolerates extra fields (also inside the command) and strips them", () => {
     const parsed = SetAutoPauseResponseSchema.parse({ command: { ...fixtures.commandPending.command, futureField: 1 }, extra: true });
-    expect("command" in parsed).toBe(true);
-    expect("data" in parsed).toBe(false);
+    expect(parsed).toEqual(fixtures.commandPending);
   });
 
   it("an explicit `undefined` part on an unreachable snapshot counts as absent, but null does not", () => {
@@ -519,20 +512,18 @@ describe("agent contract: edge cases found by the fresh-eyes pass", () => {
   });
 });
 
-describe("agent contract: the auto-pause answer is additive", () => {
-  it("parses today's 200 (the setting) AND the 202 (the command to poll), and tells them apart", () => {
-    expect(SetAutoPauseResponseSchema.parse(fixtures.autoPauseResponseSetting)).toEqual(fixtures.autoPauseResponseSetting);
+describe("agent contract: the auto-pause answer is the 202 command only (ADR-0066)", () => {
+  it("parses the 202 (the command to poll)", () => {
     expect(SetAutoPauseResponseSchema.parse(fixtures.autoPauseResponseAccepted)).toEqual(fixtures.autoPauseResponseAccepted);
-    expect("command" in fixtures.autoPauseResponseAccepted).toBe(true);
-    expect("data" in fixtures.autoPauseResponseSetting).toBe(true);
-    expect(CommandAcceptedResponseSchema.safeParse(fixtures.autoPauseResponseSetting).success).toBe(false);
+    expect(SetAutoPauseResponseSchema).toBe(CommandAcceptedResponseSchema);
   });
 
-  it("refuses anything that is neither", () => {
+  it("refuses the retired 200 (the setting) and anything else", () => {
+    expect(SetAutoPauseResponseSchema.safeParse(fixtures.settingsEditable).success).toBe(false);
     for (const bad of [{}, { command: {} }, { data: {} }, null, "ok"]) expect(SetAutoPauseResponseSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
   });
 
-  it("the endpoint's response schema is the union", () => {
+  it("is the endpoint's response schema", () => {
     expect(endpoints.settings.setAutoPause.response).toBe(SetAutoPauseResponseSchema);
   });
 });

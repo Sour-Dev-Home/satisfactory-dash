@@ -312,7 +312,8 @@ const BASE: Record<RouteKey, MockResponse> = {
   mapLive: ok(mapLiveResponse),
   metrics: ok(metricsOverviewWithCharts),
   settings: ok(settingsEditable),
-  setAutoPause: ok(settingsEditable),
+  // ADR-0066: the backend's only answer, a 202 with the command (which `command` below says succeeded).
+  setAutoPause: { status: 202, body: live(autoPauseResponseAccepted) },
   managedServers: ok(managedAgentSeveral),
   removeServer: ok(deleteServerDone),
   createAgentServer: { status: 201, body: createdAgentServer },

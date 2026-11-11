@@ -494,8 +494,7 @@ export const endpoints = {
       route: "/api/servers/:serverId/settings/auto-pause",
       path: scoped("settings/auto-pause"),
       request: SetAutoPauseRequestSchema,
-      // ADR-0031 PR 3, ADR-0066: the backend always answers 202 with the command to poll. The 200 with the setting stays
-      // in the schema only because the demo build's simulated write still answers that way.
+      // ADR-0031 PR 3, ADR-0066: always 202 with the command to poll (GET commands.get).
       response: SetAutoPauseResponseSchema,
     },
   },

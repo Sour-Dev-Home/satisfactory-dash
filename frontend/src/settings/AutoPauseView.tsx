@@ -93,23 +93,15 @@ export function AutoPauseView() {
     // A settings read already in flight (pending poll, invalidation) would otherwise land
     // after the PUT and overwrite its value with the pre-change one.
     onMutate: () => client.cancelQueries({ queryKey: settingsQuery.queryKey }),
-    onSuccess: async (snapshot) => {
+    onSuccess: async ({ command }) => {
       // Same for a read that started while the PUT was in flight (focus refetch, pending poll):
       // the server may have answered it before applying the change.
       await client.cancelQueries({ queryKey: settingsQuery.queryKey });
       // Signed out while the PUT was in flight: don't put this session's data back in the cache.
       if (isSignedOut(client)) return;
-      // ADR-0031: for a server reached through an agent the answer is a 202 with a COMMAND, not the new setting. The
-      // setting hasn't changed yet, so nothing goes in the cache: follow the command until it lands (above).
-      if ("command" in snapshot) {
-        const command = snapshot.command;
-        setRelayed(() => ({ command, gaveUp: false }));
-        return;
-      }
-      client.setQueryData(settingsQuery.queryKey, snapshot);
-      // DSAutoPause applies immediately (ADR-0012), so gamePaused may already have flipped;
-      // refresh status now rather than letting the paused banner lag a full poll behind.
-      void client.invalidateQueries({ queryKey: queries.status(server.id).queryKey });
+      // ADR-0031, ADR-0066: the answer is a 202 with a COMMAND for the game PC, not the new setting. The setting hasn't
+      // changed yet, so nothing goes in the cache: follow the command until it lands (above).
+      setRelayed(() => ({ command, gaveUp: false }));
     },
     onError: (error) => {
       // 409 not_editable: our copy of `editable` is out of date, so re-read it.

@@ -3,6 +3,7 @@ import { isBackedUpState, ownValue } from "@satisfactory-dash/shared";
 import type {
   AgentStatusResponse,
   BottlenecksResponse,
+  Command,
   CompatResponse,
   DroneRoutesLayerData,
   DroneRoutesWorldLayerResponse,
@@ -1088,6 +1089,33 @@ export function mapLive(now: number): MapLiveResponse {
 
 export function settings(now: number, state: { autoPause: boolean; pending: boolean }): SettingsResponse {
   return { ...envelope(now), data: { ...state, editable: true } };
+}
+
+/** An auto-pause change the demo visitor sent (ADR-0066): its id, when it was sent and, once the game PC ran it, when. */
+export interface DemoCommand {
+  id: string;
+  createdAt: number;
+  completedAt: number | null;
+}
+
+/** How long a command waits for the game PC before it expires: the backend's COMMAND_TTL_MS. */
+const COMMAND_TTL_MS = 60_000;
+
+/**
+ * The command in the backend's shape, for the auto-pause PUT's 202 and `GET /commands/:commandId`: `pending` until the
+ * simulated game PC runs it, then `succeeded`. Its times come from the page's own clock (not demoNow()), because the page
+ * compares `expiresAt` with Date.now() to decide when to give up.
+ */
+export function autoPauseCommand(command: DemoCommand): Command {
+  return {
+    id: command.id,
+    type: "set_auto_pause",
+    status: command.completedAt === null ? "pending" : "succeeded",
+    createdAt: new Date(command.createdAt).toISOString(),
+    expiresAt: new Date(command.createdAt + COMMAND_TTL_MS).toISOString(),
+    completedAt: command.completedAt === null ? null : new Date(command.completedAt).toISOString(),
+    resultCode: null,
+  };
 }
 
 /** The demo's game PC agent (ADR-0031 PR 7): enrolled, and heard from a few seconds ago, reading the game (#740 follow-up). */

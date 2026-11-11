@@ -27,11 +27,25 @@ const SIGNED_OUT: SessionResponse = { authenticated: false };
 /** How long an auto-pause change shows as pending before it's applied, like a real server. */
 export const PENDING_MS = 6000;
 
+/**
+ * ADR-0066: how long the simulated game PC takes to run an auto-pause command. The PUT answers 202 with the command,
+ * which stays `pending` until this passes and then `succeeded`. A timer, not a clock reading: `?clock=fixed` (the
+ * video) pins the page's Date, but its timers still run. Shorter than PENDING_MS, so once the command lands the
+ * setting still reads "Change pending" for a moment, as before.
+ */
+export const COMMAND_DELAY_MS = 1500;
+
 /** Everything a visit changes, in memory only: a reload starts over. */
-const state = { signedIn: false, autoPause: false, pendingUntil: 0 };
+const state = { signedIn: false, autoPause: false, pendingUntil: 0, commandCount: 0 };
+/** This visit's commands by id (a Map: the id in a read comes from the URL), and the timers that complete them. */
+const commands = new Map<string, world.DemoCommand>();
+const commandTimers = new Set<ReturnType<typeof setTimeout>>();
 
 export function resetDemoState(): void {
-  Object.assign(state, { signedIn: false, autoPause: false, pendingUntil: 0 });
+  for (const timer of commandTimers) clearTimeout(timer);
+  commandTimers.clear();
+  commands.clear();
+  Object.assign(state, { signedIn: false, autoPause: false, pendingUntil: 0, commandCount: 0 });
   alerts.resetDemoAlerts();
   resetDemoDesignations();
 }
@@ -223,7 +237,8 @@ export const demoHandlers = [
     }),
   ),
   get(endpoints.settings.get.route, ({ params }) => guarded(params, () => Response.json(settingsNow()))),
-  // A simulated write: in memory only, pending for a moment, then applied. Never sent anywhere.
+  // A simulated write (ADR-0066), in memory only and never sent anywhere: like the backend, 202 with a command for the
+  // game PC, which runs it after COMMAND_DELAY_MS. The setting reads as the value being applied, pending for a moment.
   put(endpoints.settings.setAutoPause.route, async ({ params, request }) => {
     let body: SetAutoPauseRequest;
     try {
@@ -234,9 +249,26 @@ export const demoHandlers = [
     return guarded(params, () => {
       state.autoPause = body.enabled;
       state.pendingUntil = Date.now() + PENDING_MS;
-      return Response.json(settingsNow());
+      state.commandCount += 1;
+      const command: world.DemoCommand = { id: `demo-command-${state.commandCount}`, createdAt: Date.now(), completedAt: null };
+      commands.set(command.id, command);
+      const timer = setTimeout(() => {
+        commandTimers.delete(timer);
+        command.completedAt = Date.now();
+      }, COMMAND_DELAY_MS);
+      commandTimers.add(timer);
+      return Response.json({ command: world.autoPauseCommand(command) }, { status: 202 });
     });
   }),
+  // The command the page follows until it lands. An unknown id is command_not_found, as on the backend.
+  get(endpoints.commands.get.route, ({ params }) =>
+    guarded(params, () => {
+      const command = commands.get(params.commandId ?? "");
+      return command === undefined
+        ? error(404, "command_not_found", "No such command on this server")
+        : Response.json({ command: world.autoPauseCommand(command) });
+    }),
+  ),
 
   // The game PC agent (ADR-0031 PR 7). A code can be shown; revoking is refused, like server changes.
   get(endpoints.agent.status.route, ({ params }) => guarded(params, () => Response.json(world.agent(demoNow())))),

@@ -13,7 +13,6 @@ import { AgentFactorySchema, AgentPowerSchema } from "../src/index";
 import { factoryMixed } from "./factory";
 import { playersAvailable } from "./players";
 import { powerOk } from "./power";
-import { settingsEditable } from "./settings";
 import { statusRunning } from "./status";
 import { mapLiveSample } from "./map";
 
@@ -157,6 +156,5 @@ export const commandSucceeded = commandOf("succeeded", "2026-09-26T12:00:07.000Z
 export const commandFailed = commandOf("failed", "2026-09-26T12:00:07.000Z", "upstream_unreachable");
 export const commandExpired = commandOf("expired", "2026-09-26T12:10:00.000Z", null);
 
-/** The auto-pause PUT's two answers: today's 200 with the setting, and the additive 202 with the command to poll. */
-export const autoPauseResponseSetting = settingsEditable satisfies SetAutoPauseResponse;
+/** The auto-pause PUT's answer (ADR-0066: its only one): the 202 with the command to poll. */
 export const autoPauseResponseAccepted = commandPending satisfies SetAutoPauseResponse;
