@@ -56,7 +56,7 @@ export function createApp({
   const app = express();
   app.disable("x-powered-by");
   app.use(assignRequestId);
-  // ADR-0032: the request's timer (app time vs game-server time): the Server-Timing header and the log line's fields.
+  // ADR-0032: the request's timer: the Server-Timing header and the log line's fields.
   app.use(requestTiming({ allowedOrigins }));
   // ADR-0037: records http.server.request.duration once the response is on its way out. After requestTiming so the
   // summary it reads is already frozen; before routing doesn't matter, since it only acts on res's "finish" event.
