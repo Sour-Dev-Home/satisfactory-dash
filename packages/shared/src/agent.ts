@@ -4,7 +4,6 @@ import { StatusSchema } from "./status";
 import { GeneratorItemSchema, PowerCircuitSchema, PowerGeneratorSchema } from "./power";
 import { FactoryBuildingSchema, ProductionRateSchema } from "./factory";
 import { PlayerSchema, ServerPlayersResponseSchema } from "./players";
-import { SettingsResponseSchema } from "./settings";
 import { MapLiveSchema } from "./map";
 import { STORAGE_MAX_CONTAINERS, STORAGE_MAX_ITEMS_PER_CONTAINER, StorageContainerSchema, StorageItemSchema } from "./storage";
 
@@ -321,13 +320,12 @@ export const CommandSchema = z.object({
 export const CommandResponseSchema = z.object({ command: CommandSchema });
 
 /**
- * The auto-pause PUT's ADDITIVE 202: for a server reached through an agent the change is a command, so the answer is the
- * command (poll `GET /commands/:commandId`), not the new setting. Since ADR-0066 the backend always answers 202. The 200
- * member (the setting, `SettingsResponseSchema`) is kept only for the demo build, whose simulated write still answers 200
- * (ADR-0066 Decision 8 lists it for removal; it goes once the demo simulates a command).
+ * The auto-pause PUT's 202: the change is a command the mod runs, so the answer is the command (poll
+ * `GET /commands/:commandId`), not the new setting. Since ADR-0066 it is the only answer: the 200 with the setting is gone
+ * (Decision 8), the demo build included, whose simulated write answers 202 with a command too.
  */
 export const CommandAcceptedResponseSchema = z.object({ command: CommandSchema });
-export const SetAutoPauseResponseSchema = z.union([SettingsResponseSchema, CommandAcceptedResponseSchema]);
+export const SetAutoPauseResponseSchema = CommandAcceptedResponseSchema;
 
 export const CommandIdSchema = z.string().min(1).max(100).describe("A command's id");
 

@@ -38,6 +38,31 @@ function settingsReturn(snapshot: SettingsResponse) {
   server.use(http.get(endpoints.settings.get.route, () => HttpResponse.json(snapshot)));
 }
 
+/** A command with its expiry moved ahead: the fixture's fixed one is in the past on the real clock, and the page would give up at once. */
+const live = (c: { command: Command }) => ({ command: { ...c.command, expiresAt: new Date(Date.now() + 600_000).toISOString() } });
+
+/** The PUT's only answer (ADR-0066): 202 with the command, after `wait` if given. */
+const accepted = async (wait = 0) => {
+  if (wait > 0) await delay(wait);
+  return HttpResponse.json(live(autoPauseResponseAccepted), { status: 202 });
+};
+
+/**
+ * A change the game PC applies: the PUT answers 202, the command reads as succeeded (test/handlers.ts' default), and
+ * settings read `before` until the PUT arrived, then `after`.
+ */
+function changeApplies(after: SettingsResponse, before: SettingsResponse = settingsEditable, onPut?: (body: unknown) => void, wait = 0) {
+  let put = false;
+  server.use(
+    http.get(endpoints.settings.get.route, () => HttpResponse.json(put ? after : before)),
+    http.put(endpoints.settings.setAutoPause.route, async ({ request }) => {
+      onPut?.(await request.json());
+      put = true;
+      return accepted(wait);
+    }),
+  );
+}
+
 /** Stands in for StatusBanners: a mounted status query for the same server. */
 function StatusProbe() {
   useQuery(queries.status("default"));
@@ -71,13 +96,7 @@ describe("AutoPauseView", () => {
 
   it("turns auto-pause on only when clicked, and shows what the backend returns", async () => {
     let body: unknown;
-    server.use(
-      http.put(endpoints.settings.setAutoPause.route, async ({ request }) => {
-        body = await request.json();
-        await delay(30);
-        return HttpResponse.json({ ...settingsEditable, data: { ...settingsEditable.data, autoPause: true } });
-      }),
-    );
+    changeApplies({ ...settingsEditable, data: { ...settingsEditable.data, autoPause: true } }, settingsEditable, (b) => (body = b), 30);
     renderView();
     await screen.findByRole("checkbox");
     expect(body).toBeUndefined();
@@ -92,9 +111,7 @@ describe("AutoPauseView", () => {
     expect(body).toEqual(setAutoPauseRequestOn);
   });
 
-  it("a 202 with a COMMAND (a server reached through an agent) isn't cached as the new setting: it shows Saving… until the command succeeds, then re-reads", async () => {
-    // The fixture's fixed expiry is in the past on the real clock; the page would give up at once.
-    const live = (c: { command: Command }) => ({ command: { ...c.command, expiresAt: new Date(Date.now() + 600_000).toISOString() } });
+  it("a 202 with a COMMAND isn't cached as the new setting: it shows Saving… until the command succeeds, then re-reads", async () => {
     let reads = 0;
     let polls = 0;
     server.use(
@@ -104,7 +121,7 @@ describe("AutoPauseView", () => {
         const on = polls >= 2;
         return HttpResponse.json({ ...settingsEditable, data: { ...settingsEditable.data, autoPause: on } });
       }),
-      http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(live(autoPauseResponseAccepted), { status: 202 })),
+      http.put(endpoints.settings.setAutoPause.route, () => accepted()),
       http.get(endpoints.commands.get.route, () => {
         polls += 1;
         return HttpResponse.json(live(polls >= 2 ? commandSucceeded : commandSent));
@@ -125,14 +142,12 @@ describe("AutoPauseView", () => {
 
   it("refreshes server status right after a successful change", async () => {
     let statusReads = 0;
+    changeApplies({ ...settingsEditable, data: { ...settingsEditable.data, autoPause: true } });
     server.use(
       http.get(endpoints.status.route, () => {
         statusReads++;
         return HttpResponse.json(statusRunning);
       }),
-      http.put(endpoints.settings.setAutoPause.route, () =>
-        HttpResponse.json({ ...settingsEditable, data: { ...settingsEditable.data, autoPause: true } }),
-      ),
     );
     renderWithClient(
       <ServerContext value={serversSingle.servers[0]}>
@@ -151,13 +166,7 @@ describe("AutoPauseView", () => {
 
   it("turns auto-pause off", async () => {
     let body: unknown;
-    settingsReturn({ ...settingsEditable, data: { ...settingsEditable.data, autoPause: true } });
-    server.use(
-      http.put(endpoints.settings.setAutoPause.route, async ({ request }) => {
-        body = await request.json();
-        return HttpResponse.json(settingsEditable);
-      }),
-    );
+    changeApplies(settingsEditable, { ...settingsEditable, data: { ...settingsEditable.data, autoPause: true } }, (b) => (body = b));
     renderView();
     await waitFor(() => expect(checkbox()).toBeChecked());
     fireEvent.click(checkbox());
@@ -237,13 +246,7 @@ describe("AutoPauseView edge cases", () => {
 
   it("sends one PUT for a rapid double click", async () => {
     let puts = 0;
-    server.use(
-      http.put(endpoints.settings.setAutoPause.route, async () => {
-        puts++;
-        await delay(30);
-        return HttpResponse.json(autoPauseOn);
-      }),
-    );
+    changeApplies(autoPauseOn, settingsEditable, () => puts++, 30);
     renderView();
     await screen.findByRole("checkbox");
     fireEvent.click(checkbox());
@@ -253,17 +256,20 @@ describe("AutoPauseView edge cases", () => {
     expect(puts).toBe(1);
   });
 
-  it("keeps the PUT's value when an older settings read resolves after it", async () => {
+  it("ends on the applied value when an older settings read resolves after the PUT", async () => {
     // A GET that started before the change (a pending poll or an invalidation) must not
-    // overwrite the value the PUT returned with the pre-change one.
+    // overwrite the applied value with the pre-change one.
     let reads = 0;
     server.use(
       http.get(endpoints.settings.get.route, async () => {
         reads++;
-        if (reads > 1) await delay(80);
-        return HttpResponse.json(settingsEditable);
+        if (reads === 2) {
+          await delay(80);
+          return HttpResponse.json(settingsEditable);
+        }
+        return HttpResponse.json(reads === 1 ? settingsEditable : autoPauseOn);
       }),
-      http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(autoPauseOn)),
+      http.put(endpoints.settings.setAutoPause.route, () => accepted()),
     );
     const { client } = renderView();
     await screen.findByRole("checkbox");
@@ -288,11 +294,10 @@ describe("AutoPauseView edge cases", () => {
   it("clears a previous save error once a retry succeeds", async () => {
     let puts = 0;
     server.use(
+      http.get(endpoints.settings.get.route, () => HttpResponse.json(puts > 1 ? autoPauseOn : settingsEditable)),
       http.put(endpoints.settings.setAutoPause.route, () => {
         puts++;
-        return puts === 1
-          ? HttpResponse.json(errorUpstreamUnreachable, { status: 502 })
-          : HttpResponse.json(autoPauseOn);
+        return puts === 1 ? HttpResponse.json(errorUpstreamUnreachable, { status: 502 }) : accepted();
       }),
     );
     renderView();
@@ -305,29 +310,31 @@ describe("AutoPauseView edge cases", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("starts re-reading when the PUT itself reports a pending change, and stops once applied", async () => {
+  it("starts re-reading when the read after the command reports a pending change, and stops once applied", async () => {
+    // The demo's flow (ADR-0066): the command lands, and the server still lists the change as pending for a moment.
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     try {
       let reads = 0;
       server.use(
         http.get(endpoints.settings.get.route, () => {
           reads++;
-          return HttpResponse.json(reads === 1 ? settingsEditable : autoPauseOn);
+          return HttpResponse.json(reads === 1 ? settingsEditable : reads === 2 ? settingsPending : autoPauseOn);
         }),
-        http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsPending)),
+        http.put(endpoints.settings.setAutoPause.route, () => accepted()),
       );
       renderView();
       await screen.findByRole("checkbox");
       fireEvent.click(checkbox());
       await screen.findByText("Change pending: the server will apply it.");
-      expect(reads).toBe(1);
+      expect(reads).toBe(2);
+      expect(checkbox()).toBeChecked();
 
       vi.advanceTimersByTime(POLL_MS.settingsPending);
-      await waitFor(() => expect(reads).toBe(2));
+      await waitFor(() => expect(reads).toBe(3));
       await waitFor(() => expect(screen.queryByText(/Change pending/)).not.toBeInTheDocument());
       vi.advanceTimersByTime(POLL_MS.settingsPending * 3);
       await delay(30);
-      expect(reads).toBe(2);
+      expect(reads).toBe(3);
     } finally {
       vi.useRealTimers();
     }
@@ -390,6 +397,16 @@ describe("AutoPauseView edge cases", () => {
     await screen.findByRole("checkbox");
     fireEvent.click(checkbox());
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(checkbox()).not.toBeChecked();
+    expect(checkbox()).toBeEnabled();
+  });
+
+  it("treats the retired 200 with the setting as contract drift (ADR-0066), never as the new value", async () => {
+    server.use(http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(autoPauseOn)));
+    renderView();
+    await screen.findByRole("checkbox");
+    fireEvent.click(checkbox());
+    expect(await screen.findByRole("alert")).toHaveTextContent(/response it doesn't understand/);
     expect(checkbox()).not.toBeChecked();
     expect(checkbox()).toBeEnabled();
   });

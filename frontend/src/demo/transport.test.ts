@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CommandResponseSchema,
   endpoints,
   HistoryPowerResponseSchema,
   SessionResponseSchema,
+  SetAutoPauseResponseSchema,
   SettingsResponseSchema,
   StatusResponseSchema,
 } from "@satisfactory-dash/shared";
-import { PENDING_MS, resetDemoState } from "./handlers";
+import { COMMAND_DELAY_MS, PENDING_MS, resetDemoState } from "./handlers";
 import { transport } from "./transport";
 import { DEMO_SERVER_ID } from "./world";
 
@@ -89,15 +91,52 @@ describe("the demo transport", () => {
     expect(res.status).toBe(404);
   });
 
-  it("simulates the auto-pause write in memory: pending for a moment, then applied", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
+  it("simulates the auto-pause write in memory like the backend: 202 with a command, pending, then applied", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     await enter();
     const put = await call("PUT", endpoints.settings.setAutoPause.path(DEMO_SERVER_ID), { enabled: true });
-    expect(SettingsResponseSchema.parse(await put.json()).data).toMatchObject({ autoPause: true, pending: true });
+    expect(put.status).toBe(202);
+    const { command } = SetAutoPauseResponseSchema.parse(await put.json());
+    expect(command).toMatchObject({ id: "demo-command-1", type: "set_auto_pause", status: "pending", completedAt: null, resultCode: null });
+    // The page gives up at expiresAt by its own clock: the expiry is ahead of Date.now(), whatever demoNow() says.
+    expect(Date.parse(command.expiresAt)).toBe(Date.now() + 60_000);
 
-    vi.setSystemTime(Date.now() + PENDING_MS + 1);
+    const read = async () =>
+      CommandResponseSchema.parse(await (await call("GET", endpoints.commands.get.path(DEMO_SERVER_ID, command.id))).json()).command;
+    // The setting reads as the value being applied, pending, while the command waits.
+    const during = SettingsResponseSchema.parse(await (await call("GET", endpoints.settings.get.path(DEMO_SERVER_ID))).json());
+    expect(during.data).toMatchObject({ autoPause: true, pending: true });
+    vi.advanceTimersByTime(COMMAND_DELAY_MS - 1);
+    expect((await read()).status).toBe("pending");
+    vi.advanceTimersByTime(1);
+    expect(await read()).toMatchObject({ status: "succeeded", completedAt: new Date(Date.now()).toISOString() });
+
+    vi.advanceTimersByTime(PENDING_MS);
     const later = SettingsResponseSchema.parse(await (await call("GET", endpoints.settings.get.path(DEMO_SERVER_ID))).json());
     expect(later.data).toMatchObject({ autoPause: true, pending: false });
+  });
+
+  it("answers an unknown command id with command_not_found, and a second change with a new command", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await enter();
+    const unknown = await call("GET", endpoints.commands.get.path(DEMO_SERVER_ID, "nope"));
+    expect(unknown.status).toBe(404);
+    expect(await unknown.json()).toMatchObject({ error: { code: "command_not_found" } });
+    const first = SetAutoPauseResponseSchema.parse(await (await call("PUT", endpoints.settings.setAutoPause.path(DEMO_SERVER_ID), { enabled: true })).json());
+    const second = SetAutoPauseResponseSchema.parse(await (await call("PUT", endpoints.settings.setAutoPause.path(DEMO_SERVER_ID), { enabled: false })).json());
+    expect(second.command.id).not.toBe(first.command.id);
+    expect((await call("GET", endpoints.commands.get.path(DEMO_SERVER_ID, first.command.id))).status).toBe(200);
+  });
+
+  it("forgets its commands on a reset, and a reset stops a command's pending timer", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    await enter();
+    const { command } = SetAutoPauseResponseSchema.parse(await (await call("PUT", endpoints.settings.setAutoPause.path(DEMO_SERVER_ID), { enabled: true })).json());
+    resetDemoState();
+    expect(vi.getTimerCount()).toBe(0);
+    await enter();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await call("GET", endpoints.commands.get.path(DEMO_SERVER_ID, command.id))).status).toBe(404);
   });
 
   it("forgets everything on a reset (a reload): signed out, auto-pause back off", async () => {

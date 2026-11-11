@@ -10,7 +10,9 @@ import {
   alertEventsLastPage,
   alertRulesList,
   alertStatusQuiet,
+  autoPauseResponseAccepted,
   bottlenecksBeltLevel,
+  commandSucceeded,
   deleteServerDone,
   conveyorsWorldResponse,
   droneRoutesWorldResponse,
@@ -48,6 +50,8 @@ import { createdAgentServer } from "./selfServeMocks";
 // Default MSW handlers: the happy path for a signed-in operator with one server. Built only
 // from the shared fixtures. Tests override individual routes with server.use(...).
 // MSW path params use the same ":serverId" syntax as the Express routes in endpoints.ts.
+const FAR_FUTURE = "2099-01-01T00:00:00.000Z";
+
 export const handlers = [
   http.get(endpoints.health.route, () => HttpResponse.json(healthOk)),
   http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAuthenticated)),
@@ -81,7 +85,12 @@ export const handlers = [
   http.get(endpoints.map.worldLayer.route.replace(":layer", "conveyors"), () => HttpResponse.json(conveyorsWorldResponse)),
   http.get(endpoints.map.live.route, () => HttpResponse.json(mapLiveResponse)),
   http.get(endpoints.settings.get.route, () => HttpResponse.json(settingsEditable)),
-  http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(settingsEditable)),
+  // ADR-0066: the backend's only answer is a 202 with the command, which then reads as succeeded. Expiry moved ahead:
+  // the fixtures' fixed one is in the past on a real clock, and the page stops waiting at a command's expiry.
+  http.put(endpoints.settings.setAutoPause.route, () =>
+    HttpResponse.json({ command: { ...autoPauseResponseAccepted.command, expiresAt: FAR_FUTURE } }, { status: 202 }),
+  ),
+  http.get(endpoints.commands.get.route, () => HttpResponse.json({ command: { ...commandSucceeded.command, expiresAt: FAR_FUTURE } })),
   // ADR-0030, operator only (the default server list doesn't offer it; tests opt in).
   http.get(endpoints.serverManagement.list.route, () => HttpResponse.json(managedAgentSeveral)),
   // ADR-0056: the operator's metrics page (whatever `?window=` asks).

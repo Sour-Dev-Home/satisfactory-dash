@@ -34,10 +34,10 @@ describe("settingsNow under a frozen demoNow (?clock=fixed)", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     await call("POST", endpoints.auth.login.path(), { username: "demo", password: "demo" });
 
-    const put = await call("PUT", endpoints.settings.setAutoPause.path(DEMO_SERVER_ID), { enabled: true });
-    const putBody = SettingsResponseSchema.parse(await put.json());
-    expect(putBody.data.pending).toBe(true);
-    expect(putBody.observedAt).toBe(new Date(DEMO_EPOCH).toISOString());
+    expect((await call("PUT", endpoints.settings.setAutoPause.path(DEMO_SERVER_ID), { enabled: true })).status).toBe(202);
+    const during = SettingsResponseSchema.parse(await (await call("GET", endpoints.settings.get.path(DEMO_SERVER_ID))).json());
+    expect(during.data.pending).toBe(true);
+    expect(during.observedAt).toBe(new Date(DEMO_EPOCH).toISOString());
 
     // Advance real (faked) wall-clock time well past PENDING_MS, but demoNow() is pinned.
     vi.advanceTimersByTime(10_000);

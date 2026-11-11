@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { endpoints, type SettingsResponse } from "@satisfactory-dash/shared";
-import { serversSingle, settingsEditable } from "@satisfactory-dash/shared/fixtures";
+import { autoPauseResponseAccepted, serversSingle, settingsEditable } from "@satisfactory-dash/shared/fixtures";
 import { queries } from "../api/queries";
 import { ServerContext } from "../servers/ServerContext";
 import { renderWithClient } from "../test/render";
@@ -41,10 +41,10 @@ afterEach(() => {
 });
 
 describe("AutoPauseView ordering", () => {
-  it("keeps the PUT's value when a settings read that started during the PUT resolves after it", async () => {
+  it("keeps the applied value when a settings read that started during the PUT resolves after it", async () => {
     // e.g. a window-focus refetch or a pending-change poll tick while the PUT is in flight.
     // That read may have been answered before the server applied the change, so it must not
-    // replace the value the PUT re-read after applying.
+    // replace the value read once the command succeeded (ADR-0066: the PUT answers 202 with the command).
     // Explicit gates, not wall-clock delays: the test decides when each response is sent, so
     // the late read always starts while the PUT is in flight and resolves after it.
     const putGate = gate();
@@ -56,16 +56,19 @@ describe("AutoPauseView ordering", () => {
     server.use(
       http.get(endpoints.settings.get.route, async () => {
         reads++;
-        if (reads > 1) {
+        if (reads === 2) {
           await lateReadGate.promise;
           lateReadAnswered.resolve();
+          return HttpResponse.json(settingsEditable);
         }
-        return HttpResponse.json(settingsEditable);
+        // The first read is before the change; any after the late one is the re-read once the command succeeded.
+        return HttpResponse.json(reads === 1 ? settingsEditable : autoPauseOn);
       }),
       http.put(endpoints.settings.setAutoPause.route, async () => {
         putStarted = true;
         await putGate.promise;
-        return HttpResponse.json(autoPauseOn);
+        const command = { ...autoPauseResponseAccepted.command, expiresAt: new Date(Date.now() + 600_000).toISOString() };
+        return HttpResponse.json({ command }, { status: 202 });
       }),
     );
     const { client } = renderView();

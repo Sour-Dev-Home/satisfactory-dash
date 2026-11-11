@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { PREVIEW } from "../landing/preview";
 import { renderWithClient } from "../test/render";
-import { resetDemoState } from "./handlers";
+import { COMMAND_DELAY_MS, resetDemoState } from "./handlers";
 import { resetTourLoadForTests, TOUR_SEEN, TOUR_STORAGE_KEY } from "./tour/persistence";
 import { resetTourStoreForTests } from "./tour/tourStore";
 
@@ -66,9 +66,14 @@ describe("the demo app", () => {
     const toggle = await screen.findByRole("checkbox", { name: "Auto-pause when no players are connected" });
     expect(toggle).toBeEnabled();
     fireEvent.click(toggle);
-    expect(await screen.findByText("Change pending: the server will apply it.")).toBeInTheDocument();
+    // ADR-0066: the simulated game PC runs the command after COMMAND_DELAY_MS ("Saving…" until then), and then the
+    // setting reads as pending for a moment, as before.
+    expect(await screen.findByText("Saving…")).toBeInTheDocument();
+    expect(await screen.findByText("Change pending: the server will apply it.", undefined, { timeout: COMMAND_DELAY_MS + 3000 })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Auto-pause when no players are connected" })).toBeChecked();
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
+    // Every page, plus the simulated command's real-time delay: more than the 5 s default on a busy runner.
+  }, 15_000);
 
   it("marks the guided tour's targets on Power, Factory and Settings (ADR-0065 build PR 2)", async () => {
     renderWithClient(<App />);

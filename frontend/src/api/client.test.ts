@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
+  autoPauseResponseAccepted,
   errorLoginFailed,
   errorUnknownCode,
   errorUpstreamUnreachable,
@@ -10,7 +11,6 @@ import {
   sessionAnonymous,
   sessionAuthenticated,
   setAutoPauseRequestOn,
-  settingsPending,
   statusRunning,
 } from "@satisfactory-dash/shared/fixtures";
 import { server } from "../test/server";
@@ -170,11 +170,11 @@ describe("apiSend", () => {
     server.use(
       http.put(endpoints.settings.setAutoPause.route, async ({ request }) => {
         method = request.method;
-        return HttpResponse.json(settingsPending);
+        return HttpResponse.json(autoPauseResponseAccepted, { status: 202 });
       }),
     );
     await expect(apiSend(endpoints.settings.setAutoPause, setAutoPauseRequestOn, "default")).resolves.toEqual(
-      settingsPending,
+      autoPauseResponseAccepted,
     );
     expect(method).toBe("PUT");
   });
