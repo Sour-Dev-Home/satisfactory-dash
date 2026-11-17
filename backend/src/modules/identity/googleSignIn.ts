@@ -17,6 +17,7 @@ import {
   createSignupUser,
   displayNameTaken,
   findUserByIdentity,
+  lockIdentityOwner,
   recordTermsAcceptance,
   setUserEmail,
   takeSignupLock,
@@ -94,11 +95,19 @@ export function createGoogleSignIn(
     if (known !== undefined) {
       return known;
     }
-    if (claims.email === undefined || claims.email.trim().toLowerCase() !== bootstrapOwnerEmail) {
+    const email = claims.email?.trim().toLowerCase();
+    if (email === undefined) {
       return undefined;
     }
     const operator = await findUserByIdentity(client, "local", OPERATOR_SUBJECT);
     if (operator === undefined || operator.status !== "active") {
+      return undefined;
+    }
+    // The one address that may link: the operator's stored email once there is one (the first link stores it, and
+    // `admin grant-owner` replaces it after unlinking a lost Google account, ownerAdmin.ts), else BOOTSTRAP_OWNER_EMAIL.
+    // Never both: after grant-owner, a stolen old account still carrying the bootstrap address must not relink.
+    // Either way it only links while the operator has no Google identity (below).
+    if (email !== (operator.email ?? bootstrapOwnerEmail)) {
       return undefined;
     }
     if ((await authMethodsForUser(client, operator.id)).includes("google")) {
@@ -108,10 +117,10 @@ export function createGoogleSignIn(
       return findUserByIdentity(client, "google", claims.sub);
     }
     await addIdentity(client, { userId: operator.id, provider: "google", subject: claims.sub });
-    await setUserEmail(client, operator.id, claims.email);
+    await setUserEmail(client, operator.id, email);
     // The one-time link leaves its own trace (ids and codes only, never the email).
     await recordAuditEvent(client, { action: "identity_link", actorUserId: operator.id, detail: { provider: "google" } });
-    return { ...operator, email: claims.email.trim().toLowerCase() };
+    return { ...operator, email };
   };
 
   /**
@@ -166,11 +175,19 @@ export function createGoogleSignIn(
         return refuse(client, "unverified_email");
       }
       let user = await resolveUser(client, claims);
+      if (user !== undefined && (await lockIdentityOwner(client, "google", claims.sub)) !== user.id) {
+        // `admin grant-owner` unlinked this Google account after the lookup above (ownerAdmin.ts). The lock makes the
+        // two serialize: either the unlink waits for this sign-in and then revokes its session, or this sign-in sees
+        // the identity gone. Either way the old account ends up with no session.
+        return refuse(client, "not_invited");
+      }
       if (user === undefined) {
-        // The bootstrap address belongs to the operator and never self-registers: if it could not be linked (the
-        // operator is disabled, or another Google account already holds the link), open sign-up must not hand
-        // that address a brand-new account.
-        const reserved = claims.email !== undefined && claims.email.trim().toLowerCase() === bootstrapOwnerEmail;
+        // The operator's addresses never self-register: BOOTSTRAP_OWNER_EMAIL and the email stored on the operator
+        // (the first link's, or `admin grant-owner`'s). If one could not be linked (the operator is disabled, or
+        // another Google account already holds the link), open sign-up must not hand it a brand-new account.
+        const email = claims.email?.trim().toLowerCase();
+        const operator = await findUserByIdentity(client, "local", OPERATOR_SUBJECT);
+        const reserved = email !== undefined && (email === bootstrapOwnerEmail || email === operator?.email);
         if (signup.mode !== "open" || reserved) {
           return refuse(client, "not_invited");
         }

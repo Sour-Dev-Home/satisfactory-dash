@@ -10,9 +10,17 @@ import { disableUserAdmin, enableUserAdmin } from "../src/modules/identity/accou
 import { createAccountDeletion } from "../src/modules/identity/accountDeletion.js";
 import { createAccountServers } from "../src/modules/servers/index.js";
 import { revokeAllSessionsAdmin, revokeUserSessionsAdmin } from "../src/modules/identity/sessionAdmin.js";
+import { GRANT_OWNER_EMAIL, grantOwnerAdmin } from "../src/modules/identity/ownerAdmin.js";
 
-// ADR-0025: break-glass commands, run locally against the app database (DATABASE_URL in
-// backend/.env). Shell access to this PC is the trust boundary. Output never includes secrets.
+// ADR-0025: break-glass commands, run against the app database: locally with DATABASE_URL in backend/.env, or in
+// production as the `admin` ops task (runbooks/aws.md "Admin commands"). Shell or AWS access is the trust boundary.
+// Output never includes secrets.
+//
+//   npm run admin -- grant-owner --email <address>     The operator's way back in if their Google account is lost
+//                                                      (gate B: there is no password login). Unlinks the operator's
+//                                                      Google account, ends the operator's sessions and stores the
+//                                                      address: the next Google sign-in with that verified address
+//                                                      becomes the operator. Never prints the address.
 //
 //   npm run admin -- revoke-sessions --all             sign everyone out (replaces rotating SESSION_SECRET)
 //   npm run admin -- revoke-sessions --user <user-id>  sign one account out everywhere
@@ -45,7 +53,7 @@ import { revokeAllSessionsAdmin, revokeUserSessionsAdmin } from "../src/modules/
 //                                                      history row counts. Ids and numbers only.
 
 const USAGE =
-  "Usage: npm run admin -- (revoke-sessions (--all | --user <user-id>) | disable-user <user-id> | enable-user <user-id> | delete-user <user-id> | remove-server <public-id> | list-servers | verify-secrets | set-alert-webhook <server-id>)";
+  "Usage: npm run admin -- (grant-owner --email <address> | revoke-sessions (--all | --user <user-id>) | disable-user <user-id> | enable-user <user-id> | delete-user <user-id> | remove-server <public-id> | list-servers | verify-secrets | set-alert-webhook <server-id>)";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const [command, flag, value] = process.argv.slice(2);
@@ -58,7 +66,9 @@ const PUBLIC_ID = /^[a-z0-9-]{1,32}$/;
 const isRemoveServer = command === "remove-server" && PUBLIC_ID.test(flag ?? "") && value === undefined;
 const isListServers = command === "list-servers" && flag === undefined;
 const isDeleteUser = command === "delete-user" && UUID.test(flag ?? "") && value === undefined;
-if (!isRevoke && !isVerify && !isSetWebhook && !isAccount && !isRemoveServer && !isListServers && !isDeleteUser) {
+const isGrantOwner =
+  command === "grant-owner" && flag === "--email" && GRANT_OWNER_EMAIL.test(value ?? "") && process.argv.length === 5;
+if (!isGrantOwner && !isRevoke && !isVerify && !isSetWebhook && !isAccount && !isRemoveServer && !isListServers && !isDeleteUser) {
   console.error(USAGE);
   process.exit(2);
 }
@@ -244,9 +254,33 @@ async function runListServers(pool: pg.Pool): Promise<void> {
   }
 }
 
+async function runGrantOwner(pool: pg.Pool, email: string): Promise<void> {
+  try {
+    const result = await grantOwnerAdmin(pool, email);
+    if (!result.found) {
+      console.error("There is no operator account yet: start the backend once, it creates it.");
+      process.exitCode = 1;
+      return;
+    }
+    console.log(
+      `Operator ${result.userId}: unlinked ${result.googleUnlinked} Google account(s), ended ${result.sessionsRevoked} session(s). ` +
+        "The next Google sign-in with that verified address becomes the operator. If that Google account already has " +
+        "its own Satis Manager account, delete that account first (delete-user), or its own account wins.",
+    );
+    if (result.status !== "active") {
+      console.log(`The operator account is ${result.status}: run enable-user ${result.userId} too, or sign-in refuses it.`);
+    }
+  } catch {
+    console.error("Could not grant the owner: is the database up and migrated?");
+    process.exitCode = 1;
+  }
+}
+
 const pool = new pg.Pool({ connectionString: config.url, max: 2 });
 try {
-  if (isRemoveServer) {
+  if (isGrantOwner) {
+    await runGrantOwner(pool, value as string);
+  } else if (isRemoveServer) {
     await runRemoveServer(pool, flag as string);
   } else if (isDeleteUser) {
     await runDeleteUser(pool, flag as string);
