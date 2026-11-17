@@ -125,6 +125,15 @@ locals {
       }
       master_secret = false
     }
+    # The break-glass CLI (backend/scripts/admin.ts) against production, as the app's own role (satis_app), run by
+    # hand with the command as an override (runbooks/aws.md "Admin commands"). Without one it prints the usage.
+    # Only the app's URL: no secrets key, so verify-secrets and set-alert-webhook stay local-only.
+    "admin" = {
+      command       = ["npm", "run", "--silent", "admin", "-w", "backend"]
+      environment   = {}
+      ssm           = { DATABASE_URL = local.ssm_parameter_arns["DATABASE_URL"] }
+      master_secret = false
+    }
   }
 }
 

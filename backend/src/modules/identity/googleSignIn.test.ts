@@ -32,6 +32,10 @@ function fakeDb(seed: Partial<Store> = {}) {
       const user = store.users.find((u) => u.id === identity?.userId);
       return { rows: user ? [{ id: user.id, display_name: "Op", email: user.email, status: user.status, created_at: now }] : [] };
     }
+    if (text.includes("FOR SHARE")) {
+      const identity = store.identities.find((i) => i.provider === params[0] && i.subject === params[1]);
+      return { rows: identity ? [{ user_id: identity.userId }] : [] };
+    }
     if (text.startsWith("SELECT terms_version")) {
       const user = store.users.find((u) => u.id === params[0]);
       return { rows: user ? [{ terms_version: user.termsVersion ?? null }] : [] };
@@ -119,6 +123,86 @@ describe("createGoogleSignIn (in-memory)", () => {
       expect(result.kind).toBe("refused");
       expect(store.identities).toHaveLength(1);
     }
+  });
+
+  describe("after admin grant-owner (the operator has a stored email, no Google identity)", () => {
+    const NEW = "recovered@example.org";
+    const granted = () => fakeDb({ users: [{ id: "u-op", email: NEW, status: "active" }] });
+
+    it("links the new address (case and whitespace ignored), once, and keeps the lowercased address", async () => {
+      const { db, store } = granted();
+      const signIn = createGoogleSignIn(db, OWNER);
+      const result = await signIn.complete(claims({ email: `  ${NEW.toUpperCase()} ` }), undefined);
+      expect(result.kind).toBe("signed_in");
+      expect(store.users[0]!.email).toBe(NEW);
+      expect(store.emailWrites).toEqual([NEW]);
+      expect(await signIn.complete(claims({ sub: "sub-2", email: NEW }), undefined)).toEqual({ kind: "refused", reason: "not_invited" });
+      expect(store.identities.filter((i) => i.provider === "google")).toHaveLength(1);
+    });
+
+    it("the old bootstrap address no longer links, and nothing is written", async () => {
+      const { db, store } = granted();
+      const result = await createGoogleSignIn(db, OWNER).complete(claims({ email: OWNER }), undefined);
+      expect(result).toEqual({ kind: "refused", reason: "not_invited" });
+      expect(store.identities).toHaveLength(1);
+      expect(store.emailWrites).toEqual([]);
+    });
+
+    it("the old bootstrap address stays reserved from open sign-up", async () => {
+      const { db, store } = granted();
+      const open = createGoogleSignIn(db, OWNER, { mode: "open", maxPerHour: 100 });
+      const result = await open.complete(claims({ email: OWNER.toUpperCase() }), undefined, { acceptedTermsVersion: TERMS_VERSION });
+      expect(result).toEqual({ kind: "refused", reason: "not_invited" });
+      expect(store.users).toHaveLength(1);
+    });
+
+    it("a stored email does not link while the operator already has a Google identity", async () => {
+      const { db, store } = fakeDb({
+        users: [{ id: "u-op", email: NEW, status: "active" }],
+        identities: [
+          { userId: "u-op", provider: "local", subject: "operator" },
+          { userId: "u-op", provider: "google", subject: "sub-first" },
+        ],
+      });
+      const result = await createGoogleSignIn(db, OWNER).complete(claims({ sub: "sub-2", email: NEW }), undefined);
+      expect(result).toEqual({ kind: "refused", reason: "not_invited" });
+      expect(store.identities).toHaveLength(2);
+    });
+
+    it("the stored address is reserved from open sign-up too, when it can't link (operator disabled)", async () => {
+      const { db, store } = fakeDb({ users: [{ id: "u-op", email: NEW, status: "disabled" }] });
+      const open = createGoogleSignIn(db, OWNER, { mode: "open", maxPerHour: 100 });
+      const result = await open.complete(claims({ sub: "sub-new", email: NEW }), undefined, { acceptedTermsVersion: TERMS_VERSION });
+      expect(result).toEqual({ kind: "refused", reason: "not_invited" });
+      expect(store.users).toHaveLength(1);
+    });
+
+    it("a sign-in whose identity is unlinked while it runs (grant-owner racing it) gets no session", async () => {
+      const { db, store } = fakeDb({
+        identities: [
+          { userId: "u-op", provider: "local", subject: "operator" },
+          { userId: "u-op", provider: "google", subject: "sub-old" },
+        ],
+      });
+      // The lookup finds the identity; the unlink commits before the lock is taken.
+      type Client = { query: (sql: string, params?: unknown[]) => Promise<unknown> };
+      const pool = db as unknown as { connect: () => Promise<Client> };
+      const connect = pool.connect;
+      pool.connect = async () => {
+        const client = await connect();
+        const query = client.query;
+        return {
+          ...client,
+          query: async (sql: string, params?: unknown[]) => {
+            if (sql.includes("FOR SHARE")) store.identities = store.identities.filter((i) => i.provider !== "google");
+            return query(sql, params);
+          },
+        };
+      };
+      const result = await createGoogleSignIn(db, OWNER).complete(claims({ sub: "sub-old", email: OWNER }), undefined);
+      expect(result).toEqual({ kind: "refused", reason: "not_invited" });
+      expect(store.sessions).toBe(0);
+    });
   });
 
   it("does not link the operator a second time: a different sub claiming the owner email is refused", async () => {

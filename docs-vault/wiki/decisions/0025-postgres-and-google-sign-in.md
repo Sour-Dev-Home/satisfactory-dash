@@ -268,3 +268,18 @@ Revisit when: email/password, magic links, MFA or many providers are needed. At 
 - The API moves to AWS (ADR-0014): move the DB to RDS in the same change.
 - There's more than one API instance: the login limiter and SSE fan-out move to Redis (ADR-0020).
 - There are measured WAN or DB latency problems.
+
+## Amendment: gate B and PR 9 (owner, 2026-11-17)
+The owner published the Google app and said "gate B go" (#186). Their answers on PR 9:
+- **Break-glass first.** `grant-owner` was planned here (Decision 5) but never built, so the password login was the
+  only fallback. It ships before the password goes, as `npm run admin -- grant-owner --email <address>`
+  (`identity/ownerAdmin.ts`). It also runs in production as the `admin` ops task (runbooks/aws.md "Admin commands").
+  - In one transaction it unlinks the operator's Google identity, stores the address on the operator, ends the
+    operator's sessions and writes an audit row.
+  - The operator links by its stored email once it has one, else by `BOOTSTRAP_OWNER_EMAIL`, never both. So a stolen
+    old account that still carries the bootstrap address can't relink after a grant.
+- **The `local` / `operator` identity row stays** as the operator's anchor (ensureOperatorUserId, the bootstrap link,
+  account deletion). Nobody signs in with it. Keeping it means no contract migration.
+- **The staging check expects a 401** from a signed-in endpoint instead of signing in with a password.
+- **The AdSense crawler login (ADR-0021 amendment 2, Decision 5) is dropped.** AdSense reviews the public pages.
+- The owner signs in with Google today and gets the operator view.

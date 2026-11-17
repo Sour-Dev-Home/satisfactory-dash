@@ -14,6 +14,7 @@ import { createIdentityModule } from "./index.js";
 import { SESSION_COOKIE } from "./session.js";
 import { startSession } from "./dbSessionStore.js";
 import { setUserStatus } from "./repositories/userRepository.js";
+import { grantOwnerAdmin } from "./ownerAdmin.js";
 
 // ADR-0025 PR 7 against a real Postgres, as satis_app, through the real HTTP pipeline and a local
 // fake OpenID provider (real discovery, JWKS, PKCE check and RS256 ID tokens).
@@ -186,6 +187,68 @@ describe.skipIf(!available)("Google sign-in against Postgres", () => {
     const res = await signIn(owner);
     expect(res.headers.location).toBe(`${FRONTEND}/app/login?error=not_invited`);
     expect(await identities()).toBe(1);
+  });
+
+  describe("admin grant-owner (gate B break-glass)", () => {
+    const NEW_EMAIL = "Recovered.Owner@Example.org";
+    const recovered: FakeClaims = { sub: "google-sub-recovered", email: NEW_EMAIL, email_verified: true };
+
+    it("unlinks the lost Google account, ends its sessions, and the new verified address becomes the operator", async () => {
+      const old = sessionCookieOf(await signIn(owner))!;
+      const result = await grantOwnerAdmin(pool, `  ${NEW_EMAIL} `);
+      expect(result).toEqual({ found: true, userId: operatorId, googleUnlinked: 1, sessionsRevoked: 1, status: "active" });
+      // The old session no longer works, and the old Google account can't get back in (it is the bootstrap address,
+      // but the operator's address is now the new one).
+      expect((await request(app).get("/api/servers").set("Cookie", old)).status).toBe(401);
+      const relink = await signIn(owner);
+      expect(relink.headers.location).toBe(`${FRONTEND}/app/login?error=not_invited`);
+      // The new account links to the same operator: memberships carry over, no new user.
+      const usersBefore = await users();
+      const res = await signIn(recovered);
+      expect(res.headers.location).toBe(`${FRONTEND}/app`);
+      expect((await request(app).get("/api/servers").set("Cookie", sessionCookieOf(res)!)).status).toBe(200);
+      expect(await users()).toBe(usersBefore);
+      const linked = await admin.query("SELECT user_id, provider_subject FROM identity.auth_identities WHERE provider = 'google'");
+      expect(linked.rows).toEqual([{ user_id: operatorId, provider_subject: recovered.sub }]);
+      expect((await admin.query("SELECT role FROM servers.server_members WHERE user_id = $1", [operatorId])).rows).toEqual([
+        { role: "owner" },
+      ]);
+      // The audit trail: ids and counts, never an address.
+      const granted = (await auditActions()).find((row) => row.action === "owner.granted")!;
+      expect(granted.detail).toEqual({ userId: operatorId, googleUnlinked: 1, sessionsRevoked: 1 });
+      expect(JSON.stringify(await auditActions()).toLowerCase()).not.toContain("example");
+    });
+
+    it("links only that exact verified address, and only once", async () => {
+      await signIn(owner);
+      await grantOwnerAdmin(pool, NEW_EMAIL);
+      expect((await signIn({ ...recovered, email_verified: false })).headers.location).toBe(`${FRONTEND}/app/login?error=failed`);
+      expect((await signIn({ sub: "google-sub-other", email: "other@example.org", email_verified: true })).headers.location).toBe(
+        `${FRONTEND}/app/login?error=not_invited`,
+      );
+      expect((await signIn(recovered)).headers.location).toBe(`${FRONTEND}/app`);
+      // A second Google account claiming the same address once the link is made gets nothing.
+      expect((await signIn({ ...recovered, sub: "google-sub-second" })).headers.location).toBe(`${FRONTEND}/app/login?error=not_invited`);
+      expect(await identities()).toBe(2); // local + the recovered google
+    });
+
+    it("works before any Google link too, and reports a disabled operator", async () => {
+      await setUserStatus(pool, operatorId, "disabled");
+      expect(await grantOwnerAdmin(pool, NEW_EMAIL)).toEqual({
+        found: true,
+        userId: operatorId,
+        googleUnlinked: 0,
+        sessionsRevoked: 0,
+        status: "disabled",
+      });
+    });
+
+    it("refuses something that isn't an address, and says when there is no operator", async () => {
+      await expect(grantOwnerAdmin(pool, "not-an-address")).rejects.toThrow(/email/);
+      await expect(grantOwnerAdmin(pool, "a@b")).rejects.toThrow(/email/);
+      await admin.query("TRUNCATE identity.users, identity.auth_identities, identity.sessions CASCADE");
+      expect(await grantOwnerAdmin(pool, NEW_EMAIL)).toEqual({ found: false });
+    });
   });
 
   it("rotates the session the browser presented, and says so in the login audit row", async () => {

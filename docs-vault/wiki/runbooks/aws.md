@@ -64,6 +64,36 @@ function run_ops {  # run_ops <task> [extra run-task arguments]: runs it, waits,
 Exit code `0` is success. A task that never started (a missing SSM parameter, an image pull refused)
 shows no exit code and says why in `reason`.
 
+### Admin commands
+
+The `admin` task runs `npm run admin` (`backend/scripts/admin.ts`) against production as the app's role, with only
+`DATABASE_URL`. Its command comes as an override in a file, so nothing needs shell quoting. Without an override it
+prints the usage. `verify-secrets` and `set-alert-webhook` need the secrets key and stay local-only.
+
+**Lost the Google account you sign in with** (gate B: there is no password login). Put the address of the Google
+account you will use now in `admin.json`, outside the repo:
+
+```json
+{ "containerOverrides": [{ "name": "ops", "command": ["npm", "run", "--silent", "admin", "-w", "backend", "--", "grant-owner", "--email", "you@example.com"] }] }
+```
+
+```sh
+run_ops admin --overrides file://admin.json   # PowerShell: run_ops admin --overrides file://admin.json
+```
+
+It unlinks the old Google account, ends every operator session and stores the address. Then sign in at
+satis-manager.com with that Google account: it becomes the operator, with your servers. The old Google account can't
+get back in, even though it is the `BOOTSTRAP_OWNER_EMAIL`. If the new Google account already has its own Satis
+Manager account, its own account wins: delete that account first (`delete-user <user-id>`, the same way), then sign in.
+The address stays in the task's overrides, which CloudTrail records in this AWS account; the task's log never prints
+it. Delete `admin.json` afterwards.
+
+Whoever can run this task (`ecs:RunTask` on `satis-prod-ops-admin` plus `iam:PassRole` on its execution role) can make
+any Google account the operator, delete accounts or sign everyone out: keep that permission to the owner's own AWS
+user, as it is today. CloudTrail's `RunTask` events name the task definition, so a run is always on record.
+
+The other commands work the same way, for example `"command": [..., "--", "list-servers"]` or `"revoke-sessions", "--all"`.
+
 ## Apply
 
 The first apply follows `infra/aws/README.md` ("First apply"), with the ops pieces in this order:

@@ -43,8 +43,18 @@ run "criterion_1_four_ops_tasks_run_their_npm_scripts_on_the_ops_image" {
   command = apply
 
   assert {
-    condition     = toset(keys(aws_ecs_task_definition.ops)) == toset(["db-init", "db-migrate", "backup", "restore"])
-    error_message = "one task definition each for db:init, db:migrate, backup and the restore"
+    condition     = toset(keys(aws_ecs_task_definition.ops)) == toset(["db-init", "db-migrate", "backup", "restore", "admin"])
+    error_message = "one task definition each for db:init, db:migrate, backup, the restore and the admin CLI"
+  }
+
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.ops["admin"].container_definitions)[0].command == ["npm", "run", "--silent", "admin", "-w", "backend"]
+    error_message = "the admin task runs npm run admin (the command comes as an override)"
+  }
+
+  assert {
+    condition     = toset([for s in jsondecode(aws_ecs_task_definition.ops["admin"].container_definitions)[0].secrets : s.name]) == toset(["DATABASE_URL"])
+    error_message = "the admin task gets only the app role's URL: no migrator, master or secrets key"
   }
 
   assert {

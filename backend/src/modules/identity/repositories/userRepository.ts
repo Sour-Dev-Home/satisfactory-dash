@@ -137,6 +137,21 @@ export async function findUserByIdentity(
   return row === undefined ? undefined : toUser(row);
 }
 
+const LOCK_IDENTITY = `
+  SELECT user_id
+  FROM identity.auth_identities
+  WHERE provider = $1 AND provider_subject = $2
+  FOR SHARE`;
+
+const IdentityOwnerRowSchema = z.object({ user_id: z.string() });
+
+/** Locks a provider identity until the transaction ends and returns who owns it now (undefined once it is gone).
+ *  A sign-in takes it before starting a session, so `admin grant-owner`'s unlink of that identity waits for it. */
+export async function lockIdentityOwner(db: Queryable, provider: IdentityProvider, subject: string): Promise<string | undefined> {
+  const result = await timedQuery(db, "identity.lockIdentityOwner", LOCK_IDENTITY, [provider, subject]);
+  return parseFirst(IdentityOwnerRowSchema, result.rows, "identity.lockIdentityOwner")?.user_id;
+}
+
 const INSERT_IDENTITY = `
   INSERT INTO identity.auth_identities (user_id, provider, provider_subject)
   VALUES ($1, $2, $3)

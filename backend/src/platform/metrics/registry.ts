@@ -193,6 +193,8 @@ export const QUERY_NAMES = [
   "identity.deleteAccount.sessionFresh",
   "identity.disableUser.dropCodes",
   "identity.disableUser.revokeAgents",
+  "identity.grantOwner.unlinkGoogle",
+  "identity.lockIdentityOwner",
   "identity.revokeAllSessionsForUser",
   "identity.revokeSession",
   "identity.setUserEmail",
