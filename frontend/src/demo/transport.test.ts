@@ -9,6 +9,7 @@ import {
   StatusResponseSchema,
 } from "@satisfactory-dash/shared";
 import { COMMAND_DELAY_MS, PENDING_MS, resetDemoState } from "./handlers";
+import { enterDemo } from "./session";
 import { transport } from "./transport";
 import { DEMO_SERVER_ID } from "./world";
 
@@ -21,7 +22,9 @@ const call = (method: string, path: string, body?: unknown) =>
     ...(body !== undefined && { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   });
 
-const enter = () => call("POST", endpoints.auth.login.path(), { username: "demo", password: "demo" });
+const enter = () => enterDemo();
+
+const session = async () => SessionResponseSchema.parse(await (await call("GET", endpoints.auth.session.path())).json());
 
 let fetchSpy: ReturnType<typeof vi.fn>;
 beforeEach(() => {
@@ -38,8 +41,7 @@ afterEach(() => {
 
 describe("the demo transport", () => {
   it("starts signed out, and data routes answer 401 like the real API", async () => {
-    const session = SessionResponseSchema.parse(await (await call("GET", endpoints.auth.session.path())).json());
-    expect(session.authenticated).toBe(false);
+    expect((await session()).authenticated).toBe(false);
     const status = await call("GET", endpoints.status.path(DEMO_SERVER_ID));
     expect(status.status).toBe(401);
     expect((await status.json()).error.code).toBe("unauthorized");
@@ -173,6 +175,37 @@ describe("the demo transport", () => {
     await enter();
     await call("POST", endpoints.auth.logout.path());
     expect((await call("GET", endpoints.status.path(DEMO_SERVER_ID))).status).toBe(401);
+  });
+
+  it("enterDemo signs in without a request: the server list goes from 401 to 200, the session from false to true", async () => {
+    expect((await call("GET", endpoints.servers.path())).status).toBe(401);
+    expect((await session()).authenticated).toBe(false);
+    expect(enterDemo()).toMatchObject({ authenticated: true });
+    expect((await call("GET", endpoints.servers.path())).status).toBe(200);
+    expect(await session()).toMatchObject({ authenticated: true, user: { name: "Demo visitor" } });
+  });
+
+  it("logout after enterDemo reads as signed out", async () => {
+    enterDemo();
+    expect((await call("POST", endpoints.auth.logout.path())).status).toBe(200);
+    expect((await session()).authenticated).toBe(false);
+    expect((await call("GET", endpoints.servers.path())).status).toBe(401);
+  });
+
+  it("resetDemoState signs out a demo entered with enterDemo", async () => {
+    enterDemo();
+    resetDemoState();
+    expect((await session()).authenticated).toBe(false);
+    expect((await call("GET", endpoints.servers.path())).status).toBe(401);
+  });
+
+  it("no longer answers password login: POST /api/auth/login is the demo's no-data 404 and doesn't sign in", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await call("POST", endpoints.auth.login.path(), { username: "demo", password: "demo" });
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.message).toBe("The demo has no data for POST /api/auth/login.");
+    expect((await session()).authenticated).toBe(false);
+    expect((await call("GET", endpoints.servers.path())).status).toBe(401);
   });
 
   it("answers a PUT body that isn't valid JSON with a 400 bad_request, like the real API", async () => {

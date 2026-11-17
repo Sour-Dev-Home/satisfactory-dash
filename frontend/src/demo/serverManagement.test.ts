@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, ManagedServerListResponseSchema, ServerListResponseSchema } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
+import { enterDemo } from "./session";
 import { transport } from "./transport";
 import { DEMO_SERVER_ID } from "./world";
 
@@ -19,7 +20,7 @@ beforeEach(async () => {
   resetDemoState();
   fetchSpy = vi.fn(() => Promise.reject(new Error("the demo must not use the network")));
   vi.stubGlobal("fetch", fetchSpy);
-  await call("POST", endpoints.auth.login.path(), { username: "demo", password: "demo" });
+  enterDemo();
 });
 afterEach(() => {
   expect(fetchSpy).not.toHaveBeenCalled();

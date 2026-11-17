@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, SettingsResponseSchema } from "@satisfactory-dash/shared";
+import { enterDemo } from "./session";
 import { DEMO_EPOCH, DEMO_SERVER_ID } from "./world";
 
 // ADR-0026 `?clock=fixed` pins demoNow() so screenshots are identical run to run. handlers.ts's
@@ -32,7 +33,7 @@ afterEach(() => {
 describe("settingsNow under a frozen demoNow (?clock=fixed)", () => {
   it("resolves 'pending' by real time even though observedAt never advances", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    await call("POST", endpoints.auth.login.path(), { username: "demo", password: "demo" });
+    enterDemo();
 
     expect((await call("PUT", endpoints.settings.setAutoPause.path(DEMO_SERVER_ID), { enabled: true })).status).toBe(202);
     const during = SettingsResponseSchema.parse(await (await call("GET", endpoints.settings.get.path(DEMO_SERVER_ID))).json());

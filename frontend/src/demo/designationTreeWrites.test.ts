@@ -9,6 +9,7 @@ import {
 import { dissolveRequest, groupRequest, moveRequest, ungroupRequest, undoRequest, type OpResult } from "../planner/designationOps";
 import { buildFactoryTree, designatedKeyOf } from "../planner/factoryTree";
 import { resetDemoState } from "./handlers";
+import { enterDemo } from "./session";
 import { transport } from "./transport";
 import * as world from "./world";
 
@@ -69,7 +70,7 @@ async function expectConsistent() {
 beforeEach(async () => {
   resetDemoState();
   vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("the demo must not use the network"))));
-  await send("POST", endpoints.auth.login.path(), { username: "demo", password: "demo" });
+  enterDemo();
 });
 afterEach(() => vi.unstubAllGlobals());
 

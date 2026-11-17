@@ -12,6 +12,7 @@ import { dissolveRequest, mergeRequest, undoRequest } from "../planner/designati
 import { factoriesConnected } from "../planner/connectivity";
 import { demoDesignations, setDemoDesignations } from "./designations";
 import { resetDemoState } from "./handlers";
+import { enterDemo } from "./session";
 import { transport } from "./transport";
 import * as world from "./world";
 
@@ -27,7 +28,7 @@ const replace = (body: ReplacePlannerDesignationsRequest) => send("POST", endpoi
 beforeEach(async () => {
   resetDemoState();
   vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("the demo must not use the network"))));
-  await send("POST", endpoints.auth.login.path(), { username: "demo", password: "demo" });
+  enterDemo();
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -102,7 +103,7 @@ describe("the demo's designations", () => {
     expect(res.status).toBe(200);
     expect((await list()).designations[0]).toMatchObject({ name: "Polymer row", revision: 2 });
     resetDemoState();
-    await send("POST", endpoints.auth.login.path(), { username: "demo", password: "demo" });
+    enterDemo();
     expect((await list()).designations[0]).toMatchObject({ name: "Plastic line", revision: 1 });
   });
 });

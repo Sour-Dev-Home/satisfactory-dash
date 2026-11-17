@@ -14,6 +14,7 @@ import {
   worldLayerResponseSchema,
 } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
+import { enterDemo } from "./session";
 import { transport } from "./transport";
 import {
   conveyorsWorld,
@@ -40,12 +41,7 @@ beforeEach(async () => {
   resetDemoState();
   fetchSpy = vi.fn(() => Promise.reject(new Error("the demo must not use the network")));
   vi.stubGlobal("fetch", fetchSpy);
-  await transport(endpoints.auth.login.path(), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "demo", password: "demo" }),
-  });
+  enterDemo();
 });
 afterEach(() => {
   expect(fetchSpy).not.toHaveBeenCalled();

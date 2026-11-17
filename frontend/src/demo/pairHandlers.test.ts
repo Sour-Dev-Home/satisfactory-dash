@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, PairingApproveResponseSchema, PairingLookupResponseSchema } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
+import { enterDemo } from "./session";
 import { DEMO_PAIR_CODE } from "./pairCode";
 import { transport } from "./transport";
 import { DEMO_SERVER_ID } from "./world";
@@ -21,7 +22,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const signIn = () => transport(endpoints.auth.login.path(), { method: "POST", credentials: "include" });
+const signIn = () => enterDemo();
 
 describe("pairing in the demo", () => {
   it("is a valid-shaped code", () => {

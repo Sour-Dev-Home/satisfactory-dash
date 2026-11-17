@@ -3,10 +3,10 @@ import {
   endpoints,
   ReplacePlannerDesignationsRequestSchema,
   UpdatePlannerDesignationRequestSchema,
-  type SessionResponse,
   type SetAutoPauseRequest,
 } from "@satisfactory-dash/shared";
 import * as alerts from "./alerts";
+import { SIGNED_IN, SIGNED_OUT, demoSession } from "./session";
 import { demoNow } from "./clock";
 import { applyCreate, applyRemove, applyReplace, applyUpdate, type StoredDesignation, type WriteFailure } from "./designationStore";
 import { demoDesignations, demoDesignationsResponse, resetDemoDesignations, setDemoDesignations, withDemoDesignations } from "./designations";
@@ -21,9 +21,6 @@ import * as world from "./world";
  * anything else is a visible "no demo data" error, never a request.
  */
 
-const SIGNED_IN: SessionResponse = { authenticated: true, user: { name: "Demo visitor" } };
-const SIGNED_OUT: SessionResponse = { authenticated: false };
-
 /** How long an auto-pause change shows as pending before it's applied, like a real server. */
 export const PENDING_MS = 6000;
 
@@ -36,7 +33,7 @@ export const PENDING_MS = 6000;
 export const COMMAND_DELAY_MS = 1500;
 
 /** Everything a visit changes, in memory only: a reload starts over. */
-const state = { signedIn: false, autoPause: false, pendingUntil: 0, commandCount: 0 };
+const state = { autoPause: false, pendingUntil: 0, commandCount: 0 };
 /** This visit's commands by id (a Map: the id in a read comes from the URL), and the timers that complete them. */
 const commands = new Map<string, world.DemoCommand>();
 const commandTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -45,7 +42,8 @@ export function resetDemoState(): void {
   for (const timer of commandTimers) clearTimeout(timer);
   commandTimers.clear();
   commands.clear();
-  Object.assign(state, { signedIn: false, autoPause: false, pendingUntil: 0, commandCount: 0 });
+  Object.assign(state, { autoPause: false, pendingUntil: 0, commandCount: 0 });
+  demoSession.signedIn = false;
   alerts.resetDemoAlerts();
   resetDemoDesignations();
 }
@@ -55,7 +53,7 @@ const error = (status: number, code: string, message: string, reason?: string) =
 
 /** Data routes behave like the real API: signed out is a 401, an unknown server a 404. */
 function guarded(params: Params, respond: () => Response): Response {
-  if (!state.signedIn) return error(401, "unauthorized", "Sign in to see this.");
+  if (!demoSession.signedIn) return error(401, "unauthorized", "Sign in to see this.");
   if (params.serverId !== undefined && params.serverId !== world.DEMO_SERVER_ID) {
     return error(404, "server_not_found", "That server doesn't exist in the demo.");
   }
@@ -95,19 +93,15 @@ const settingsNow = () => {
 export const demoHandlers = [
   get(endpoints.health.route, () => Response.json({ status: "ok" })),
 
-  get(endpoints.auth.session.route, () => Response.json(state.signedIn ? SIGNED_IN : SIGNED_OUT)),
-  // "Enter demo" signs in without credentials; there's nothing to protect.
-  post(endpoints.auth.login.route, () => {
-    state.signedIn = true;
-    return Response.json(SIGNED_IN);
-  }),
+  // Signed in by "Enter demo" (session.ts enterDemo), which makes no request.
+  get(endpoints.auth.session.route, () => Response.json(demoSession.signedIn ? SIGNED_IN : SIGNED_OUT)),
   post(endpoints.auth.logout.route, () => {
-    state.signedIn = false;
+    demoSession.signedIn = false;
     return Response.json(SIGNED_OUT);
   }),
   // The demo has one session (this tab), so "everywhere" is the same as here.
   post(endpoints.auth.logoutAll.route, () => {
-    state.signedIn = false;
+    demoSession.signedIn = false;
     return Response.json(SIGNED_OUT);
   }),
 
