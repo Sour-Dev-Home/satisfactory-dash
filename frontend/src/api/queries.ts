@@ -109,8 +109,6 @@ export function keepForServer(serverId: string) {
 }
 
 export const SESSION_KEY =["auth", "session"] as const;
-/** The login form's own 401 is a form error, not an expired session. */
-export const LOGIN_MUTATION_KEY = ["auth", "login"] as const;
 
 const signedOut: SessionResponse = { authenticated: false };
 
@@ -147,7 +145,7 @@ function keyEquals(key: QueryKey | undefined, expected: QueryKey): boolean {
 
 export function createQueryClient(): QueryClient {
   // Every protected route answers 401 once the session is gone (ADR-0011); handling it here
-  // means no screen has to. The login mutation opts out: its 401 is "wrong password".
+  // means no screen has to.
   const onUnauthorized = (error: unknown) => {
     // Already signed out (e.g. a poll in flight when the account was deleted): keep the answer that names the methods.
     if (classifyError(error) === "unauthorized" && !isSignedOut(client)) signOutLocally(client);
@@ -172,8 +170,8 @@ export function createQueryClient(): QueryClient {
       },
     }),
     mutationCache: new MutationCache({
-      onError: (error, _variables, _context, mutation) => {
-        if (!keyEquals(mutation.options.mutationKey, LOGIN_MUTATION_KEY)) onUnauthorized(error);
+      onError: (error) => {
+        onUnauthorized(error);
       },
     }),
     defaultOptions: {

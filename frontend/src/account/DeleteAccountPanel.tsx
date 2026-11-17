@@ -18,7 +18,7 @@ import {
   OPERATOR_SERVERS_LEAD,
   OPERATOR_SERVERS_THEN,
   REAUTH_LEAD,
-  REAUTH_PASSWORD,
+  REAUTH_SIGN_OUT_AND_IN,
   REAUTH_THEN,
   REMOVED_HEADING,
   deleteRefusal,
@@ -41,7 +41,7 @@ const SECONDARY_LINK_BUTTON =
 /**
  * Settings → Delete my account (ADR-0047). Says what goes and what stays, then deletes behind an explicit confirm. The
  * real guard is the backend's recent-sign-in rule: an older session gets 403 reauth_required, and this offers the
- * sign-in the app already has (Google, back to Settings; or sign out and in again for a password account). The
+ * sign-in the app already has (Google, back to Settings; otherwise sign out and in again). The
  * operator gets a line instead of the button (the backend refuses the operator's account anyway). Needs no selected
  * server, so the no-server screen can show it too.
  */
@@ -198,7 +198,10 @@ function Refusal({ error, focusRef }: { error: unknown; focusRef: (el: HTMLEleme
   );
 }
 
-/** Google accounts go through Google again, back to Settings; a password account signs out and in again. */
+/**
+ * Accounts go through Google again, back to Settings. Without Google (the account has no Google link, or the
+ * backend doesn't offer it right now) the fallback is the generic "sign out and sign in again".
+ */
 function Reauth() {
   const client = useQueryClient();
   const authMethods = useSignedInUser()?.authMethods ?? [];
@@ -221,7 +224,7 @@ function Reauth() {
   return (
     <>
       <p className="mb-0">{REAUTH_LEAD}</p>
-      <p className="mb-0">{REAUTH_PASSWORD}</p>
+      <p className="mb-0">{REAUTH_SIGN_OUT_AND_IN}</p>
       <div>
         <LogoutButton />
       </div>

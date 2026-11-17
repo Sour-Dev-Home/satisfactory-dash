@@ -3,13 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
   autoPauseResponseAccepted,
-  errorLoginFailed,
+  errorSessionRequired,
   errorUnknownCode,
   errorUpstreamUnreachable,
   errorWithDetail,
-  loginRequestValid,
   sessionAnonymous,
-  sessionAuthenticated,
   setAutoPauseRequestOn,
   statusRunning,
 } from "@satisfactory-dash/shared/fixtures";
@@ -154,14 +152,16 @@ describe("apiSend", () => {
     let body: unknown;
     let contentType: string | null = null;
     server.use(
-      http.post(endpoints.auth.login.route, async ({ request }) => {
+      http.put(endpoints.settings.setAutoPause.route, async ({ request }) => {
         contentType = request.headers.get("content-type");
         body = await request.json();
-        return HttpResponse.json(sessionAuthenticated);
+        return HttpResponse.json(autoPauseResponseAccepted, { status: 202 });
       }),
     );
-    await expect(apiSend(endpoints.auth.login, loginRequestValid)).resolves.toEqual(sessionAuthenticated);
-    expect(body).toEqual(loginRequestValid);
+    await expect(apiSend(endpoints.settings.setAutoPause, setAutoPauseRequestOn, "default")).resolves.toEqual(
+      autoPauseResponseAccepted,
+    );
+    expect(body).toEqual(setAutoPauseRequestOn);
     expect(contentType).toBe("application/json");
   });
 
@@ -194,25 +194,27 @@ describe("apiSend", () => {
     expect(contentType).toBeNull();
   });
 
-  it("throws ApiError for a failed login, carrying the message to show", async () => {
-    server.use(http.post(endpoints.auth.login.route, () => HttpResponse.json(errorLoginFailed, { status: 401 })));
-    const error = await caught(apiSend(endpoints.auth.login, loginRequestValid));
+  it("throws ApiError for a failed write, carrying the message to show", async () => {
+    server.use(
+      http.put(endpoints.settings.setAutoPause.route, () => HttpResponse.json(errorSessionRequired, { status: 401 })),
+    );
+    const error = await caught(apiSend(endpoints.settings.setAutoPause, setAutoPauseRequestOn, "default"));
     expect(error).toBeInstanceOf(ApiError);
-    expect(error).toMatchObject({ status: 401, code: "unauthorized", message: "Invalid username or password" });
+    expect(error).toMatchObject({ status: 401, code: "unauthorized", message: errorSessionRequired.error.message });
   });
 
   it("rejects a body that fails the request schema without sending it", async () => {
     let sent = false;
     server.use(
-      http.post(endpoints.auth.login.route, () => {
+      http.patch(endpoints.serverManagement.renameAgent.route, () => {
         sent = true;
-        return HttpResponse.json(sessionAuthenticated);
+        return HttpResponse.json({});
       }),
     );
-    const error = await caught(apiSend(endpoints.auth.login, { username: "", password: "x" }));
+    const error = await caught(apiSend(endpoints.serverManagement.renameAgent, { displayName: "" }, "default"));
     expect(error).toBeInstanceOf(RequestValidationError);
-    expect(error).toMatchObject({ path: "/api/auth/login" });
-    expect((error as RequestValidationError).issues).toEqual([expect.stringMatching(/^username: /)]);
+    expect(error).toMatchObject({ path: "/api/servers/default/name" });
+    expect((error as RequestValidationError).issues).toEqual([expect.stringMatching(/^displayName: /)]);
     expect(sent).toBe(false);
   });
 });

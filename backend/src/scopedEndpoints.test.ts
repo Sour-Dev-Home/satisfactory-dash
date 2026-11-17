@@ -11,7 +11,7 @@ describe("scopedEndpoints (the selector the generated IDOR tests use)", () => {
     nested: { inner: { method: "PUT", route: "/api/servers/:serverId/settings/auto-pause" } },
     bare: { remove: { method: "DELETE", route: "/api/servers/:serverId" }, rename: { method: "PATCH", route: "/api/servers/:serverId" } },
     lookalike: { method: "GET", route: "/api/servers/:serverIdentity/x" },
-    auth: { login: { method: "POST", route: "/api/auth/login" } },
+    auth: { logout: { method: "POST", route: "/api/auth/logout" } },
   };
 
   it("selects the bare server route and every sub-resource, at any nesting depth", () => {

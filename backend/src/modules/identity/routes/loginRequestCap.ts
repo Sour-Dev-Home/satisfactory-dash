@@ -4,14 +4,15 @@ import type { ClientRateLimitInfo } from "express-rate-limit";
 import { RateLimitedError } from "../../../platform/errorResponse.js";
 import { clientIp } from "../../../platform/clientIp.js";
 
-/** Outer cap on every login request per IP, whatever its outcome. */
+/** Outer cap on every sign-in request per IP (Google sign-in since ADR-0025 PR 9), whatever its outcome. */
 export const LOGIN_REQUESTS_PER_WINDOW = 20;
 const LOGIN_REQUEST_WINDOW_MS = 15 * 60 * 1000;
 
 /**
  * Limits ALL requests of the routes it guards per IP (malformed ones, rate-limited retries,
  * repeated successes), so no request pattern is unbounded. Added after CodeQL
- * (js/missing-rate-limiting) flagged the login route on PR #24. One instance per call, so each
+ * (js/missing-rate-limiting) flagged the password login route on PR #24 (that route is gone since
+ * ADR-0025 PR 9; Google sign-in uses the cap now). One instance per call, so each
  * router gets its own counters.
  */
 export function createLoginRequestCap(what = "login", onLimited?: (req: Request, res: Response) => void): RequestHandler {

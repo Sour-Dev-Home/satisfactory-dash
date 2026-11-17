@@ -86,7 +86,7 @@ contract needs to grow, not that this module should special-case a backend detai
   failed reads with backoff; `StatusBanners` says "updating" once, for `DEPLOY_GAP_GIVE_UP_MS`, then the usual
   "couldn't reach" error. Durations are named constants there.
 - Auth (ADR-0011): `src/auth/AuthGate.tsx` shows the app only when the session query says
-  signed in. A 401 from any query or mutation (except login) signs out in one place,
+  signed in. A 401 from any query or mutation signs out in one place,
   `createQueryClient`; screens never handle 401 themselves. Nothing auth-related goes in
   localStorage: the httpOnly cookie is the only credential.
 - Servers (ADR-0001): `src/servers/ServerGate.tsx` picks the server; views read it with

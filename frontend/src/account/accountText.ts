@@ -22,7 +22,7 @@ export const OPERATOR_CANNOT_DELETE = "The operator's account can't be deleted h
 
 export const REAUTH_LEAD = "To delete your account, sign in again first: it needs a sign-in from the last 10 minutes.";
 export const REAUTH_THEN = "Then come back to Settings and delete your account.";
-export const REAUTH_PASSWORD = "Sign out, sign in again, then come back to Settings and delete your account.";
+export const REAUTH_SIGN_OUT_AND_IN = "Sign out, sign in again, then come back to Settings and delete your account.";
 
 export const OPERATOR_SERVERS_LEAD = "You own servers the operator set up, so your account can't be deleted yet:";
 export const OPERATOR_SERVERS_THEN = "They need a new owner first. Contact the operator.";

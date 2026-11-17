@@ -6,12 +6,6 @@ import { expect, expectNoAxeViolations, paintLazyRows, settleAnimations, test } 
 // Every UI state from ADR-0016 item 5, at 1440 and 390 px (the two projects): wait until the
 // state is actually on screen, fail on any axe violation, then compare a full-page screenshot.
 
-async function signIn(page: Page) {
-  await page.getByLabel("Username").fill("operator");
-  await page.getByLabel("Password").fill("example-password");
-  await page.getByRole("button", { name: "Sign in" }).click();
-}
-
 /** Waits until the page has revealed and its slow panels are showing their skeletons. */
 async function skeletonsShown(page: Page) {
   await expect(page.locator('[data-page-reveal="revealed"]')).toBeVisible();
@@ -117,7 +111,7 @@ interface StateCase {
   path?: string;
   /** Screenshot and test name, when one scenario is shown on several pages. */
   name?: string;
-  /** Extra steps before the check, e.g. submitting the login form. */
+  /** Extra steps before the check, e.g. filtering the map. */
   act?: (page: Page) => Promise<void>;
   /**
    * The fixed "now" (ISO) for this state (default LIVE_NOW). Anything drawn from the clock, such as
@@ -237,16 +231,15 @@ const CASES: StateCase[] = [
   { scenario: "map-live-error", path: "/app/map", shows: /Trains couldn't load/ },
   // The map's Filters (2026-10-21): open, with one in-view resource type and one building state hidden, in-use nodes only.
   { scenario: "default", name: "map-filtered", path: "/app/map", shows: /^\d+ of \d+ resource nodes shown/, act: filterTheMap },
-  { scenario: "login", shows: "Sign in" },
+  { scenario: "login", shows: "Sign in with Google" },
   { scenario: "login-google", shows: "Sign in with Google" },
+  { scenario: "login-unavailable", shows: "Sign-in isn't available on this server." },
   {
     scenario: "login-google-error",
     path: "/app/login?error=not_invited",
     shows: "There is no account for this Google sign-in, and sign-up is closed right now.",
   },
   { scenario: "login-terms-changed", path: "/app/login?error=terms_changed", shows: "What changed:" },
-  { scenario: "login-failed", shows: "Invalid username or password", act: signIn },
-  { scenario: "login-rate-limited", shows: "Try again later", act: signIn },
   { scenario: "no-servers", shows: "No game servers are configured." },
   { scenario: "server-picker", shows: "Choose a game server" },
   // The Overview says "paused" in its Server row; the banner is on the other pages only.

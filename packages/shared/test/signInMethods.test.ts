@@ -3,9 +3,9 @@ import { SessionResponseSchema, endpoints } from "../src/index";
 
 describe("SessionResponse.signInMethods (additive)", () => {
   it("parses a signed-out response with and without it (an older backend omits it)", () => {
-    expect(SessionResponseSchema.parse({ authenticated: false, signInMethods: ["password", "google"] })).toEqual({
+    expect(SessionResponseSchema.parse({ authenticated: false, signInMethods: ["google", "google_signup"] })).toEqual({
       authenticated: false,
-      signInMethods: ["password", "google"],
+      signInMethods: ["google", "google_signup"],
     });
     expect(SessionResponseSchema.parse({ authenticated: false })).toEqual({ authenticated: false });
   });

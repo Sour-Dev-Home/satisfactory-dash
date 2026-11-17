@@ -84,7 +84,7 @@ describe("Delete my account", () => {
 
   it("tells the operator their account can't be deleted here, with no button", async () => {
     serveList({ servers: [{ ...operatorServer, role: "owner" }], canManageServers: true });
-    renderAccount({ name: "operator", authMethods: ["password"] });
+    renderAccount({ name: "operator", authMethods: ["google"] });
     expect(await screen.findByText("The operator's account can't be deleted here.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Delete my account/ })).not.toBeInTheDocument();
   });
@@ -184,7 +184,7 @@ describe("Delete my account", () => {
   it("offers sign out and in again on reauth_required for an account without Google", async () => {
     serveList({ servers: [operatorServer] });
     refuseDelete(403, errorReauthRequired);
-    renderAccount({ name: "Bo", authMethods: ["password"] });
+    renderAccount({ name: "Bo", authMethods: [] });
     await openDelete();
     confirmDelete();
     const alert = await screen.findByRole("alert");
