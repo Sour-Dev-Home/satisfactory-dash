@@ -103,10 +103,10 @@ describe.skipIf(!available)("database sessions through the real pipeline", () =>
       (await admin.query("SELECT (SELECT count(*)::int FROM identity.sessions) AS s, (SELECT count(*)::int FROM identity.users) AS u, (SELECT count(*)::int FROM audit.audit_events) AS a")).rows[0];
     const before = await counts();
     const body = JSON.stringify({ username: "operator", password: "correct horse battery staple" });
-    const anon = await request(app).post(endpoints.auth.login.path()).set("Content-Type", "application/json").send(body);
+    const anon = await request(app).post("/api/auth/login").set("Content-Type", "application/json").send(body);
     expect(anon.status).toBe(401);
     expect(anon.headers["set-cookie"]).toBeUndefined();
-    const signedIn = await request(app).post(endpoints.auth.login.path()).set("Content-Type", "application/json").set("Cookie", cookie).send(body);
+    const signedIn = await request(app).post("/api/auth/login").set("Content-Type", "application/json").set("Cookie", cookie).send(body);
     expect(signedIn.status).toBe(404);
     expect(setCookieOf(signedIn)).toBe("");
     expect(await counts()).toEqual(before);

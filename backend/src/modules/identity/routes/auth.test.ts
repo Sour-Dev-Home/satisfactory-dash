@@ -72,7 +72,7 @@ function buildApp(signInMethods: string[] = METHODS) {
 describe("POST /api/auth/login (removed)", () => {
   const login = (app: ReturnType<typeof buildApp>["app"]) =>
     request(app)
-      .post(endpoints.auth.login.path())
+      .post("/api/auth/login")
       .set("Content-Type", "application/json")
       .send(JSON.stringify({ username: "operator", password: "correct horse battery staple" }));
 

@@ -15,8 +15,8 @@ import {
 
 describe("open sign-up helpers (ADR-0046)", () => {
   it("offersSignup needs google_signup in the list", () => {
-    expect(offersSignup(["password", "google", "google_signup"])).toBe(true);
-    expect(offersSignup(["password", "google"])).toBe(false);
+    expect(offersSignup(["google", "google_signup"])).toBe(true);
+    expect(offersSignup(["google"])).toBe(false);
     expect(offersSignup(undefined)).toBe(false);
   });
 
@@ -98,8 +98,9 @@ describe("signInErrorText", () => {
 
 describe("offersGoogle", () => {
   it("only when the backend lists google", () => {
-    expect(offersGoogle(["password", "google"])).toBe(true);
-    expect(offersGoogle(["password"])).toBe(false);
+    expect(offersGoogle(["google"])).toBe(true);
+    expect(offersGoogle(["google_signup"])).toBe(false);
+    expect(offersGoogle([])).toBe(false);
     expect(offersGoogle(undefined)).toBe(false); // an older backend sends no list
   });
 });

@@ -59,7 +59,6 @@ import {
   RenameServerResponseSchema,
   HealthResponseSchema,
   KnownErrorCode,
-  LoginRequestSchema,
   ReadinessResponseSchema,
   MapLiveSchema,
   BottlenecksResponseSchema,
@@ -210,7 +209,6 @@ const schemaByPrefix: [string, z.ZodType][] = [
   ["error", ApiErrorResponseSchema],
   ["health", HealthResponseSchema],
   ["readiness", ReadinessResponseSchema],
-  ["loginRequest", LoginRequestSchema],
   ["session", SessionResponseSchema],
   ["settings", SettingsResponseSchema],
   ["setAutoPauseRequest", SetAutoPauseRequestSchema],
@@ -491,18 +489,6 @@ describe("auth and settings schemas", () => {
     expect(SessionResponseSchema.parse(leaky)).toEqual(fixtures.sessionAuthenticated);
   });
 
-  it("rejects an empty or oversized login field", () => {
-    for (const body of [
-      { username: "", password: "x" },
-      { username: "operator", password: "" },
-      { username: "operator" },
-      { username: "operator", password: "x".repeat(1025) },
-      { username: "x".repeat(129), password: "x" },
-    ]) {
-      expect(LoginRequestSchema.safeParse(body).success, JSON.stringify(body).slice(0, 60)).toBe(false);
-    }
-  });
-
   it("requires a real boolean to toggle auto-pause (no string or number coercion)", () => {
     for (const enabled of ["true", 1, null]) {
       expect(SetAutoPauseRequestSchema.safeParse({ enabled }).success).toBe(false);
@@ -535,7 +521,7 @@ describe("endpoints", () => {
     const all = flatEndpoints();
     // 22 + the three history endpoints (ADR-0027) + the 13 alerts endpoints (PR 7a) + the 4 user-facing and 5 agent
     // endpoints (ADR-0031 PR 3, + world ingest ADR-0038 M3) + the 2 map endpoints (ADR-0038 M3, #353).
-    expect(all.length).toBe(68); // - the 6 direct-poll serverManagement endpoints (ADR-0066 PR 8), + the 2 agent pairing, 2 dashboard pairing and compat endpoints (ADR-0051, ADR-0057), + the metrics overview and the delivery ingest (ADR-0056), + serverManagement.renameAgent (ADR-0031; its switchToLocal went in ADR-0066 PR 8), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050), + the 5 plannerDesignations endpoints (ADR-0055, replace in its 2026-10-27 amendment)
+    expect(all.length).toBe(67); // - auth.login (ADR-0025 PR 9), - the 6 direct-poll serverManagement endpoints (ADR-0066 PR 8), + the 2 agent pairing, 2 dashboard pairing and compat endpoints (ADR-0051, ADR-0057), + the metrics overview and the delivery ingest (ADR-0056), + serverManagement.renameAgent (ADR-0031; its switchToLocal went in ADR-0066 PR 8), + the 6 push endpoints (ADR-0044), + selfServe.createAgentServer (ADR-0046), + account.remove and members.leave (ADR-0047), + bottlenecks (ADR-0048 amendment), + productionGraph (ADR-0050), + the 5 plannerDesignations endpoints (ADR-0055, replace in its 2026-10-27 amendment)
     for (const [name, endpoint] of all) {
       // The agent API has its own path builders (no server id; agent.test.ts checks them).
       if (name.startsWith("agentApi.")) continue;
@@ -553,7 +539,8 @@ describe("endpoints", () => {
         expect(hasRequest, name).toBe(false);
       }
     }
-    expect("request" in endpoints.auth.login).toBe(true);
+    // ADR-0025 PR 9: password login is gone from the contract.
+    expect("login" in endpoints.auth).toBe(false);
     expect("request" in endpoints.settings.setAutoPause).toBe(true);
   });
 });

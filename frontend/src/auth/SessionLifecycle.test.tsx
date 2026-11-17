@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { signOutFromMenu } from "../test/account";
-import { focusManager } from "@tanstack/react-query";
+import { focusManager, type QueryClient } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints, type StatusResponse } from "@satisfactory-dash/shared";
@@ -10,20 +10,23 @@ import {
   powerOk,
   serversMultiple,
   sessionAnonymous,
+  sessionAuthenticated,
   statusRunning,
 } from "@satisfactory-dash/shared/fixtures";
 import App from "../App";
-import { POLL_MS } from "../api/queries";
+import { POLL_MS, SESSION_KEY } from "../api/queries";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 
 // Fresh-eyes pass over the whole session lifecycle, through the real App tree: session expiry
 // mid-use, what survives a sign-out, re-login, and polling after each of those.
 
-function submitLogin() {
-  fireEvent.change(screen.getByLabelText("Username"), { target: { value: "operator" } });
-  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "example-password" } });
-  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+/**
+ * Signing in again. Google sign-in is a full-page round trip (ADR-0025), so in a test it is the next session check
+ * answering signed in (the default handler does, unless a test overrides it).
+ */
+async function signInAgain(client: QueryClient) {
+  await act(() => client.refetchQueries({ queryKey: SESSION_KEY }));
 }
 
 /** Counts every request to a scoped resource, by server id. */
@@ -42,14 +45,19 @@ describe("session lifecycle", () => {
   it("keeps nothing auth-related in web storage or script-readable cookies", async () => {
     localStorage.clear();
     sessionStorage.clear();
-    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAnonymous)));
-    renderWithClient(<App />);
+    let signedIn = false;
+    server.use(
+      http.get(endpoints.auth.session.route, () => HttpResponse.json(signedIn ? sessionAuthenticated : sessionAnonymous)),
+    );
+    const { client } = renderWithClient(<App />);
     await screen.findByRole("heading", { name: "Sign in" });
-    submitLogin();
+    signedIn = true;
+    await signInAgain(client);
     await screen.findByRole("button", { name: "Account" });
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
     expect(document.cookie).toBe("");
+    signedIn = false;
     await signOutFromMenu();
     await screen.findByRole("heading", { name: "Sign in" });
     expect(localStorage.length).toBe(0);
@@ -98,7 +106,7 @@ describe("session lifecycle", () => {
     await screen.findByRole("heading", { name: "Sign in" });
 
     phase = "after";
-    submitLogin();
+    await signInAgain(client);
     await screen.findByRole("button", { name: "Account" });
     expect(screen.queryByText(/^Old session save · /)).not.toBeInTheDocument();
     expect(await screen.findByText(new RegExp(`^${statusRunning.data.sessionName} · `))).toBeInTheDocument();
@@ -127,10 +135,10 @@ describe("session lifecycle", () => {
         return HttpResponse.json(errorSessionRequired, { status: 401 });
       }),
     );
-    renderWithClient(<App />);
+    const { client } = renderWithClient(<App />);
     await screen.findByRole("heading", { name: "Sign in" });
     expect(factoryReads).toBe(1);
-    submitLogin();
+    await signInAgain(client);
     await screen.findByRole("button", { name: "Account" });
     // Inside act: the re-login's own queries resolve during this wait and update the tree.
     await act(() => delay(200));

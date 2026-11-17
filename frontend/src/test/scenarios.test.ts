@@ -58,7 +58,9 @@ describe("matchRoute", () => {
 
   it("rejects wrong methods, unknown paths, extra segments and a missing id", () => {
     expect(matchRoute("POST", "/api/health")).toBeUndefined();
-    expect(matchRoute("GET", "/api/auth/login")).toBeUndefined();
+    expect(matchRoute("GET", "/api/auth/session/extra")).toBeUndefined();
+    // Password login is gone (ADR-0025 PR 9): no mock answers it.
+    expect(matchRoute("POST", "/api/auth/login")).toBeUndefined();
     expect(matchRoute("GET", "/api/not-a-real-route")).toBeUndefined();
     expect(matchRoute("GET", "/api/servers/a/b/status")).toBeUndefined();
     expect(matchRoute("GET", "/api/servers//status")).toBeUndefined();

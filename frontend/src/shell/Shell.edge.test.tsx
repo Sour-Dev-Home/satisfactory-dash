@@ -1,10 +1,11 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { openAccountMenu, signOutFromMenu } from "../test/account";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import { serversMultiple, serversSingle, sessionAnonymous } from "@satisfactory-dash/shared/fixtures";
 import App from "../App";
+import { SESSION_KEY } from "../api/queries";
 import { renderWithClient } from "../test/render";
 import { server } from "../test/server";
 
@@ -119,19 +120,20 @@ describe("server switcher", () => {
 
 describe("signed-in user", () => {
   it("shows the new operator's name after signing out and in as someone else", async () => {
-    renderWithClient(<App />);
+    const { client } = renderWithClient(<App />);
     expect((await openAccountMenu()).getByText("operator")).toBeInTheDocument();
 
+    let signedIn = false;
     server.use(
-      http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAnonymous)),
-      http.post(endpoints.auth.login.route, () =>
-        HttpResponse.json({ authenticated: true, user: { name: "second-operator" } }),
+      http.get(endpoints.auth.session.route, () =>
+        HttpResponse.json(signedIn ? { authenticated: true, user: { name: "second-operator" } } : sessionAnonymous),
       ),
     );
     await signOutFromMenu();
-    fireEvent.change(await screen.findByLabelText("Username"), { target: { value: "second-operator" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "example-password" } });
-    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await screen.findByRole("heading", { name: "Sign in" });
+    // Google sign-in is a full-page round trip (ADR-0025): here, the next session check answers signed in.
+    signedIn = true;
+    await act(() => client.refetchQueries({ queryKey: SESSION_KEY }));
 
     const menu = await openAccountMenu();
     expect(menu.getByText("second-operator")).toBeInTheDocument();

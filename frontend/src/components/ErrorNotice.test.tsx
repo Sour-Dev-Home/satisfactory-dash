@@ -66,7 +66,7 @@ describe("ErrorNotice", () => {
     );
     expect(screen.getByRole("alert")).not.toHaveTextContent("Invalid string");
     unmount();
-    render(<ErrorNotice error={new RequestValidationError("/api/auth/login", ["password: Too big"])} />);
+    render(<ErrorNotice error={new RequestValidationError("/api/servers/default/name", ["displayName: Too big"])} />);
     expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong in the dashboard.");
   });
 
