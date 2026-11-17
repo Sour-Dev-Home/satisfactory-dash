@@ -1,22 +1,20 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { endpoints } from "@satisfactory-dash/shared";
-import { apiSend } from "../api/client";
-import { LOGIN_MUTATION_KEY, SESSION_KEY } from "../api/queries";
+import { SESSION_KEY } from "../api/queries";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { Hero } from "../landing/Hero";
 import { cn } from "../lib/cn";
 import { primaryButton } from "../ui/chip";
+import { enterDemo } from "./session";
 
 /**
- * The demo build's replacement for the sign-in form (ADR-0026): one button, no credentials.
- * It goes through the same login call and session update as the real form, answered by the
- * demo handlers, so everything after it runs the real app's code paths.
+ * The demo build's replacement for the sign-in screen (ADR-0026): one button, no credentials.
+ * It signs the in-page demo session in (`enterDemo`) and puts that session in the cache, exactly as the
+ * session query would answer it, so everything after it runs the real app's code paths.
  */
 export function DemoEntry() {
   const client = useQueryClient();
   const enter = useMutation({
-    mutationKey: LOGIN_MUTATION_KEY,
-    mutationFn: () => apiSend(endpoints.auth.login, { username: "demo", password: "demo" }),
+    mutationFn: async () => enterDemo(),
     onSuccess: async (session) => {
       await client.cancelQueries({ queryKey: SESSION_KEY });
       client.setQueryData(SESSION_KEY, session);

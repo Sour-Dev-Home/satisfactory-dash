@@ -131,7 +131,6 @@ jobs:
           BACKEND: ${{ needs.resolve.outputs.backend }}
           OPS: ${{ needs.resolve.outputs.ops }}
           INPUTS: ${{ needs.resolve.outputs.inputs }}
-          STAGING_ADMIN_PASSWORD: ${{ secrets.STAGING_ADMIN_PASSWORD }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: node scripts/deploy/deploy.mjs staging "$SHA" "$BACKEND" "$OPS" "$INPUTS"

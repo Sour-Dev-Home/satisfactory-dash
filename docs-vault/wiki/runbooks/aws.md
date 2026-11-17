@@ -187,11 +187,11 @@ images", and when that succeeds, **Deploy** runs by itself: staging first, then 
 (owner answer 1). A merge that changes no backend path publishes no images, and Deploy ends green with "Nothing
 to deploy". **Staging** starts the `satis-staging` task with this release's images, db-previous on the released
 ops image (the schema production has now, then this release's migrations), and checks through Access that
-`/api/health` and `/ready` answer, both setup containers exited 0, and the staging admin signs in and sees an
-empty server list. It always stops the task and prints each container's exit code (and the log tails, redacted,
+`/api/health` and `/ready` answer, both setup containers exited 0, the signed-out session reads `authenticated: false`
+and `/api/servers` answers the 401 envelope (gate B: nothing signs in with a password). It always stops the task and prints each container's exit code (and the log tails, redacted,
 on failure). Production never starts if staging fails. The `staging` GitHub environment holds
-`AWS_STAGING_ROLE_ARN` (variable) and `STAGING_ADMIN_PASSWORD`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`
-(secrets); see "Staging: one-time setup". **Tunnels:** `satis-prod` (`api.satis-manager.com`, the production
+`AWS_STAGING_ROLE_ARN` (variable) and `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` (secrets; its old
+`STAGING_ADMIN_PASSWORD` secret is unused since gate B and can be deleted); see "Staging: one-time setup". **Tunnels:** `satis-prod` (`api.satis-manager.com`, the production
 task's) and `satis-staging` (`api-staging.satis-manager.com`, only the staging task's). Never put a staging route
 on `satis-prod` or a production token in `/satis/staging/`.
 
@@ -254,7 +254,7 @@ Do these once, in order:
    ```powershell
    $hex = { [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)).ToLower() }   # 48 hex, CSPRNG
    $pg = & $hex; $mig = & $hex; $app = & $hex
-   $adminPw = & $hex; $adminPw   # the staging admin's password: keep it for PR 5 (STAGING_ADMIN_PASSWORD)
+   $adminPw = & $hex   # only to boot until gate B's backend cleanup drops these settings; nothing signs in with it
    $hash = $adminPw | npm run --silent hash-password -w backend
    function put($k, $v) { aws ssm put-parameter --name "/satis/staging/$k" --type SecureString --value $v --overwrite --query Version }
    $tok = (Get-Clipboard).Trim(); put TUNNEL_TOKEN $tok; Remove-Variable tok   # the token from step 1, copied

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { endpoints, METRICS_TREND_OVER_MS, METRICS_WINDOWS, MetricsOverviewSchema, metricsTrendPoints } from "@satisfactory-dash/shared";
 import { resetDemoState } from "./handlers";
+import { enterDemo } from "./session";
 import { demoMetricsOverview } from "./metrics";
 import { transport } from "./transport";
 
@@ -8,13 +9,7 @@ import { transport } from "./transport";
 // transport, with the same query rules as the backend. Nothing here may use the network.
 
 const call = (path: string) => transport(path, { method: "GET", credentials: "include" });
-const signIn = () =>
-  transport(endpoints.auth.login.path(), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "demo", password: "demo" }),
-  });
+const signIn = () => enterDemo();
 
 let fetchSpy: ReturnType<typeof vi.fn>;
 beforeEach(() => {

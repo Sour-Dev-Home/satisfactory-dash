@@ -324,7 +324,6 @@ export const STAGING = {
   cluster: "satis-staging",
   logGroup: "/ecs/satis-staging",
   url: "https://api-staging.satis-manager.com",
-  user: "staging-admin",
   // Postgres, db:init, two migration runs and the backend's own start, then the tunnel: a few minutes at most.
   upTimeoutMs: 8 * 60_000,
   stopTimeoutMs: 3 * 60_000,
@@ -345,8 +344,8 @@ const redact = (s) => String(s).replace(/postgres(?:ql)?:\/\/\S+/gi, "postgres:/
  */
 export async function staging(deps, target, s = STAGING) {
   if (!isSha(target.sha) || !isDigest(target.backend) || !isDigest(target.ops)) throw new Error("staging needs the resolved sha and both digests");
-  const { STAGING_ADMIN_PASSWORD: password, CF_ACCESS_CLIENT_ID: accessId, CF_ACCESS_CLIENT_SECRET: accessSecret } = deps.env;
-  if (!password || !accessId || !accessSecret) throw new Error("STAGING_ADMIN_PASSWORD, CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set");
+  const { CF_ACCESS_CLIENT_ID: accessId, CF_ACCESS_CLIENT_SECRET: accessSecret } = deps.env;
+  if (!accessId || !accessSecret) throw new Error("CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be set");
 
   const released = parseReleased(getParam(deps, param("prod", "released")));
   // An automatic run whose newest images production already runs, or were built from the build inputs production's
@@ -418,23 +417,17 @@ export async function staging(deps, target, s = STAGING) {
       await deps.sleep(s.pollMs);
     }
 
-    // Sign in as the staging admin, read the session and the server list (a fresh database has none).
-    const login = await deps.fetch(`${s.url}/api/auth/login`, {
-      method: "POST",
-      headers: { ...access, "content-type": "application/json" },
-      body: JSON.stringify({ username: s.user, password }),
-      // Never followed: fetch keeps custom headers (the Access secret) and a 307's body (the password) across origins.
-      redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
+    // Gate B (2026-11-17): there is no password sign-in, so staging checks the signed-out side of auth instead. The
+    // session read (the session store, so the database) says signed out, and a guarded route answers the 401 envelope.
+    const session = await getJson(deps, `${s.url}/api/auth/session`, access).catch((e) => {
+      throw e instanceof SyntaxError ? new Error("the session read is not JSON") : e;
     });
-    if (login.status !== 200) throw new Error(`sign-in answered ${login.status}`);
-    const cookie = (login.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
-    if (!cookie) throw new Error("sign-in set no session cookie");
-    const session = await getJson(deps, `${s.url}/api/auth/session`, { ...access, cookie });
-    if (session?.authenticated !== true) throw new Error("the session does not read as signed in");
-    const servers = await getJson(deps, `${s.url}/api/servers`, { ...access, cookie });
-    if (!Array.isArray(servers?.servers) || servers.servers.length !== 0) throw new Error(`the server list is not empty (${JSON.stringify(servers).slice(0, 120)})`);
-    deps.log("staging: health, ready, migrations, sign-in, session and server list all good");
+    if (session?.authenticated !== false) throw new Error("the signed-out session read does not say authenticated: false");
+    const servers = await get(deps, `${s.url}/api/servers`, access);
+    if (servers?.status !== 401) throw new Error(`the server list answered ${servers?.status ?? "nothing"} without a session, not 401`);
+    const body = await servers.json().catch(() => null);
+    if (body?.error?.code !== "unauthorized") throw new Error(`the 401 is not the error envelope (${JSON.stringify(body).slice(0, 120)})`);
+    deps.log("staging: health, ready, migrations, signed-out session and the 401 guard all good");
     ok = true;
   } finally {
     if (taskArn) await stopStaging(deps, s, taskArn, ok);

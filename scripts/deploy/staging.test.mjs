@@ -29,7 +29,7 @@ const stagingBase = () => ({
 });
 
 const target = { sha: SHA, backend: D("3"), ops: D("4") };
-const ENV = { STAGING_ADMIN_PASSWORD: "pw", CF_ACCESS_CLIENT_ID: "id.access", CF_ACCESS_CLIENT_SECRET: "secret" };
+const ENV = { CF_ACCESS_CLIENT_ID: "id.access", CF_ACCESS_CLIENT_SECRET: "secret" };
 
 /** A fake AWS and a fake staging backend behind Access. `opts` shapes the story. */
 function fakeDeps(opts = {}) {
@@ -95,13 +95,10 @@ function fakeDeps(opts = {}) {
       if (headers["CF-Access-Client-Id"] !== "id.access") return { status: 302, headers: new Headers() };
       if (p === "/api/health") return { status: t >= (opts.upAt ?? 0) ? 200 : 502 };
       if (p === "/api/health/ready") return { status: opts.ready ?? 200 };
-      if (p === "/api/auth/login") {
-        const ok = JSON.parse(init.body).password === "pw" && opts.login !== false;
-        return { status: ok ? 200 : 401, headers: { getSetCookie: () => (ok ? ["satis_session=abc; Path=/api; HttpOnly; Secure"] : []) } };
+      if (p === "/api/auth/session") return { status: opts.sessionStatus ?? 200, json: async () => ({ authenticated: opts.authenticated ?? false }) };
+      if (p === "/api/servers") {
+        return { status: opts.serversStatus ?? 401, json: async () => opts.serversBody ?? { error: { code: "unauthorized", message: "Sign in first." } } };
       }
-      const signedIn = headers.cookie === "satis_session=abc";
-      if (p === "/api/auth/session") return { status: 200, json: async () => ({ authenticated: signedIn }) };
-      if (p === "/api/servers") return { status: signedIn ? 200 : 401, json: async () => ({ servers: opts.servers ?? [] }) };
       return { status: 404 };
     },
     sleep: async (ms) => { t += ms; },
@@ -112,7 +109,7 @@ function fakeDeps(opts = {}) {
 
 const ops = (d) => d.calls.map((c) => c.args[1]);
 
-test("staging: three images swapped, the published network, health, sign-in, session, empty list, and always stopped", async () => {
+test("staging: three images swapped, the published network, health, signed-out session, the 401 guard, and always stopped", async () => {
   const deps = fakeDeps({ upAt: 30_000 });
   await staging(deps, target);
   const reg = deps.calls.find((c) => c.args[1] === "register-task-definition").input;
@@ -142,8 +139,10 @@ for (const [name, opts, pattern] of [
   ["a failed previous-release migration", { previousExit: 1 }, /db-previous exited 1/],
   ["a failed migration of this release", { setupExit: 3 }, /db-setup exited 3/],
   ["ready not answering", { ready: 503 }, /ready answered 503/],
-  ["a wrong password", { login: false }, /sign-in answered 401/],
-  ["a server list that isn't empty", { servers: [{ id: "x" }] }, /server list is not empty/],
+  ["a session read that fails", { sessionStatus: 503 }, /\/api\/auth\/session answered 503/],
+  ["a session that reads as signed in with no cookie", { authenticated: true }, /does not say authenticated: false/],
+  ["a guarded route that answers without a session", { serversStatus: 200, serversBody: { servers: [] } }, /answered 200 without a session, not 401/],
+  ["a 401 that isn't the error envelope", { serversBody: "Unauthorized" }, /not the error envelope/],
   ["a task that dies before answering", { upAt: 10 ** 9, diesAt: 20_000 }, /stopped before it answered/],
   ["a task that never answers", { upAt: 10 ** 12 }, /did not answer \/api\/health within 8 minutes/],
 ]) {
@@ -203,9 +202,8 @@ test("revisionWith swaps several images and leaves the base alone", () => {
 });
 
 
-test("the staging hostname and user are the ones the setup created", () => {
+test("the staging hostname is the one the setup created", () => {
   assert.equal(STAGING.url, "https://api-staging.satis-manager.com");
-  assert.equal(STAGING.user, "staging-admin");
 });
 
 test("a setup container's exit code that describe-tasks shows late is waited for, not failed", async () => {
@@ -244,12 +242,12 @@ test("Access's 302 (a rejected service token) fails at once, never as healthy, a
   assert.ok(ops(deps).includes("stop-task"));
 });
 
-test("the sign-in POST never follows a redirect (it carries the Access secret and the password)", async () => {
+test("no request follows a redirect (each carries the Access secret), and none signs in or sends a cookie", async () => {
   const deps = fakeDeps();
   await staging(deps, target);
-  const login = deps.requests.find((r) => r.url.endsWith("/api/auth/login"));
-  assert.equal(login.init.redirect, "manual");
   assert.ok(deps.requests.every((r) => r.init.redirect === "manual"));
+  assert.ok(!deps.requests.some((r) => r.url.endsWith("/api/auth/login")));
+  assert.ok(deps.requests.every((r) => r.init.headers?.cookie === undefined));
 });
 
 test("a fetch that throws during the health poll is retried like a 502", async () => {
@@ -260,28 +258,32 @@ test("a fetch that throws during the health poll is retried like a 502", async (
   await staging(deps, target);
 });
 
-test("a login that sets several cookies sends them all, without attributes", async () => {
+test("a 401 whose body isn't JSON fails as not the envelope, not as a crash", async () => {
   const deps = fakeDeps();
   const real = deps.fetch;
   deps.fetch = async (u, i) => {
     const r = await real(u, i);
-    if (new URL(u).pathname === "/api/auth/login") r.headers = { getSetCookie: () => ["satis_session=abc; Path=/api; HttpOnly; Secure", "other=1; Path=/"] };
+    if (new URL(u).pathname === "/api/servers") r.json = async () => { throw new SyntaxError("Unexpected token"); };
     return r;
   };
-  await assert.rejects(staging(deps, target), /does not read as signed in/);
-  const session = deps.requests.find((r) => r.url.endsWith("/api/auth/session"));
-  assert.equal(session.init.headers.cookie, "satis_session=abc; other=1");
+  await assert.rejects(staging(deps, target), /not the error envelope \(null\)/);
 });
 
-test("a login with no Set-Cookie fails", async () => {
-  const deps = fakeDeps();
-  const real = deps.fetch;
-  deps.fetch = async (u, i) => {
-    const r = await real(u, i);
-    if (new URL(u).pathname === "/api/auth/login") r.headers = { getSetCookie: () => [] };
-    return r;
-  };
-  await assert.rejects(staging(deps, target), /no session cookie/);
+test("a 200 session that isn't JSON, and a thrown servers fetch, fail clearly and stop the task", async () => {
+  for (const [path, mutate, re] of [
+    ["/api/auth/session", (r) => { r.json = async () => { throw new SyntaxError("Unexpected token <"); }; return r; }, /session read is not JSON/],
+    ["/api/servers", null, /answered nothing without a session, not 401/],
+  ]) {
+    const deps = fakeDeps();
+    const real = deps.fetch;
+    deps.fetch = async (u, i) => {
+      if (new URL(u).pathname === path && !mutate) throw new Error("ECONNRESET");
+      const r = await real(u, i);
+      return new URL(u).pathname === path ? mutate(r) : r;
+    };
+    await assert.rejects(staging(deps, target), re);
+    assert.ok(ops(deps).includes("stop-task"), "the task is stopped");
+  }
 });
 
 test("revisionWith: an empty map is a clean copy; a released record without ops is refused", async () => {
