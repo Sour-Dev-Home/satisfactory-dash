@@ -60,9 +60,8 @@ services:
     environment:
       HOST: 127.0.0.1
       DATABASE_URL: postgres://satis_app:${DB_APP_PASSWORD}@postgres:5432/satis
-      DASHBOARD_ADMIN_USER: ${DASHBOARD_ADMIN_USER:?set DASHBOARD_ADMIN_USER in .env}
-      DASHBOARD_ADMIN_PASSWORD_HASH: ${DASHBOARD_ADMIN_PASSWORD_HASH:?set DASHBOARD_ADMIN_PASSWORD_HASH in .env}
-      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      # The operator account's display name; optional (default "operator"). Sign-in is Google only (gate B).
+      DASHBOARD_ADMIN_USER: ${DASHBOARD_ADMIN_USER:-}
       SERVER_SECRETS_KEY: ${SERVER_SECRETS_KEY:-}
       SERVER_SECRETS_KEY_ID: ${SERVER_SECRETS_KEY_ID:-}
       SERVER_SECRETS_PREVIOUS_KEYS: ${SERVER_SECRETS_PREVIOUS_KEYS:-}
