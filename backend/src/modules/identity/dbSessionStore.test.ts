@@ -41,7 +41,7 @@ const activeRow = (lastSeen: Date | null) => ({
       email: null,
       expires_at: new Date(Date.now() + 1000),
       last_seen_at: lastSeen,
-      providers: ["local"],
+      providers: ["local", "google"],
     },
   ],
 });
@@ -78,7 +78,8 @@ describe("db session store: resolve", () => {
         ["SELECT s.user_id", () => activeRow(lastSeen)],
         ["UPDATE identity.sessions", () => ({ rows: [{ touched: 1 }] })],
       ]);
-      expect(await createDbSessionStore(db).resolve(VALID_ID)).toMatchObject({ id: "u1", authMethods: ["password"] });
+      // The `local` anchor is never a sign-in method (ADR-0025 PR 9).
+      expect(await createDbSessionStore(db).resolve(VALID_ID)).toMatchObject({ id: "u1", authMethods: ["google"] });
       expect(calls.some((c) => c.startsWith("UPDATE"))).toBe(expectTouch);
     }
   });

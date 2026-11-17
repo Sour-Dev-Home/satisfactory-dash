@@ -3,12 +3,12 @@ import { withTransaction } from "../../platform/db/transaction.js";
 import { recordAuditEvent } from "../../platform/audit/auditRepository.js";
 import { ServiceUnavailableError } from "../../platform/errorResponse.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
-import { OPERATOR_SUBJECT } from "./authenticator.js";
+import { OPERATOR_SUBJECT } from "./operatorSubject.js";
 import { startSession } from "./dbSessionStore.js";
 import type { Db } from "./dbSessionStore.js";
 import type { GoogleClaims } from "./googleOidc.js";
+import { SESSION_TTL_SECONDS } from "./sessionStore.js";
 import type { CreatedSession } from "./sessionStore.js";
-import { SESSION_TTL_SECONDS } from "./sessionToken.js";
 import {
   acceptedTermsVersion,
   addIdentity,

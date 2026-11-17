@@ -133,8 +133,8 @@ const resolveUnit = createUnitResolver((className) =>
   logger.warn({ className }, "item not in the item-form catalog; its unit is reported as unknown"),
 );
 
-// ADR-0025: the database is optional until deploy A. Without DATABASE_URL nothing changes (and
-// /api/health/ready answers 200); with it, the process listens first, then connects in the
+// ADR-0025: the database is optional. Without DATABASE_URL the backend serves health (and
+// /api/health/ready answers 200) but nobody can sign in (PR 9: Google needs the database); with it, the process listens first, then connects in the
 // background (retrying transient errors), and /api/health/ready reports 503 until it is up.
 // Declared before buildServer: every server's history recorder writes through its pool (ADR-0027).
 const databaseConfig = orExit(() => loadDatabaseConfig());

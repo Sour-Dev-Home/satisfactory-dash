@@ -8,7 +8,7 @@ import { createAccountServers } from "../servers/accountServers.js";
 import { addMember, transferOwnership } from "../servers/repositories/memberRepository.js";
 import { PURGED_TABLES, insertSelfServeServer, upsertConfiguredServer } from "../servers/repositories/serverRepository.js";
 import { createAccountDeletion } from "./accountDeletion.js";
-import { OPERATOR_SUBJECT } from "./authenticator.js";
+import { OPERATOR_SUBJECT } from "./operatorSubject.js";
 import { createSession, hashSessionId, newSessionId } from "./repositories/sessionRepository.js";
 import { createUser, ensureLocalUser } from "./repositories/userRepository.js";
 

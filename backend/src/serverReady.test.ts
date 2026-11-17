@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from "vitest";
 import request from "supertest";
 import type { Express } from "express";
-import { hashPassword } from "./modules/identity/passwordHash.js";
 
 // ADR-0025 PR 2, checked against the real wiring: /api/health stays liveness whatever the
 // database does, and /api/health/ready is 200 with no database configured (today's deploy) and
@@ -18,9 +17,10 @@ beforeAll(async () => {
   process.env.SATISFACTORY_API_PORT = "1";
   process.env.FRM_WEB_PORT = "1";
   process.env.SATISFACTORY_REQUEST_TIMEOUT_MS = "2000";
-  process.env.DASHBOARD_ADMIN_USER = "operator";
-  process.env.DASHBOARD_ADMIN_PASSWORD_HASH = await hashPassword("server-ready-test-password");
-  process.env.SESSION_SECRET = "server-ready-session-secret-0123456789abcdef";
+  // ADR-0025 PR 9: none of the old login settings is needed. Empty (not deleted) so a local backend/.env can't fill them.
+  process.env.DASHBOARD_ADMIN_USER = "";
+  process.env.DASHBOARD_ADMIN_PASSWORD_HASH = "";
+  process.env.SESSION_SECRET = "";
   process.env.CORS_ALLOWED_ORIGINS = "";
 }, 30_000);
 
@@ -29,12 +29,13 @@ afterEach(() => {
 });
 
 describe("health endpoints in the real wiring", () => {
-  it("without DATABASE_URL: liveness ok and readiness 200 (nothing to wait for)", async () => {
+  it("without DATABASE_URL: liveness ok and readiness 200 (nothing to wait for), protected routes 401", async () => {
     const app = await loadApp();
     expect((await request(app).get("/api/health")).body).toEqual({ status: "ok" });
     const ready = await request(app).get("/api/health/ready");
     expect(ready.status).toBe(200);
     expect(ready.body).toEqual({ status: "ok" });
+    expect((await request(app).get("/api/servers")).status).toBe(401);
   }, 30_000);
 
   it("with DATABASE_URL set but not yet connected: liveness ok, readiness 503 with no detail", async () => {

@@ -8,7 +8,6 @@ import type { TestDatabase } from "../../../test-support/testDb.js";
 import { startFakeOidcIssuer } from "../../../test-support/fakeOidcIssuer.js";
 import type { FakeOidcIssuer, FakeClaims } from "../../../test-support/fakeOidcIssuer.js";
 import { LOGIN_ATTEMPT_COOKIE } from "./routes/googleAuth.js";
-import { hashPassword } from "./passwordHash.js";
 import { createIdentityModule } from "./index.js";
 import { SESSION_COOKIE } from "./session.js";
 import { createGoogleSignIn } from "./googleSignIn.js";
@@ -21,21 +20,18 @@ import { setUserStatus } from "./repositories/userRepository.js";
 const available = dbTestsAvailable();
 const CLIENT_ID = "test-client-id";
 const FRONTEND = "https://satis-manager.com";
-const SECRET = "q7Vw2kZ9xLm4TpR8vNc3HbYd6JfUe1SaGo5iXqKzWt0=";
 
 describe.skipIf(!available)("open sign-up against Postgres", () => {
   let db: TestDatabase;
   let pool: pg.Pool;
   let admin: pg.Pool;
   let issuer: FakeOidcIssuer;
-  let passwordHash: string;
 
   beforeAll(async () => {
     db = await createTestDatabase();
     pool = new pg.Pool({ connectionString: db.appUrl, max: 8 });
     admin = new pg.Pool({ connectionString: db.adminUrl, max: 2 });
     issuer = await startFakeOidcIssuer(CLIENT_ID);
-    passwordHash = await hashPassword("correct horse battery staple");
   }, 60_000);
 
   afterAll(async () => {
@@ -55,8 +51,6 @@ describe.skipIf(!available)("open sign-up against Postgres", () => {
     const identity = createIdentityModule(
       {
         DASHBOARD_ADMIN_USER: "operator",
-        DASHBOARD_ADMIN_PASSWORD_HASH: passwordHash,
-        SESSION_SECRET: SECRET,
         CORS_ALLOWED_ORIGINS: "",
         GOOGLE_CLIENT_ID: CLIENT_ID,
         GOOGLE_CLIENT_SECRET: "test-client-secret",

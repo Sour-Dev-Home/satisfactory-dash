@@ -3,6 +3,7 @@ import { z } from "zod";
 import { parseFirst } from "../../../platform/db/rows.js";
 import { timedQuery } from "../../../platform/db/timedQuery.js";
 import type { Queryable } from "../../../platform/db/schemaVersion.js";
+import { signInProviders } from "./userRepository.js";
 
 /**
  * Server-side sessions (ADR-0020, ADR-0025 decision 4). The browser holds a 32-byte random id in
@@ -28,7 +29,7 @@ export interface ActiveSession {
   expiresAt: Date;
   /** null until first touched; the store touches at most once a minute. */
   lastSeenAt: Date | null;
-  /** "password" and/or "google", read in the same query. */
+  /** "google" or nothing (the `local` anchor is never reported), read in the same query. */
   authMethods: string[];
 }
 
@@ -86,7 +87,7 @@ export async function findActiveSession(db: Queryable, idHash: Buffer): Promise<
         email: row.email,
         expiresAt: row.expires_at,
         lastSeenAt: row.last_seen_at,
-        authMethods: row.providers.map((provider) => (provider === "local" ? "password" : provider)),
+        authMethods: signInProviders(row.providers),
       };
 }
 

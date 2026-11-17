@@ -12,7 +12,6 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:db": "cross-env REQUIRE_DB=1 vitest run .db.test.ts",
-    "hash-password": "tsx scripts/hash-password.ts",
     "update-item-forms": "tsx scripts/update-item-forms.ts",
     "db:init": "tsx scripts/db-init.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",
