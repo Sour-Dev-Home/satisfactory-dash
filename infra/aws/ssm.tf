@@ -12,8 +12,6 @@ locals {
     # The backend (compose.yaml's backend service)
     "DATABASE_URL",
     "DASHBOARD_ADMIN_USER",
-    "DASHBOARD_ADMIN_PASSWORD_HASH",
-    "SESSION_SECRET",
     "SERVER_SECRETS_KEY",
     "SERVER_SECRETS_KEY_ID",
     "SERVER_SECRETS_PREVIOUS_KEYS",

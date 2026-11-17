@@ -61,8 +61,8 @@ window afterwards, or remove `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_
 6. **Migrate**, then **the service.** Apply the ops tasks and run `db-init` and `db-migrate` as ECS
    tasks inside the VPC (`docs-vault/wiki/runbooks/aws.md`, "Apply"), then the full
    `terraform plan -out=ecs.tfplan` and apply. The task
-   needs `/satis/prod/` values for `DATABASE_URL`, `DASHBOARD_ADMIN_USER`,
-   `DASHBOARD_ADMIN_PASSWORD_HASH`, `SESSION_SECRET` and `TUNNEL_TOKEN`; each optional setting listed in
+   needs `/satis/prod/` values for `DATABASE_URL`, `DASHBOARD_ADMIN_USER` (the operator's display name)
+   and `TUNNEL_TOKEN`; each optional setting listed in
    `backend_optional_secrets` needs its value too (SSM can't hold an empty one, and a missing parameter
    stops the task from starting). Plain settings go in `backend_environment`.
 
