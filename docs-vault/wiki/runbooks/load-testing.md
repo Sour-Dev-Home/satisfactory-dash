@@ -64,8 +64,7 @@ DATABASE_ADMIN_URL=postgres://postgres:load-only@127.0.0.1:55432/postgres DB_NAM
 MIGRATOR_DATABASE_URL=postgres://satis_migrator:$DB_MIGRATOR_PASSWORD@127.0.0.1:55432/satis_load npm run db:migrate -w backend
 
 export DATABASE_URL=postgres://satis_app:$DB_APP_PASSWORD@127.0.0.1:55432/satis_load
-export DASHBOARD_ADMIN_USER=load SESSION_SECRET=$(openssl rand -base64 48)
-export DASHBOARD_ADMIN_PASSWORD_HASH=$(openssl rand -hex 24 | npm run --silent hash-password -w backend)
+export DASHBOARD_ADMIN_USER=load   # no password hash or session secret since gate B (#186)
 npm run build -w backend
 HOST=127.0.0.1 PORT=3101 node backend/dist/server.cjs > load-backend.log 2>&1 &
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3101/api/health/ready   # 200 once it is up

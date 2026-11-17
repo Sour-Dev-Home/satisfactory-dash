@@ -6,7 +6,9 @@ Status: accepted (project owner), 2026-09-24: no ads now; the path for later is 
 AdSense with a consent banner, in the app via a crawler account; see "Amendment 2" at the end, which overrides
 amendment 1 where they differ (its network pick, Decision 2 and Decision 5).** **Amended a third time 2026-11-01
 (owner): Google's strict CSP via a Worker nonce, in the app and on public pages, and limited ads on; see "Amendment 3"
-at the end, which overrides amendment 2's Decisions 2 and 3 and its build plan.**
+at the end, which overrides amendment 2's Decisions 2 and 3 and its build plan.** **Amendment 2's crawler account (Decision 5)
+is dropped (owner, 2026-11-17, gate B #186): password login is gone, so there is no crawler login; AdSense reviews the
+public pages. See "Amendment 4" at the end.**
 
 ## Context
 The owner asked whether the site can run ads. Relevant facts:
@@ -457,3 +459,10 @@ guides, as the first part of step 5 (the public pages' slots come after).
   static pages' footer links Guides and Changelog too.
 - **Owner decisions:** none new. To check after the first deploy: `/guides` answers 200 (the [NEEDS VERIFICATION]
   above), and a fresh AdSense review request.
+
+## Amendment 4, 2026-11-17: no crawler account (gate B)
+The owner dropped the AdSense crawler login when they said "gate B go" (#186; ADR-0025's gate B amendment). The crawler
+account in Amendment 2 (Decision 5) needed the password login, which is gone: sign-in is Google only. AdSense reviews the
+public pages (`/`, `/guides`, `/changelog`), which are real HTML. Ads in the signed-in app still show to signed-in users
+under Amendment 3's rules; only the crawler's own sign-in is dropped. `robots.txt` still doesn't disallow `/app`, which
+does no harm.

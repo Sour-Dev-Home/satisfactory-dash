@@ -107,7 +107,7 @@ answered as signed out and cleared).
 - **The operator account** is created on first login with a fixed key (`local` / `operator`); the
   `.env` username is only its display name, so renaming it never creates a second account.
 - **A database outage is a 503**, never a 401: the frontend must not treat it as "signed out".
-- **Revoking sessions** (replaces rotating `SESSION_SECRET`), run on the PC with `DATABASE_URL` set:
+- **Revoking sessions** (the only way since gate B removed `SESSION_SECRET`), run on the PC with `DATABASE_URL` set:
 
 ```powershell
 npm run admin -- revoke-sessions --all                # sign everyone out

@@ -35,12 +35,11 @@ Copy `backend\.env.example` to `backend\.env` if you haven't, then set these. Le
 
 | Variable | How to get the value |
 |---|---|
-| `DASHBOARD_ADMIN_USER` | The username you'll sign in with. |
-| `DASHBOARD_ADMIN_PASSWORD_HASH` | `npm run --silent hash-password -w backend`. It prompts for a password (12+ characters, no echo) and prints one line starting with `scrypt$`. Paste that whole line, never the password. Quotes around the value are optional. |
-| `SESSION_SECRET` | At least 32 random bytes. `[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(48))` prints one; copy it into the file. Changing it later signs every session out (and is how a stolen session is revoked). |
+| `DATABASE_URL`, `GOOGLE_*`, `BOOTSTRAP_OWNER_EMAIL` | Sign-in is Google only since gate B (#186), with sessions in the database: see `backend\.env.example` and `database.md`. |
+| `DASHBOARD_ADMIN_USER` | Optional: the operator account's display name (default `operator`). |
 | `CORS_ALLOWED_ORIGINS` | `https://satis-manager.com` (exactly one origin, never `*`). |
 
-The backend refuses to start if a login value is missing. The old game-server variables
+There is no password hash or `SESSION_SECRET` any more (gate B); delete them from `backend\.env`. The old game-server variables
 (`SATISFACTORY_*`, `FRM_*`, `SATISFACTORY_SERVERS_FILE`) are no longer read since ADR-0066; delete them from
 `backend\.env` and delete any `backend\servers.json` (it held tokens in plain text). Servers are created and enrolled
 as in `agents.md`.
@@ -77,21 +76,12 @@ Needs one server the mod has enrolled (`agents.md`); `<server-id>` is its public
 ```powershell
 $base = "http://127.0.0.1:3001"
 $sid = "<server-id>"
-# Sign in. The password goes into a temp file that is deleted right after.
-$pw = Read-Host "Dashboard password" -AsSecureString
-$plain = [System.Net.NetworkCredential]::new("", $pw).Password
-$tmp = New-TemporaryFile; $hdr = New-TemporaryFile
-[IO.File]::WriteAllText($tmp, (@{ username = "<DASHBOARD_ADMIN_USER>"; password = $plain } | ConvertTo-Json -Compress))
-try {
-  $code = curl.exe -s -D $hdr -o NUL -w "%{http_code}" -H "Content-Type: application/json" --data-binary "@$tmp" "$base/api/auth/login"
-} finally {
-  Remove-Item $tmp -ErrorAction SilentlyContinue; Remove-Variable plain, pw
-}
-"login HTTP status: $code"          # expect 200; 401 = wrong user or password
-$m = Select-String -Path $hdr -Pattern '^set-cookie:\s*(sd_session=[^;]+)'
-Remove-Item $hdr
-if (-not $m) { throw "Login failed (HTTP $code); no session cookie. Did you replace <DASHBOARD_ADMIN_USER>?" }
-$cookie = $m.Matches[0].Groups[1].Value
+# Sign in with Google in a browser on this backend, then paste the value of its sd_session cookie (the
+# browser's developer tools, Application > Cookies). No password login since gate B (#186). Never paste it elsewhere.
+$sec = Read-Host "sd_session cookie value" -AsSecureString
+$cookie = "sd_session=" + [System.Net.NetworkCredential]::new("", $sec).Password
+Remove-Variable sec
+curl.exe -s -H "Cookie: $cookie" "$base/api/auth/session"   # expect "authenticated":true
 
 # 1. Live data from the mod's latest snapshot: expect real values.
 curl.exe -s -H "Cookie: $cookie" "$base/api/servers/$sid/status"
@@ -264,19 +254,21 @@ task state and the last 40 lines of `backend.log`, and exits with code 1.
 ## 5. Create the Cloudflare Tunnel (in the Cloudflare dashboard)
 
 Do this only after steps 1 to 4 pass, and after the ADR-0019 security changes are merged
-and running (the backend sends the `no-store` and related headers, and refuses a weak
-`SESSION_SECRET`).
+and running (the backend sends the `no-store` and related headers).
 
-0. **Add the login rate-limit rule first** (ADR-0019; the Free plan allows exactly one rate
+0. **Add the sign-in rate-limit rule first** (ADR-0019; the Free plan allows exactly one rate
+   limiting rule). Since gate B (#186) there is no `/api/auth/login`; a rule made on that path before protects nothing,
+   so point it at **URI Path starts with** `/api/auth/google/` instead [NEEDS VERIFICATION: the operator name in the
+   rule editor]. The original steps, for the path match:
    limiting rule). In the dashboard for the `satis-manager.com` zone open **Security > WAF >
    Rate limiting rules > Create rule** [NEEDS VERIFICATION: menu labels move; find "rate
    limiting rules" under the zone's security or WAF section]. Name it e.g. `login-rate-limit`:
    - When incoming requests match: **Hostname** equals `api.satis-manager.com` AND **URI Path**
-     equals `/api/auth/login`.
+     starts with `/api/auth/google/`.
    - Characteristics: **IP**. Requests: **5**, period: **10 seconds**.
    - Action: **Block**, duration: **10 seconds**.
 
-   The backend's own 15-minute limits stay authoritative; this only slows guessing at the
+   The backend's own request cap on the Google routes stays authoritative; this only slows floods at the
    edge. Also make sure there is **no cache rule and no CORS-header rule** on the API
    hostname (the backend sends `Cache-Control: no-store` and its own CORS allowlist).
 1. Cloudflare dashboard, the account that owns `satis-manager.com`: **Networking > Tunnels >
@@ -291,11 +283,9 @@ and running (the backend sends the `no-store` and related headers, and refuses a
 
 The backend keeps listening only on `127.0.0.1`; the tunnel reaches it from the same machine.
 
-**Emergency: sign everyone out / a cookie was stolen.** Sessions last 8 hours. Logout revokes
-that one session, but only until the backend restarts (the denylist is in memory). To revoke
-every session at once, put a new `SESSION_SECRET` in `backend\.env`
-(`[Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(48))`)
-and restart the task (`Stop-ScheduledTask` then `Start-ScheduledTask`, then check port 3001).
+**Emergency: sign everyone out / a cookie was stolen.** Sessions are database rows; logout ends one for good. To end
+every session at once, run `npm run admin -- revoke-sessions --all` (one account: `--user <user-id>`) with
+`DATABASE_URL` set (`database.md`); on AWS it is the `admin` ops task (`aws.md`, "Admin commands"). No restart needed.
 
 ## 6. Go-live tests (through the tunnel)
 
@@ -323,7 +313,7 @@ curl.exe -si -X OPTIONS "$api/api/servers" -H "Origin: https://satis-manager.com
 curl.exe -si -X OPTIONS "$api/api/servers" -H "Origin: https://example.invalid" -H "Access-Control-Request-Method: GET" |
   Select-String -Pattern "HTTP/|access-control-allow"
 
-# 6.4 The CF-Connecting-IP spoof test (issue #19). The login lockout trusts this header from
+# 6.4 The CF-Connecting-IP spoof test (issue #19). The sign-in request cap trusts this header from
 #     the tunnel, so Cloudflare must OVERWRITE a client-sent value. Send a fake one:
 curl.exe -s -H "CF-Connecting-IP: 203.0.113.9" "$api/api/health"
 #     Your real public address, as Cloudflare sees it (run on the machine you sent from):
@@ -331,14 +321,15 @@ curl.exe -s -H "CF-Connecting-IP: 203.0.113.9" "$api/api/health"
 ```
 
 Then, on the game-server PC, read the log line of a sign-in event (since 2026-10-21 normal request lines carry no
-IP: send one wrong-password login to `/api/auth/login` from the same machine and read the `login failed` line's `ip`
+IP: from the same machine, `curl.exe -s -o NUL -H "CF-Connecting-IP: 203.0.113.9" "$api/api/auth/google/callback"`
+(no sign-in under way, so the backend logs `google sign-in failed` with code `expired`) and read that line's `ip`
 field). Older builds put it in `clientIp` on every request line. Do not search for the fake
 address; read the field):
 
 ```powershell
 Get-Content "$env:LOCALAPPDATA\satisfactory-dash\logs\backend.log" -Tail 100 |
   ForEach-Object { try { $_ | ConvertFrom-Json } catch {} } |
-  Where-Object { $_.msg -eq "login failed" } | Select-Object -Last 1 |
+  Where-Object { $_.msg -eq "google sign-in failed" } | Select-Object -Last 1 |
   Select-Object ip
 ```
 
@@ -346,12 +337,12 @@ Get-Content "$env:LOCALAPPDATA\satisfactory-dash\logs\backend.log" -Tail 100 |
   `127.0.0.1`, no longer logged). On a machine with both IPv4 and IPv6, the trace and the request
   may have gone out over different ones; if they differ, repeat with `curl.exe -4` and `-6`
   on both.
-- **Fail:** `ip` is `203.0.113.9`. The spoof survived, so anyone can dodge the login
-  lockout. **Stop the tunnel (step 7) and report.** The fallback is a Cloudflare
-  rate-limiting rule on `/api/auth/login`.
+- **Fail:** `ip` is `203.0.113.9`. The spoof survived, so anyone can dodge the sign-in
+  request cap. **Stop the tunnel (step 7) and report.** The fallback is the Cloudflare
+  rate-limiting rule on `/api/auth/google/`.
 
 Also confirm the backend runs directly on this PC and not in a container (a container would
-make the tunnel's connections non-loopback, the header would be ignored, and the lockout
+make the tunnel's connections non-loopback, the header would be ignored, and the request cap
 would go global again), and that the Vite dev server stays on localhost.
 
 ## 7. Rollback
