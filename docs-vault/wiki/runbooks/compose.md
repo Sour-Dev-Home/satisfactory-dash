@@ -29,8 +29,8 @@ Fill it in; `.env.example` says what each key is. `.env` is git-ignored: never c
 
 - `POSTGRES_PASSWORD`, `DB_MIGRATOR_PASSWORD`, `DB_APP_PASSWORD`: three **different** hex passwords
   (`openssl rand -hex 24`). Hex, because compose puts them inside `postgres://` URLs.
-- `DASHBOARD_ADMIN_PASSWORD_HASH`: from `npm run hash-password -w backend`, **in single quotes**. The hash
-  contains `$`, which compose otherwise reads as a variable (and then the login never matches).
+- Sign-in is Google only (gate B, #186): fill in the `GOOGLE_*` keys and `BOOTSTRAP_OWNER_EMAIL`. There is no
+  password hash or session secret any more; `DASHBOARD_ADMIN_USER` is optional (the operator's display name).
 - `TUNNEL_TOKEN`: only for the `tunnel` profile (see "Switching the tunnel route").
 
 No game-server keys are passed to the backend: since ADR-0066 the backend reads none (the old `SATISFACTORY_*` and

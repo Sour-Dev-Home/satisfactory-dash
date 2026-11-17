@@ -143,7 +143,7 @@ run "ssm_names_not_values" {
   }
 
   assert {
-    condition = alltrue([for k in ["TUNNEL_TOKEN", "B2_ACCESS_KEY_ID", "B2_SECRET_ACCESS_KEY", "BACKUP_HEARTBEAT_URL", "SESSION_SECRET", "DASHBOARD_ADMIN_PASSWORD_HASH", "DB_APP_PASSWORD"] :
+    condition = alltrue([for k in ["TUNNEL_TOKEN", "B2_ACCESS_KEY_ID", "B2_SECRET_ACCESS_KEY", "BACKUP_HEARTBEAT_URL", "GOOGLE_CLIENT_SECRET", "DB_APP_PASSWORD"] :
     contains(keys(output.ssm_parameter_names), k)])
     error_message = "the tunnel token, the B2 keys, the heartbeat URL and the app secrets are named"
   }
@@ -335,7 +335,7 @@ run "alarms_mail_on_alarm_and_ok" {
   }
 
   assert {
-    condition = alltrue([for msg in ["login failed", "google sign-in failed", "google sign-in refused"] :
+    condition = alltrue([for msg in ["google sign-in failed", "google sign-in refused"] :
     strcontains(aws_cloudwatch_log_metric_filter.auth_failures.pattern, "$.msg = \"${msg}\"")])
     error_message = "the sign-in filter matches the backend's exact msg strings (identity/routes/auth.ts, googleAuth.ts)"
   }
