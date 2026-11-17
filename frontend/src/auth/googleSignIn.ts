@@ -10,8 +10,8 @@ const ERROR_TEXT: Record<string, string> = {
   denied: "Google sign-in was cancelled.",
   expired: "That sign-in took too long. Try again.",
   failed: "Google sign-in didn't work. Try again.",
-  // There is no invitation screen to point to (2026-11-03): say what the landing page says.
-  not_invited: "This Google account hasn't been invited. Sign-in is invite-only during the beta.",
+  // Sign-up is open (SIGNUP_MODE=open, 2026-11-10); this only shows if the operator closes it again.
+  not_invited: "There is no account for this Google sign-in, and sign-up is closed right now.",
   unavailable: "Google sign-in isn't available right now. Try again later.",
   terms_required: "There is no account for this Google sign-in yet. Accept the Terms below to create one.",
   terms_changed: "The Terms have changed since you last accepted them. Accept the new version below to continue.",

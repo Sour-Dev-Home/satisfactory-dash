@@ -1,9 +1,13 @@
 ---
 title: Changelog
 description: Notable changes to Satis Manager you can see in the dashboard, newest first.
-updated: 2026-11-03
+updated: 2026-11-17
 ---
 The changes you can see in the dashboard, newest first. Fixes behind the scenes and work that isn't visible yet are left out.
+
+## 17 November 2026
+
+- Sign-up is open: anyone with a Google account can sign in, and the first sign-in creates your account.
 
 ## 3 November 2026
 

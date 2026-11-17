@@ -195,7 +195,7 @@ const DEMO_MARKERS = [
 /** The guided tour's host is a lazy chunk of the demo build (ADR-0065 Decision 8), never in production. */
 const TOUR_CHUNK = /^TourHost-.*\.js$/;
 /** Text only the landing page (src/landing/) has; main site only. */
-const LANDING_MARKER = "Sign-in is invite-only during the beta.";
+const LANDING_MARKER = "Anyone with a Google account can sign in.";
 
 /** The pages built from Markdown in content/ (site/paths.ts): written text, not app code. */
 const WRITTEN_PAGES = ["guides.html", "guides", "changelog.html"];
