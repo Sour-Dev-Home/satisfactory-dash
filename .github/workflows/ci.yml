@@ -267,4 +267,5 @@ jobs:
       - run: npm ci
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        # High and critical fail, except the dated exceptions in .github/audit-exceptions.json (scripts/audit-gate.mjs).
+        run: node scripts/audit-gate.mjs
