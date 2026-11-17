@@ -1,0 +1,9 @@
+[
+  {
+    "id": "GHSA-fc5q-39xc-vjpf",
+    "packages": ["picomatch"],
+    "reason": "picomatch ReDoS, no patched release (4.0.7 is the latest). Reached only through the frontend's Vite toolchain (vite, tinyglobby, fdir) and Vitest at build, dev and test time; nothing in the deployed site or the backend bundle runs it. Owner chose a dated exception, 2026-11-17.",
+    "granted": "2026-11-17",
+    "expires": "2026-12-17"
+  }
+]
