@@ -1,5 +1,5 @@
 /**
- * The identity module's public API (ADR-0014): login, the session cookie and the guard
+ * The identity module's public API (ADR-0014): Google sign-in, the session cookie and the guard
  * that protects every other /api route (ADR-0011). Site-wide HTTP policy (cross-site
  * guard, JSON-only) is not identity's; it lives in platform/httpPolicy.ts.
  */
@@ -16,15 +16,13 @@ import { createGoogleOidc } from "./googleOidc.js";
 import type { GoogleOidcOptions } from "./googleOidc.js";
 import { createGoogleSignIn } from "./googleSignIn.js";
 import { createGoogleAuthRouter, createGoogleDisabledRouter } from "./routes/googleAuth.js";
-import { OPERATOR_SUBJECT, SingleOperatorAuthenticator } from "./authenticator.js";
+import { OPERATOR_SUBJECT } from "./operatorSubject.js";
 import { ensureLocalUser } from "./repositories/userRepository.js";
-import { LoginRateLimiter } from "./loginRateLimiter.js";
 import { createAuthRouter } from "./routes/auth.js";
 import { createSessionGuard } from "./session.js";
-import { SessionDenylist } from "./sessionDenylist.js";
 import { createDbSessionStore } from "./dbSessionStore.js";
 import type { Db } from "./dbSessionStore.js";
-import { createStatelessSessionStore } from "./statelessSessionStore.js";
+import { createNoSessionStore } from "./noSessionStore.js";
 import { createSessionPurgeWorker, loadPurgeStartDelayMs } from "./sessionPurge.js";
 import type { PurgeLogger } from "./sessionPurge.js";
 
@@ -43,7 +41,7 @@ export interface IdentityWorker {
 }
 
 export interface IdentityModule {
-  /** Login, logout and session status: mounted with no session required. */
+  /** Google sign-in, logout and session status: mounted with no session required. */
   authRouter: Router;
   /** Guards every protected /api route. */
   sessionGuard: RequestHandler;
@@ -57,7 +55,7 @@ export interface IdentityModule {
 }
 
 export interface IdentityOptions {
-  /** The database (ADR-0025). Without it, sessions are the original signed tokens. */
+  /** The database (ADR-0025). Without it, nobody can sign in (ADR-0025 PR 9). */
   db?: Db;
   logger?: PurgeLogger;
   /** Test-only: point Google sign-in at a local fake issuer. Never read from the environment. */
@@ -72,10 +70,8 @@ export function createIdentityModule(
   options: IdentityOptions = {},
 ): IdentityModule {
   const auth = loadAuthConfigFromEnv(env);
-  const authenticator = new SingleOperatorAuthenticator(auth.adminUser, auth.passwordHash);
-  const store = options.db
-    ? createDbSessionStore(options.db)
-    : createStatelessSessionStore({ authenticator, sessionSecret: auth.sessionSecret, denylist: new SessionDenylist() });
+  // ADR-0025 PR 9: Google is the only way in, and it needs the database. Without one, nobody can sign in.
+  const store = options.db ? createDbSessionStore(options.db) : createNoSessionStore();
   const sessionDeps = { store };
   const noopLogger: PurgeLogger = { info: () => {}, warn: () => {}, error: () => {} };
   // ADR-0025 decisions 3 and 5: all-or-nothing Google settings; unset means /api/auth/google/* is 404.
@@ -91,10 +87,9 @@ export function createIdentityModule(
   }
   const signupOpen = signup.mode === "open";
   // "google_signup" tells the sign-in page that a new Google account can be created (terms step).
-  const signInMethods = googleConfig ? ["password", "google", ...(signupOpen ? ["google_signup"] : [])] : ["password"];
-  const authRouter = Router().use(
-    createAuthRouter({ ...sessionDeps, authenticator, rateLimiter: new LoginRateLimiter(), signInMethods }),
-  );
+  // Never "password" since PR 9; [] (no Google, so no database sign-in) tells the page sign-in is unavailable.
+  const signInMethods = googleConfig ? ["google", ...(signupOpen ? ["google_signup"] : [])] : [];
+  const authRouter = Router().use(createAuthRouter({ ...sessionDeps, signInMethods }));
   authRouter.use(
     googleConfig && options.db
       ? createGoogleAuthRouter({

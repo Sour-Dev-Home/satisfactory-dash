@@ -5,7 +5,6 @@ import { createLogger } from "../../platform/logger.js";
 import { ConfigError } from "../../platform/errors.js";
 import { generateDisplayName } from "./generatedName.js";
 import { createIdentityModule } from "./index.js";
-import { hashPassword } from "./passwordHash.js";
 import { DEFAULT_SIGNUP_MAX_PER_HOUR, loadSignupConfigFromEnv } from "./signupConfig.js";
 import { SIGNUP_NETWORK_WINDOW_MS, createSignupNetworkLimit } from "./signupNetworkLimit.js";
 
@@ -76,8 +75,6 @@ describe("SIGNUP_MODE in the identity module", () => {
   };
   const baseEnv = async () => ({
     DASHBOARD_ADMIN_USER: "operator",
-    DASHBOARD_ADMIN_PASSWORD_HASH: await hashPassword("correct horse battery staple"),
-    SESSION_SECRET: "q7Vw2kZ9xLm4TpR8vNc3HbYd6JfUe1SaGo5iXqKzWt0=",
     CORS_ALLOWED_ORIGINS: "",
   });
   const fakeDb = { query: async () => ({ rows: [] }), connect: async () => { throw new Error("unused"); } };
@@ -93,12 +90,12 @@ describe("SIGNUP_MODE in the identity module", () => {
   };
 
   it("closed (the default) does not advertise sign-up", async () => {
-    expect(await methodsOf({ ...(await baseEnv()), ...GOOGLE_ENV })).toEqual(["password", "google"]);
-    expect(await methodsOf({ ...(await baseEnv()), ...GOOGLE_ENV, SIGNUP_MODE: "closed" })).toEqual(["password", "google"]);
+    expect(await methodsOf({ ...(await baseEnv()), ...GOOGLE_ENV })).toEqual(["google"]);
+    expect(await methodsOf({ ...(await baseEnv()), ...GOOGLE_ENV, SIGNUP_MODE: "closed" })).toEqual(["google"]);
   });
 
   it("open advertises google_signup", async () => {
-    expect(await methodsOf({ ...(await baseEnv()), ...GOOGLE_ENV, SIGNUP_MODE: "open" })).toEqual(["password", "google", "google_signup"]);
+    expect(await methodsOf({ ...(await baseEnv()), ...GOOGLE_ENV, SIGNUP_MODE: "open" })).toEqual(["google", "google_signup"]);
   });
 
   it("an unknown mode stops startup, with or without Google, and the message holds no secret", async () => {

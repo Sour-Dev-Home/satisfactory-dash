@@ -104,14 +104,11 @@ jobs:
           set -euo pipefail
           migrator="$(openssl rand -hex 24)"
           app="$(openssl rand -hex 24)"
-          session="$(openssl rand -base64 48)"
           echo "::add-mask::$migrator"
           echo "::add-mask::$app"
-          echo "::add-mask::$session"
           {
             echo "DB_MIGRATOR_PASSWORD=$migrator"
             echo "DB_APP_PASSWORD=$app"
-            echo "SESSION_SECRET=$session"
           } >> "$GITHUB_ENV"
       - name: db:init (ops image)
         env:
@@ -128,17 +125,9 @@ jobs:
       - name: App image answers /api/health/ready
         run: |
           set -euo pipefail
-          # The login settings are required to boot (ADR-0011); the hash is of a random password
-          # nobody keeps, made by the ops image's own hash-password script.
-          openssl rand -hex 24 > "$RUNNER_TEMP/pw"
-          hash="$(docker run --rm -i smoke/ops:ci npm run --silent hash-password -w backend < "$RUNNER_TEMP/pw")"
-          rm -f "$RUNNER_TEMP/pw"
-          export DASHBOARD_ADMIN_USER=smoke
-          export DASHBOARD_ADMIN_PASSWORD_HASH="$hash"
+          # Gate B: no login settings to generate; the app boots on the database alone.
           export DATABASE_URL="postgres://satis_app:${DB_APP_PASSWORD}@127.0.0.1:5432/satis"
-          docker run -d --name app --network host -e HOST=0.0.0.0 \
-            -e DATABASE_URL -e DASHBOARD_ADMIN_USER -e DASHBOARD_ADMIN_PASSWORD_HASH -e SESSION_SECRET \
-            smoke/app:ci
+          docker run -d --name app --network host -e HOST=0.0.0.0 -e DATABASE_URL smoke/app:ci
           deadline=$((SECONDS + 60))
           while [ "$SECONDS" -lt "$deadline" ]; do
             code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/health/ready || true)"

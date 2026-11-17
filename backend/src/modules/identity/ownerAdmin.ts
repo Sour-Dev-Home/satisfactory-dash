@@ -1,7 +1,7 @@
 import { recordAuditEvent } from "../../platform/audit/auditRepository.js";
 import { timedQuery } from "../../platform/db/timedQuery.js";
 import { withTransaction } from "../../platform/db/transaction.js";
-import { OPERATOR_SUBJECT } from "./authenticator.js";
+import { OPERATOR_SUBJECT } from "./operatorSubject.js";
 import type { Db } from "./dbSessionStore.js";
 import { revokeAllSessionsForUser } from "./repositories/sessionRepository.js";
 import { findUserByIdentity, setUserEmail, type UserStatus } from "./repositories/userRepository.js";

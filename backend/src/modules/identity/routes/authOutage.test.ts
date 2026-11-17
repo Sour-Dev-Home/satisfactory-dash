@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import request from "supertest";
 import { Router } from "express";
 import { createApp } from "../../../app.js";
@@ -6,7 +6,6 @@ import { createLogger } from "../../../platform/logger.js";
 import { ServiceUnavailableError } from "../../../platform/errorResponse.js";
 import { createAuthRouter } from "./auth.js";
 import { createSessionGuard, SESSION_COOKIE } from "../session.js";
-import { LoginRateLimiter } from "../loginRateLimiter.js";
 import type { SessionStore } from "../sessionStore.js";
 
 const down = () => Promise.reject(new ServiceUnavailableError());
@@ -20,13 +19,8 @@ const outageStore: SessionStore = {
   recognizes: (value) => /^[A-Za-z0-9_-]{43}$/.test(value),
 };
 
-function buildApp(
-  store: SessionStore,
-  verify = async () => ({ subject: "operator", name: "op" }) as { subject: string; name: string } | null,
-  rateLimiter = new LoginRateLimiter(),
-) {
+function buildApp(store: SessionStore) {
   const logger = createLogger({ level: "silent" }, { write: () => {} });
-  const authenticator = { verifyCredentials: verify, isActiveUser: () => true };
   const protectedRouter = Router();
   protectedRouter.get("/servers", (_req, res) => {
     res.json({ servers: [] });
@@ -34,7 +28,7 @@ function buildApp(
   return createApp({
     logger,
     allowedOrigins: ["https://satis-manager.com"],
-    routers: [createAuthRouter({ store, authenticator, rateLimiter })],
+    routers: [createAuthRouter({ store, signInMethods: ["google"] })],
     sessionGuard: createSessionGuard({ store }),
     protectedRouters: [protectedRouter],
   });
@@ -55,18 +49,9 @@ describe("session store outage (503, never 401 or signed-out)", () => {
     expect(res.status).toBe(503);
   });
 
-  it("login with valid credentials is 503 when sessions cannot be created", async () => {
-    const res = await request(buildApp(outageStore)).post("/api/auth/login").send({ username: "op", password: "x" });
+  it("logout-all during an outage is 503", async () => {
+    const res = await request(buildApp(outageStore)).post("/api/auth/logout-all").set("Cookie", cookie);
     expect(res.status).toBe(503);
-    expect(res.headers["set-cookie"]).toBeUndefined();
-  });
-
-  it("a correct password that ends in a 503 does not reset the IP's failure count", async () => {
-    const limiter = new LoginRateLimiter();
-    const spy = vi.spyOn(limiter, "recordSuccess");
-    const res = await request(buildApp(outageStore, undefined, limiter)).post("/api/auth/login").send({ username: "op", password: "x" });
-    expect(res.status).toBe(503);
-    expect(spy).not.toHaveBeenCalled();
   });
 
   it("logout during an outage is 503 rather than pretending the session ended", async () => {

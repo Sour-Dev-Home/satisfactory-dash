@@ -5,7 +5,7 @@ import { parseFirst, parseOne } from "../../platform/db/rows.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { timedQuery } from "../../platform/db/timedQuery.js";
 import { withTransaction } from "../../platform/db/transaction.js";
-import { OPERATOR_SUBJECT } from "./authenticator.js";
+import { OPERATOR_SUBJECT } from "./operatorSubject.js";
 import type { Db } from "./dbSessionStore.js";
 
 /**

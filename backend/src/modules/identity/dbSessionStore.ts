@@ -3,8 +3,8 @@ import { isDatabaseUnavailable } from "../../platform/db/errors.js";
 import type { Queryable } from "../../platform/db/schemaVersion.js";
 import { withTransaction } from "../../platform/db/transaction.js";
 import { recordAuditEvent } from "../../platform/audit/auditRepository.js";
+import { SESSION_TTL_SECONDS } from "./sessionStore.js";
 import type { CreatedSession, Principal, SessionStore, SessionUser } from "./sessionStore.js";
-import { SESSION_TTL_SECONDS } from "./sessionToken.js";
 import {
   createSession,
   findActiveSession,

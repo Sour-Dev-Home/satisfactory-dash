@@ -9,7 +9,6 @@ import type { TestDatabase } from "../../../test-support/testDb.js";
 import { startFakeOidcIssuer } from "../../../test-support/fakeOidcIssuer.js";
 import type { FakeOidcIssuer, FakeClaims } from "../../../test-support/fakeOidcIssuer.js";
 import { beginGoogleSignIn, completeGoogleSignIn } from "../../../test-support/googleFlow.js";
-import { hashPassword } from "./passwordHash.js";
 import { createIdentityModule } from "./index.js";
 import { SESSION_COOKIE } from "./session.js";
 import { startSession } from "./dbSessionStore.js";
@@ -22,14 +21,12 @@ const available = dbTestsAvailable();
 const CLIENT_ID = "test-client-id";
 const FRONTEND = "https://satis-manager.com";
 const OWNER_EMAIL = "owner@example.com";
-const SECRET = "q7Vw2kZ9xLm4TpR8vNc3HbYd6JfUe1SaGo5iXqKzWt0=";
 
 describe.skipIf(!available)("Google sign-in against Postgres", () => {
   let db: TestDatabase;
   let pool: pg.Pool;
   let admin: pg.Pool;
   let issuer: FakeOidcIssuer;
-  let passwordHash: string;
   let operatorId: string;
   let app: ReturnType<typeof createApp>;
 
@@ -38,7 +35,6 @@ describe.skipIf(!available)("Google sign-in against Postgres", () => {
     pool = new pg.Pool({ connectionString: db.appUrl, max: 8 });
     admin = new pg.Pool({ connectionString: db.adminUrl, max: 2 });
     issuer = await startFakeOidcIssuer(CLIENT_ID);
-    passwordHash = await hashPassword("correct horse battery staple");
   }, 60_000);
 
   afterAll(async () => {
@@ -55,8 +51,6 @@ describe.skipIf(!available)("Google sign-in against Postgres", () => {
     const identity = createIdentityModule(
       {
         DASHBOARD_ADMIN_USER: "operator",
-        DASHBOARD_ADMIN_PASSWORD_HASH: passwordHash,
-        SESSION_SECRET: SECRET,
         CORS_ALLOWED_ORIGINS: "",
         GOOGLE_CLIENT_ID: CLIENT_ID,
         GOOGLE_CLIENT_SECRET: "test-client-secret",
@@ -118,7 +112,9 @@ describe.skipIf(!available)("Google sign-in against Postgres", () => {
     expect(JSON.stringify(await auditActions())).not.toContain("example.com");
     // The account now reports the Google method.
     const session = await request(app).get("/api/auth/session").set("Cookie", cookie);
-    expect(session.body.user.authMethods).toEqual(expect.arrayContaining(["google", "password"]));
+    // Only Google: the `local` identity is the operator's anchor, never a sign-in method (ADR-0025 PR 9).
+    expect(session.body.user.authMethods).toEqual(["google"]);
+    expect(session.body.signInMethods).toEqual(["google"]);
   });
 
   it("honors the return path", async () => {

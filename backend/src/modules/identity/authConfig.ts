@@ -1,32 +1,14 @@
 import { ConfigError } from "../../platform/errors.js";
-import { assertScryptParamsUsable, parsePasswordHash } from "./passwordHash.js";
-import type { ParsedPasswordHash } from "./passwordHash.js";
 
 export interface AuthConfig {
+  /** The operator account's display name (ensureLocalUser). Nobody signs in with it (ADR-0025 PR 9). */
   adminUser: string;
-  passwordHash: ParsedPasswordHash;
-  sessionSecret: string;
   /** Exact origins allowed to call the API with credentials (CORS). */
   allowedOrigins: string[];
 }
 
-/** ADR-0019: 32 random bytes is 43 base64 characters (44 with padding). */
-const MIN_SECRET_LENGTH = 43;
-/** Fewer distinct characters than this in a 43+ character secret means it's repeated or
- *  patterned, not random (32 random bytes in base64 has around 30; a random hex string
- *  has at most 16, and virtually always 14 or more). */
-const MIN_DISTINCT_CHARACTERS = 12;
-const PLACEHOLDER_SECRET = /change.?me|placeholder|example|your.?secret|replace.?me|password/i;
-
-/** A length-and-variety screen, not an entropy proof: it rejects short values, repeated
- *  or patterned ones ("aaaa...", "abcabc..."), and obvious placeholders. */
-function isStrongSecret(secret: string): boolean {
-  return (
-    secret.length >= MIN_SECRET_LENGTH &&
-    new Set(secret).size >= MIN_DISTINCT_CHARACTERS &&
-    !PLACEHOLDER_SECRET.test(secret)
-  );
-}
+/** The operator's display name when DASHBOARD_ADMIN_USER is unset. */
+const DEFAULT_ADMIN_USER = "operator";
 /** ADR-0013: the frontend's production origin. */
 const DEFAULT_ALLOWED_ORIGINS = ["https://satis-manager.com"];
 
@@ -43,33 +25,15 @@ function isAllowedOrigin(origin: string): boolean {
 }
 
 /**
- * ADR-0011: the login settings are validated at startup, and the backend refuses to
- * start if any is missing or malformed. There is no "auth off" mode. Error messages
- * name the variable but never echo a secret's value.
+ * The identity settings, validated at startup: the backend refuses to start if one is malformed.
+ * Google is the only way in since ADR-0025 PR 9, so DASHBOARD_ADMIN_PASSWORD_HASH and SESSION_SECRET
+ * are no longer read (set or not, they are ignored).
  */
 export function loadAuthConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AuthConfig {
-  const adminUser = env.DASHBOARD_ADMIN_USER?.trim() ?? "";
-  if (adminUser.length === 0 || adminUser.length > 128) {
-    throw new ConfigError("DASHBOARD_ADMIN_USER must be set (1-128 characters).");
-  }
-  const passwordHash = parsePasswordHash(env.DASHBOARD_ADMIN_PASSWORD_HASH ?? "");
-  if (!passwordHash) {
-    throw new ConfigError(
-      "DASHBOARD_ADMIN_PASSWORD_HASH must be set to a scrypt hash. Generate one with `npm run hash-password -w backend`.",
-    );
-  }
-  try {
-    assertScryptParamsUsable(passwordHash);
-  } catch {
-    throw new ConfigError(
-      "DASHBOARD_ADMIN_PASSWORD_HASH has scrypt parameters this system can't use. Regenerate it with `npm run hash-password -w backend`.",
-    );
-  }
-  const sessionSecret = env.SESSION_SECRET ?? "";
-  if (!isStrongSecret(sessionSecret)) {
-    throw new ConfigError(
-      `SESSION_SECRET must be at least ${MIN_SECRET_LENGTH} characters of random data, 32 random bytes or more, and not a placeholder (e.g. \`openssl rand -base64 48\`).`,
-    );
+  // Unset or blank (e.g. an empty compose interpolation) means the default.
+  const adminUser = env.DASHBOARD_ADMIN_USER?.trim() || DEFAULT_ADMIN_USER;
+  if (adminUser.length > 128) {
+    throw new ConfigError("DASHBOARD_ADMIN_USER, when set, must be 1-128 characters (the operator's display name).");
   }
   const allowedOrigins = env.CORS_ALLOWED_ORIGINS?.trim()
     ? env.CORS_ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
@@ -80,5 +44,5 @@ export function loadAuthConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Aut
       `CORS_ALLOWED_ORIGINS has invalid entries (${invalid.join(", ")}): use exact https origins, or http://localhost for local development. Never "*".`,
     );
   }
-  return { adminUser, passwordHash, sessionSecret, allowedOrigins };
+  return { adminUser, allowedOrigins };
 }

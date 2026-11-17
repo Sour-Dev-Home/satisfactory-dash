@@ -5,7 +5,6 @@ import { createLogger } from "../../platform/logger.js";
 import { ConfigError } from "../../platform/errors.js";
 import { loadGoogleConfigFromEnv } from "./googleConfig.js";
 import { createIdentityModule } from "./index.js";
-import { hashPassword } from "./passwordHash.js";
 
 const GOOGLE_ENV = {
   GOOGLE_CLIENT_ID: "client-id.apps.example",
@@ -70,8 +69,6 @@ describe("loadGoogleConfigFromEnv", () => {
 describe("Google sign-in in the identity module", () => {
   const baseEnv = async () => ({
     DASHBOARD_ADMIN_USER: "operator",
-    DASHBOARD_ADMIN_PASSWORD_HASH: await hashPassword("correct horse battery staple"),
-    SESSION_SECRET: "q7Vw2kZ9xLm4TpR8vNc3HbYd6JfUe1SaGo5iXqKzWt0=",
     CORS_ALLOWED_ORIGINS: "",
   });
   const fakeDb = { query: async () => ({ rows: [] }), connect: async () => { throw new Error("unused"); } };
@@ -86,7 +83,7 @@ describe("Google sign-in in the identity module", () => {
     expect(() => createIdentityModule(env)).toThrow(/DATABASE_URL/);
   });
 
-  it("with Google unset, /api/auth/google/* answers 404 (not the guard's 401) and the other auth routes work", async () => {
+  it("with Google unset, /api/auth/google/* answers 404 (not the guard's 401), the other auth routes work and nothing can sign in", async () => {
     const identity = createIdentityModule(await baseEnv());
     const app = createApp({
       logger: createLogger({ level: "silent" }, { write: () => {} }),
@@ -101,7 +98,7 @@ describe("Google sign-in in the identity module", () => {
     }
     const session = await request(app).get("/api/auth/session");
     expect(session.status).toBe(200);
-    expect(session.body).toEqual({ authenticated: false, signInMethods: ["password"] });
+    expect(session.body).toEqual({ authenticated: false, signInMethods: [] });
   });
 
   it("with Google configured and a database, /start is served (and never contacts Google at startup)", async () => {
@@ -122,6 +119,6 @@ describe("Google sign-in in the identity module", () => {
     const session = await request(app).get("/api/auth/session");
     expect(session.status).toBe(200);
     // The login screen may offer Google exactly when it is configured.
-    expect(session.body).toEqual({ authenticated: false, signInMethods: ["password", "google"] });
+    expect(session.body).toEqual({ authenticated: false, signInMethods: ["google"] });
   });
 });

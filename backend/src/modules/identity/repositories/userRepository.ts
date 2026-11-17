@@ -177,12 +177,17 @@ const SELECT_PROVIDERS = `
 
 const ProviderRowSchema = z.object({ provider: z.enum(["local", "google"]) });
 
-/** How the account can sign in, as the contract names it: "password" (the local operator
- *  identity) and/or "google". */
+/** How the account can sign in, as the contract names it: "google", or nothing. The `local`
+ *  operator identity is only the operator's anchor since ADR-0025 PR 9 (nobody signs in with it),
+ *  so it is never reported. */
 export async function authMethodsForUser(db: Queryable, userId: string): Promise<string[]> {
   const result = await timedQuery(db, "identity.authMethodsForUser", SELECT_PROVIDERS,[userId]);
-  const methods = result.rows.map((row) => ProviderRowSchema.parse(row).provider);
-  return methods.map((provider) => (provider === "local" ? "password" : provider));
+  return signInProviders(result.rows.map((row) => ProviderRowSchema.parse(row).provider));
+}
+
+/** The identity providers someone can sign in with, as the contract names them (drops `local`). */
+export function signInProviders(providers: readonly string[]): string[] {
+  return providers.filter((provider) => provider !== "local");
 }
 
 const UPDATE_DISPLAY_NAME = `

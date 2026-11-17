@@ -41,8 +41,40 @@ describe("the sign-in screen", () => {
     const href = new URL(google.getAttribute("href")!, "http://x");
     expect(href.pathname).toBe("/api/auth/google/start");
     expect(href.searchParams.get("return")).toBe("/app/power");
-    // The password form stays (until ADR-0025 PR 9).
+    // This backend still lists "password", so the form stays under an "or".
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
+    expect(screen.getByText("or")).toBeInTheDocument();
+  });
+
+  // ADR-0025 PR 9: the backend offers only Google, so the password form is gone.
+  it("with only Google offered, shows the Google button and no username, password, divider or Sign in button", async () => {
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json({ ...sessionAnonymous, signInMethods: ["google"] })));
+    renderGate();
+    expect(await screen.findByRole("link", { name: "Sign in with Google" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.queryByText("or")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Sign-in isn't available on this server.")).not.toBeInTheDocument();
+  });
+
+  it("with no sign-in method (no database, no Google), says sign-in isn't available instead of an empty card", async () => {
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json({ ...sessionAnonymous, signInMethods: [] })));
+    renderGate();
+    expect(await screen.findByText("Sign-in isn't available on this server.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sign in with Google" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+  });
+
+  // (An older backend that sends no list also gets the form: every test built on the plain sessionAnonymous fixture.)
+  it("keeps the password form, with no divider, for a backend that lists only password", async () => {
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json({ ...sessionAnonymous, signInMethods: ["password"] })));
+    renderGate();
+    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
+    expect(screen.queryByText("or")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sign-in isn't available on this server.")).not.toBeInTheDocument();
   });
 
   it("offers no Google when the backend doesn't list it (or is older and sends no list)", async () => {

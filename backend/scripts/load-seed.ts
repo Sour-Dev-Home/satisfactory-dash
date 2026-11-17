@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import * as fixtures from "@satisfactory-dash/shared/fixtures";
 import { withTransaction } from "../src/platform/db/transaction.js";
-import { OPERATOR_SUBJECT } from "../src/modules/identity/authenticator.js";
+import { OPERATOR_SUBJECT } from "../src/modules/identity/operatorSubject.js";
 import { startSession } from "../src/modules/identity/dbSessionStore.js";
 import { createUser, findUserByIdentity } from "../src/modules/identity/repositories/userRepository.js";
 import { addMember } from "../src/modules/servers/repositories/memberRepository.js";

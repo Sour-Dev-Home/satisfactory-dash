@@ -21,10 +21,15 @@ const GOOGLE_BUTTON =
   "inline-flex min-h-touch items-center justify-center rounded-lg border border-accent bg-accent px-button-x font-semibold text-on-accent no-underline disabled:cursor-not-allowed disabled:opacity-60";
 
 /**
- * The sign-in screen (ADR-0011, ADR-0025): "Sign in with Google" when the backend offers it,
- * and the operator's password form (until ADR-0025 PR 9).
+ * The sign-in screen (ADR-0011, ADR-0025): "Sign in with Google" when the backend offers it. The
+ * password form shows only while a backend still offers "password" (none does since ADR-0025 PR 9;
+ * the form goes with the contract's login endpoint). With nothing offered, it says so.
  */
 export function LoginForm({ signInMethods }: { signInMethods?: readonly string[] }) {
+  const google = offersGoogle(signInMethods);
+  // No list at all is a backend older than signInMethods (contract: a current one always sends it signed out), and
+  // those offered only the password.
+  const password = signInMethods === undefined || signInMethods.includes("password");
   // The address as loaded: the Google link is a full-page navigation, and the backend's error
   // redirect is a fresh page load, so there's no need to follow client-side navigation here.
   const { pathname, search } = window.location;
@@ -38,7 +43,7 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const client = useQueryClient();
   const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [passwordValue, setPassword] = useState("");
   // The credentials go to mutationFn through this ref, not as mutation variables: TanStack
   // keeps a mutation's variables in its cache for minutes, and the password shouldn't live
   // there. The ref is cleared as soon as the request is built.
@@ -66,7 +71,7 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
     // login.isPending only updates on the next render, so a fast double Enter would send two
     // POSTs (and count twice against the rate limit). isMutating updates synchronously.
     if (client.isMutating({ mutationKey: LOGIN_MUTATION_KEY }) > 0) return;
-    credentials.current = { username, password };
+    credentials.current = { username, password: passwordValue };
     login.mutate();
   }
 
@@ -83,14 +88,18 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
           {notice}
         </p>
       )}
-      {urlError && !(reacceptStep && offersGoogle(signInMethods)) && (
+      {urlError && !(reacceptStep && google) && (
         // The global [role="alert"] style gives it the error look (index.css); red text on
         // that red-tinted background would fail contrast.
         <p role="alert">
           {urlError}
         </p>
       )}
-      {offersGoogle(signInMethods) && (
+      {!google && !password && (
+        // No database and no Google on this backend: nothing can sign in, so no empty form.
+        <p className="mb-0 text-muted">Sign-in isn't available on this server.</p>
+      )}
+      {google && (
         <>
           {/* A link, not fetch: the backend answers with a redirect to Google. */}
           {termsStep || reacceptStep ? (
@@ -144,45 +153,49 @@ export function LoginForm({ signInMethods }: { signInMethods?: readonly string[]
               Sign in with Google
             </a>
           )}
-          <p className="flex items-center gap-3 text-sm text-muted before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
-            or
-          </p>
+          {password && (
+            <p className="flex items-center gap-3 text-sm text-muted before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
+              or
+            </p>
+          )}
         </>
       )}
-      <label className="grid gap-1.5 text-sm">
-        Username
-        <input
-          name="username"
-          autoComplete="username"
-          required
-          maxLength={128}
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-      </label>
-      <label className="grid gap-1.5 text-sm">
-        Password
-        <input
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          maxLength={1024}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-      </label>
-      <button
-        type="submit"
-        disabled={login.isPending}
-        // With Google offered, that's the main way in; the password button steps back.
-        className={
-          offersGoogle(signInMethods) ? "mt-1 font-semibold" : "mt-1 border-accent bg-accent font-semibold text-on-accent hover:border-accent"
-        }
-      >
-        {login.isPending ? "Signing in…" : "Sign in"}
-      </button>
-      {login.isError && <LoginError error={login.error} />}
+      {password && (
+        <>
+          <label className="grid gap-1.5 text-sm">
+            Username
+            <input
+              name="username"
+              autoComplete="username"
+              required
+              maxLength={128}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm">
+            Password
+            <input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              maxLength={1024}
+              value={passwordValue}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={login.isPending}
+            // With Google offered, that's the main way in; the password button steps back.
+            className={google ? "mt-1 font-semibold" : "mt-1 border-accent bg-accent font-semibold text-on-accent hover:border-accent"}
+          >
+            {login.isPending ? "Signing in…" : "Sign in"}
+          </button>
+          {login.isError && <LoginError error={login.error} />}
+        </>
+      )}
     </form>
   );
 }

@@ -132,16 +132,10 @@ jobs:
           set -euo pipefail
           migrator="$(openssl rand -hex 24)"
           app="$(openssl rand -hex 24)"
-          session="$(openssl rand -base64 48)"
-          openssl rand -hex 24 > "$RUNNER_TEMP/pw"
-          hash="$(npm run --silent hash-password -w backend < "$RUNNER_TEMP/pw")"
-          rm -f "$RUNNER_TEMP/pw"
-          for secret in "$migrator" "$app" "$session" "$hash"; do echo "::add-mask::$secret"; done
+          for secret in "$migrator" "$app"; do echo "::add-mask::$secret"; done
           {
             echo "DB_MIGRATOR_PASSWORD=$migrator"
             echo "DB_APP_PASSWORD=$app"
-            echo "SESSION_SECRET=$session"
-            echo "DASHBOARD_ADMIN_PASSWORD_HASH=$hash"
             echo "DATABASE_URL=postgres://satis_app:$app@127.0.0.1:5432/satis_load"
           } >> "$GITHUB_ENV"
 

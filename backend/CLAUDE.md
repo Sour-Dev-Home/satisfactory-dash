@@ -16,7 +16,7 @@ A modular monolith (ADR-0014): the source is split by domain into `platform/` pl
 - `src/modules/servers/` — the registry of servers and `:serverId` scoping (ADR-0001).
 - `src/modules/telemetry/` — status, factory and power: services (production math,
   overflow/outage detection) and the routes that expose them. See its README.
-- `src/modules/identity/` — login, sessions and the session guard (ADR-0011).
+- `src/modules/identity/` — Google sign-in, sessions and the session guard (ADR-0011, ADR-0025).
 - `src/modules/settings/` — the auto-pause toggle (ADR-0012), the dashboard's only write
   to a game server: a command queued for the mod (ADR-0066 Decision 4).
 

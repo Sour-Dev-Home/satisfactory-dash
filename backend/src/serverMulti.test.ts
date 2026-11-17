@@ -4,15 +4,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Express } from "express";
-import { hashPassword } from "./modules/identity/passwordHash.js";
 
 // ADR-0066 build PR 5: SATISFACTORY_SERVERS_FILE (ADR-0025 PR 1) is retired. The real wiring (server.ts) with a file
 // naming two servers must build neither: servers come only from the database and connect through the mod.
 
 let app: Express;
-let session: string;
 let dir: string;
-const PASSWORD = "server-multi-test-password";
 
 beforeAll(async () => {
   dir = mkdtempSync(path.join(tmpdir(), "servers-file-"));
@@ -31,16 +28,8 @@ beforeAll(async () => {
   process.env.SATISFACTORY_SERVER_HOST = "localhost";
   process.env.SATISFACTORY_API_PORT = "1";
   process.env.FRM_WEB_PORT = "1";
-  process.env.DASHBOARD_ADMIN_USER = "operator";
-  process.env.DASHBOARD_ADMIN_PASSWORD_HASH = await hashPassword(PASSWORD);
-  process.env.SESSION_SECRET = "server-multi-session-secret-0123456789abcdef";
   process.env.CORS_ALLOWED_ORIGINS = "";
   ({ app } = await import("./server.js"));
-  const res = await request(app)
-    .post("/api/auth/login")
-    .set("Content-Type", "application/json")
-    .send(JSON.stringify({ username: "operator", password: PASSWORD }));
-  session = [res.headers["set-cookie"]].flat()[0].split(";")[0];
 }, 30_000);
 
 afterAll(() => {
@@ -48,20 +37,20 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+// Without DATABASE_URL nobody can sign in since ADR-0025 PR 9, so the signed-in checks this file used to make (the list
+// shows neither server, their routes answer 404 server_not_found) cannot run here. In database mode the server list
+// comes only from the database: modules/servers/serverManagement.db.test.ts ("the managed list ...").
 describe("a servers file is ignored (ADR-0066)", () => {
-  it("lists neither server, and leaks no host or port", async () => {
-    const res = await request(app).get("/api/servers").set("Cookie", session);
-    expect(res.status).toBe(200);
-    const text = JSON.stringify(res.body);
-    expect(text).not.toMatch(/alpha|beta|not-used/);
-    expect(text).not.toMatch(/127\.0\.0\.1|localhost/);
+  it("the backend still boots with one set, and is healthy", async () => {
+    expect((await request(app).get("/api/health")).status).toBe(200);
   });
 
-  it.each(["alpha", "beta", "not-used"])("answers %s's routes with 404 server_not_found", async (id) => {
+  it.each(["alpha", "beta", "not-used"])("answers %s's routes with the plain 401, leaking no host or port", async (id) => {
     for (const route of ["status", "factory", "power", "power/history"]) {
-      const res = await request(app).get(`/api/servers/${id}/${route}`).set("Cookie", session);
-      expect(res.status, `${id}/${route}`).toBe(404);
-      expect(res.body.error.code).toBe("server_not_found");
+      const res = await request(app).get(`/api/servers/${id}/${route}`);
+      expect(res.status, `${id}/${route}`).toBe(401);
+      expect(res.body.error.code).toBe("unauthorized");
+      expect(JSON.stringify(res.body)).not.toMatch(/127\.0\.0\.1|localhost/);
     }
   });
 });
