@@ -2,7 +2,7 @@
 title: Getting started with Satis Manager
 description: What Satis Manager shows, who it is for, and how to try the demo, sign in and add your first Satisfactory dedicated server.
 order: 1
-updated: 2026-11-09
+updated: 2026-11-17
 ---
 Satis Manager is a web dashboard for a Satisfactory dedicated server. It reads your running game and shows, in a browser, how the factory is doing: the power on every circuit, what each machine is making, which machines are stuck, how items flow between your factories, and where everything sits on the map. You can check it from your phone while you're away from the game, or keep it open on a second screen while you build.
 
@@ -26,9 +26,7 @@ The demo answers every request inside your browser. Nothing you click there reac
 
 Open the dashboard at /app and choose **Sign in with Google**.
 
-Sign-in is invite-only during the beta. If your Google account isn't on the list yet, the sign-in page tells you so instead of creating an account.
-
-The first time an invited account signs in, you accept the Terms of Use to create your account. Accounts made this way don't keep your email address. You get a generated display name, such as "Player-4F2K", which is what the other members of a shared server see. The [privacy policy](/privacy) lists everything the service stores and why.
+Anyone with a Google account can sign in. The first time you sign in, you accept the Terms of Use to create your account. Accounts made this way don't keep your email address. You get a generated display name, such as "Player-4F2K", which is what the other members of a shared server see. The [privacy policy](/privacy) lists everything the service stores and why.
 
 ## Add your server
 

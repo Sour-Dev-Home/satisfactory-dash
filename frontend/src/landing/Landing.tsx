@@ -49,7 +49,7 @@ export function Landing() {
           <Link to="/app" className={cn(chipButton, "justify-center px-button-x font-semibold no-underline")}>
             Sign in
           </Link>
-          <span className="text-sm text-muted">Sign-in is invite-only during the beta.</span>
+          <span className="text-sm text-muted">Anyone with a Google account can sign in.</span>
         </div>
       </Hero>
 

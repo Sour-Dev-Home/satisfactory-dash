@@ -2,7 +2,7 @@
 title: Setting up a server from scratch
 description: From no server to a running dedicated server with the Satis Manager mod paired and every player able to join: hosting, mods, pairing and players.
 order: 2
-updated: 2026-11-09
+updated: 2026-11-17
 ---
 This guide takes you all the way: getting a dedicated server, installing the mod loader and the Satis Manager mod on it, pairing it with your dashboard, and getting your players in. If you already run a server with mods, skip to [Connecting a server](/guides/connecting-a-server).
 
@@ -45,7 +45,7 @@ On its first start, the mod prints a pairing code in the server console and in t
 
 On a Linux server in a container, such as Docker, the console can lag minutes behind the log, so read the code in `FactoryGame.log` there. If you join the server while you're the only player on, the code also shows in the game's chat. The chat can't be copied, so type the code; codes never contain 0, 1, 8 or 9.
 
-You need a Satis Manager account to approve the code. Sign-in is invite-only during the beta (see [Getting started](/guides/getting-started)), so for now pairing works only with an account that already exists.
+You need a Satis Manager account to approve the code. If you don't have one yet, signing in with Google for the first time creates it (see [Getting started](/guides/getting-started)).
 
 1. Go to [satis-manager.com/pair](/app/pair) and sign in. Later, you can also get there from **Settings**, under **Satis Manager mod**, with the **Pair a server** link.
 2. Type the code and press **Continue**. Lower case and missing dashes are fine.

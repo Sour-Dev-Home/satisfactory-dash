@@ -242,7 +242,7 @@ const CASES: StateCase[] = [
   {
     scenario: "login-google-error",
     path: "/app/login?error=not_invited",
-    shows: "This Google account hasn't been invited. Sign-in is invite-only during the beta.",
+    shows: "There is no account for this Google sign-in, and sign-up is closed right now.",
   },
   { scenario: "login-terms-changed", path: "/app/login?error=terms_changed", shows: "What changed:" },
   { scenario: "login-failed", shows: "Invalid username or password", act: signIn },

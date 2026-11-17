@@ -14,12 +14,13 @@ function renderLanding() {
 }
 
 describe("Landing", () => {
-  it("leads with what it is, the live demo, and an invite-only sign-in", () => {
+  it("leads with what it is, the live demo, and an open sign-in", () => {
     renderLanding();
     expect(screen.getByRole("heading", { level: 2, name: /A live dashboard for your Satisfactory dedicated server/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Try the live demo" })).toHaveAttribute("href", DEMO_URL);
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/app");
-    expect(screen.getByText(/invite-only during the beta/)).toBeInTheDocument();
+    expect(screen.getByText("Anyone with a Google account can sign in.")).toBeInTheDocument();
+    expect(screen.queryByText(/invite-only/)).not.toBeInTheDocument();
   });
 
   it("opens with a hero: the logo, the sentence and the amber demo button, with no Overview still", () => {
