@@ -212,7 +212,7 @@ run "criterion_4_execution_role_reads_only_satis_prod_and_injects_secrets" {
   }
 
   assert {
-    condition     = sort([for s in [for c in jsondecode(aws_ecs_task_definition.main.container_definitions) : c.secrets if c.name == "backend"][0] : s.name]) == sort(["DATABASE_URL", "DASHBOARD_ADMIN_USER", "DASHBOARD_ADMIN_PASSWORD_HASH", "SESSION_SECRET"])
+    condition     = sort([for s in [for c in jsondecode(aws_ecs_task_definition.main.container_definitions) : c.secrets if c.name == "backend"][0] : s.name]) == sort(["DATABASE_URL", "DASHBOARD_ADMIN_USER"])
     error_message = "by default the backend gets its four required secrets"
   }
 
@@ -357,8 +357,8 @@ run "hunter_execution_policy_is_not_vacuous" {
   command = apply
 
   assert {
-    condition     = length([for s in jsondecode(aws_iam_role_policy.execution.policy).Statement : s if contains(flatten([s.Action]), "ssm:GetParameters")]) == 1 && length(flatten([for s in jsondecode(aws_iam_role_policy.execution.policy).Statement : s.Resource if contains(flatten([s.Action]), "ssm:GetParameters")])) == 5
-    error_message = "exactly one ssm statement, naming the four required secrets and the tunnel token (the alltrue checks above would pass on an empty list)"
+    condition     = length([for s in jsondecode(aws_iam_role_policy.execution.policy).Statement : s if contains(flatten([s.Action]), "ssm:GetParameters")]) == 1 && length(flatten([for s in jsondecode(aws_iam_role_policy.execution.policy).Statement : s.Resource if contains(flatten([s.Action]), "ssm:GetParameters")])) == 3
+    error_message = "exactly one ssm statement, naming the two required secrets and the tunnel token (the alltrue checks above would pass on an empty list)"
   }
 
   assert {

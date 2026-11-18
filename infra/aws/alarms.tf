@@ -133,14 +133,14 @@ resource "aws_cloudwatch_metric_alarm" "backend_critical" {
   ok_actions          = local.alarm_actions
 }
 
-# #560 (OWASP A09): failed or refused sign-ins, all clients together: a wrong password ("login failed"), a failed Google
-# sign-in, and a refused one ("google sign-in refused": not invited, a disabled account, the sign-up caps). A
-# terms_required refusal is the normal first-sign-in step, and "login rate-limited" means the limiter is already working,
-# so neither is counted. These lines are warn (level 40), which backend-errors never counts.
+# #560 (OWASP A09): failed or refused sign-ins, all clients together: a failed Google sign-in, and a refused one
+# ("google sign-in refused": not invited, a disabled account, the sign-up caps). A terms_required refusal is the normal
+# first-sign-in step, so it is not counted. Password login (and its "login failed" line) is gone since gate B (#186).
+# These lines are warn (level 40), which backend-errors never counts.
 resource "aws_cloudwatch_log_metric_filter" "auth_failures" {
   name           = "satis-${local.environment}-auth-failures"
   log_group_name = aws_cloudwatch_log_group.backend.name
-  pattern        = "{ ($.msg = \"login failed\") || ($.msg = \"google sign-in failed\") || (($.msg = \"google sign-in refused\") && ($.code != \"terms_required\")) }"
+  pattern        = "{ ($.msg = \"google sign-in failed\") || (($.msg = \"google sign-in refused\") && ($.code != \"terms_required\")) }"
 
   metric_transformation {
     name          = "AuthFailureLines"

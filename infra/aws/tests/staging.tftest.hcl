@@ -93,7 +93,7 @@ run "d3_the_task_reads_only_staging_secrets_and_runs_the_four_steps_in_order" {
   }
 
   assert {
-    condition     = tolist(jsondecode(aws_iam_role_policy.staging_execution.policy).Statement[0].Resource) == sort([for k in ["TUNNEL_TOKEN", "SESSION_SECRET", "DASHBOARD_ADMIN_USER", "DASHBOARD_ADMIN_PASSWORD_HASH", "POSTGRES_PASSWORD", "DB_MIGRATOR_PASSWORD", "DB_APP_PASSWORD", "DATABASE_URL", "MIGRATOR_DATABASE_URL"] : "arn:aws:ssm:us-east-1:123456789012:parameter/satis/staging/${k}"])
+    condition     = tolist(jsondecode(aws_iam_role_policy.staging_execution.policy).Statement[0].Resource) == sort([for k in ["TUNNEL_TOKEN", "DASHBOARD_ADMIN_USER", "POSTGRES_PASSWORD", "DB_MIGRATOR_PASSWORD", "DB_APP_PASSWORD", "DATABASE_URL", "MIGRATOR_DATABASE_URL"] : "arn:aws:ssm:us-east-1:123456789012:parameter/satis/staging/${k}"])
     error_message = "the execution role reads exactly D3's nine /satis/staging/ values"
   }
 

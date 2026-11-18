@@ -5,10 +5,7 @@ import { delay, http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { endpoints } from "@satisfactory-dash/shared";
 import {
-  errorLoginFailed,
-  errorRateLimited,
   errorSessionRequired,
-  errorUpstreamUnreachable,
   sessionAnonymous,
   sessionAuthenticated,
   serversSingle,
@@ -39,12 +36,6 @@ function signedOut() {
   server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAnonymous)));
 }
 
-function submitLogin(username = "operator", password = "example-password") {
-  fireEvent.change(screen.getByLabelText("Username"), { target: { value: username } });
-  fireEvent.change(screen.getByLabelText("Password"), { target: { value: password } });
-  fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-}
-
 describe("AuthGate", () => {
   it("shows a status while the session is being checked", async () => {
     server.use(
@@ -62,7 +53,7 @@ describe("AuthGate", () => {
     renderGate();
     expect(await screen.findByText("servers: 1")).toBeInTheDocument();
     expect((await openAccountMenu()).getByText("operator")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
   it("shows the login screen when signed out, without calling protected routes", async () => {
@@ -79,52 +70,23 @@ describe("AuthGate", () => {
     expect(serversCalled).toBe(false);
   });
 
-  it("signs in and shows the app", async () => {
-    let body: unknown;
-    signedOut();
+  it("offers only Google when signed out: no username or password form (ADR-0025 PR 9)", async () => {
     server.use(
-      http.post(endpoints.auth.login.route, async ({ request }) => {
-        body = await request.json();
-        return HttpResponse.json(sessionAuthenticated);
-      }),
+      http.get(endpoints.auth.session.route, () => HttpResponse.json({ ...sessionAnonymous, signInMethods: ["google"] })),
     );
     renderGate();
-    await screen.findByRole("heading", { name: "Sign in" });
-    submitLogin();
-    expect(await screen.findByText("servers: 1")).toBeInTheDocument();
-    expect(body).toEqual({ username: "operator", password: "example-password" });
+    expect(await screen.findByRole("link", { name: "Sign in with Google" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
   });
 
-  it("shows the backend's message for wrong credentials and clears the password", async () => {
+  it("says sign-in isn't available when the session names no methods (an older backend)", async () => {
     signedOut();
-    server.use(http.post(endpoints.auth.login.route, () => HttpResponse.json(errorLoginFailed, { status: 401 })));
     renderGate();
-    await screen.findByRole("heading", { name: "Sign in" });
-    submitLogin();
-    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid username or password");
-    expect(screen.getByLabelText("Password")).toHaveValue("");
-    // A failed login is a form error, not a sign-out: the form and the username stay.
-    expect(screen.getByLabelText("Username")).toHaveValue("operator");
-  });
-
-  it("tells the operator to try again later when rate limited", async () => {
-    signedOut();
-    server.use(http.post(endpoints.auth.login.route, () => HttpResponse.json(errorRateLimited, { status: 429 })));
-    renderGate();
-    await screen.findByRole("heading", { name: "Sign in" });
-    submitLogin();
-    expect(await screen.findByRole("alert")).toHaveTextContent(/try again later/i);
-  });
-
-  it("shows any other login error generically with its request ID", async () => {
-    signedOut();
-    server.use(
-      http.post(endpoints.auth.login.route, () => HttpResponse.json(errorUpstreamUnreachable, { status: 502 })),
-    );
-    renderGate();
-    await screen.findByRole("heading", { name: "Sign in" });
-    submitLogin();
-    expect(await screen.findByRole("alert")).toHaveAttribute("data-request-id", errorUpstreamUnreachable.error.requestId);
+    expect(await screen.findByText("Sign-in isn't available on this server.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sign in with Google" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
   });
 
   it("goes to the login screen when a protected route answers 401", async () => {

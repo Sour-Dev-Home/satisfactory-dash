@@ -17,7 +17,7 @@ test("the source link has a 44 px tap target and sits apart from the sign-in for
 
   const footer = page.getByRole("contentinfo");
   await expectAtLeast44(footer.getByRole("link", { name: "Source code (AGPL-3.0)" }), "source link");
-  const signIn = (await page.getByRole("button", { name: "Sign in" }).boundingBox())!;
+  const signIn = (await page.getByRole("link", { name: "Sign in with Google" }).boundingBox())!;
   expect((await footer.boundingBox())!.y - (signIn.y + signIn.height)).toBeGreaterThanOrEqual(24);
   await expect(footer).toHaveCSS("border-top-style", "solid");
 });

@@ -33,7 +33,7 @@ import {
 } from "./history";
 import { ServerPlayersResponseSchema } from "./players";
 import { MapLiveResponseSchema, MapWorldLayerResponseSchema, WorldIngestResponseSchema } from "./map";
-import { LoginRequestSchema, SessionResponseSchema } from "./auth";
+import { SessionResponseSchema } from "./auth";
 import { DeleteAccountResponseSchema, LeaveServerResponseSchema } from "./account";
 import { SetAutoPauseRequestSchema, SettingsResponseSchema } from "./settings";
 import {
@@ -244,15 +244,9 @@ export const endpoints = {
       response: MapLiveResponseSchema,
     },
   },
-  // ADR-0011. Every /api route except health requires the session cookie these set.
+  // ADR-0011, ADR-0025. Every /api route except health requires the session cookie that
+  // Google sign-in (googleStart, then the callback) sets.
   auth: {
-    login: {
-      method: "POST",
-      route: "/api/auth/login",
-      path: () => "/api/auth/login",
-      request: LoginRequestSchema,
-      response: SessionResponseSchema,
-    },
     logout: { method: "POST", route: "/api/auth/logout", path: () => "/api/auth/logout", response: SessionResponseSchema },
     // ADR-0025 decision 4: "sign out everywhere". Revokes every session of the signed-in user
     // (this one included) and answers like logout: `authenticated: false`. The admin CLI's

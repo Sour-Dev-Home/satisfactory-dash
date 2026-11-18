@@ -1,6 +1,7 @@
 # ADR-0011: Login required (single operator now)
 
-Status: accepted (the project owner), 2026-09-22
+Status: accepted (the project owner), 2026-09-22. **Superseded in part 2026-11-17 by ADR-0025 (gate B, #186)**: the single
+operator password login is gone; sign-in is Google only, with database sessions. "Login required" itself stands.
 
 ## Context
 

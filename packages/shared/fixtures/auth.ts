@@ -1,9 +1,6 @@
-import type { LoginRequest, SessionResponse } from "../src/index";
+import type { SessionResponse } from "../src/index";
 
-/** A login request body. Example values only; never a real credential. */
-export const loginRequestValid = { username: "operator", password: "example-password" } satisfies LoginRequest;
-
-/** GET /api/auth/session or a successful POST /api/auth/login. */
+/** GET /api/auth/session with a valid cookie. */
 export const sessionAuthenticated = { authenticated: true, user: { name: "operator" } } satisfies SessionResponse;
 
 /** ADR-0025: a Google-signed-in account. `email` and `authMethods` are optional (an older

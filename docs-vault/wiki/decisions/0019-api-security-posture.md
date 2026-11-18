@@ -1,6 +1,8 @@
 # ADR-0019: API security posture at go-live, and what changes when it scales
 
-Status: accepted (architect, delegated by the project owner), 2026-09-24
+Status: accepted (architect, delegated by the project owner), 2026-09-24. **Superseded in part 2026-11-17 (gate B, #186,
+ADR-0025)**: the scrypt password login, its per-IP limiter and `SESSION_SECRET` are gone; sessions are database rows
+revoked with `npm run admin -- revoke-sessions`. The rest of the posture stands.
 
 ## Context
 A read-only security-reviewer pass on main before the tunnel (ADR-0013) found nothing critical or

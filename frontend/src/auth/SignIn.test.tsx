@@ -19,7 +19,7 @@ function ServerList() {
 
 // ADR-0025 PR 8: the sign-in screen with Google, and the account menu's two sign-outs.
 
-const withGoogle = { ...sessionAnonymous, signInMethods: ["password", "google"] };
+const withGoogle = { ...sessionAnonymous, signInMethods: ["google"] };
 
 function renderGate() {
   return renderWithClient(
@@ -41,47 +41,39 @@ describe("the sign-in screen", () => {
     const href = new URL(google.getAttribute("href")!, "http://x");
     expect(href.pathname).toBe("/api/auth/google/start");
     expect(href.searchParams.get("return")).toBe("/app/power");
-    // This backend still lists "password", so the form stays under an "or".
-    expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    expect(screen.getByText("or")).toBeInTheDocument();
   });
 
-  // ADR-0025 PR 9: the backend offers only Google, so the password form is gone.
-  it("with only Google offered, shows the Google button and no username, password, divider or Sign in button", async () => {
-    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json({ ...sessionAnonymous, signInMethods: ["google"] })));
-    renderGate();
-    expect(await screen.findByRole("link", { name: "Sign in with Google" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
-    expect(screen.queryByText("or")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Sign-in isn't available on this server.")).not.toBeInTheDocument();
-  });
+  // ADR-0025 PR 9: password login is gone, so Google is the whole card.
+  it.each([[["google"]], [["google", "google_signup"]]])(
+    "with %j offered, shows the Google button and no username, password, divider or Sign in button",
+    async (signInMethods) => {
+      server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json({ ...sessionAnonymous, signInMethods })));
+      renderGate();
+      expect(await screen.findByRole("link", { name: "Sign in with Google" })).toBeInTheDocument();
+      expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+      expect(screen.queryByText("or")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+      expect(screen.queryByText("Sign-in isn't available on this server.")).not.toBeInTheDocument();
+    },
+  );
 
-  it("with no sign-in method (no database, no Google), says sign-in isn't available instead of an empty card", async () => {
-    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json({ ...sessionAnonymous, signInMethods: [] })));
+  // Google off ([]), a backend that offers something this frontend doesn't know, or an older backend that sends no
+  // list at all: nothing to sign in with, so the card says so instead of showing an empty form.
+  it.each([
+    ["an empty list", { ...sessionAnonymous, signInMethods: [] }],
+    ["only an unknown method", { ...sessionAnonymous, signInMethods: ["passkey"] }],
+    ["no list (an older backend)", sessionAnonymous],
+    ["a stale \"password\" entry", { ...sessionAnonymous, signInMethods: ["password"] }],
+  ])("with %s, says sign-in isn't available instead of an empty card", async (_label, session) => {
+    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(session)));
     renderGate();
     expect(await screen.findByText("Sign-in isn't available on this server.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Sign in with Google" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
-  });
-
-  // (An older backend that sends no list also gets the form: every test built on the plain sessionAnonymous fixture.)
-  it("keeps the password form, with no divider, for a backend that lists only password", async () => {
-    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json({ ...sessionAnonymous, signInMethods: ["password"] })));
-    renderGate();
-    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
-    expect(screen.queryByText("or")).not.toBeInTheDocument();
-    expect(screen.queryByText("Sign-in isn't available on this server.")).not.toBeInTheDocument();
-  });
-
-  it("offers no Google when the backend doesn't list it (or is older and sends no list)", async () => {
-    server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAnonymous)));
-    renderGate();
-    await screen.findByRole("heading", { name: "Sign in" });
-    expect(screen.queryByRole("link", { name: "Sign in with Google" })).not.toBeInTheDocument();
   });
 
   it("shows the fixed text for a Google error code, never the query itself", async () => {
@@ -97,7 +89,7 @@ describe("the sign-in screen", () => {
 });
 
 describe("the terms step of open sign-up (ADR-0046)", () => {
-  const open = { ...sessionAnonymous, signInMethods: ["password", "google", "google_signup"] };
+  const open = { ...sessionAnonymous, signInMethods: ["google", "google_signup"] };
 
   it("shows nothing about terms on a plain sign-in, even when sign-up is open (an existing account never sees it)", async () => {
     server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(open)));
@@ -141,7 +133,7 @@ describe("the terms step of open sign-up (ADR-0046)", () => {
 describe("re-accepting changed terms (#568)", () => {
   it.each([
     ["sign-up is closed", withGoogle],
-    ["sign-up is open", { ...sessionAnonymous, signInMethods: ["password", "google", "google_signup"] }],
+    ["sign-up is open", { ...sessionAnonymous, signInMethods: ["google", "google_signup"] }],
   ])("lists what changed, links the Terms, needs the tick, and keeps the return path (%s)", async (_label, session) => {
     window.history.replaceState(null, "", "/app/login?error=terms_changed&return=%2Fapp%2Fpower");
     server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(session)));
@@ -182,7 +174,7 @@ describe("re-accepting changed terms (#568)", () => {
     window.history.replaceState(null, "", "/app/login?error=terms_required");
     server.use(
       http.get(endpoints.auth.session.route, () =>
-        HttpResponse.json({ ...sessionAnonymous, signInMethods: ["password", "google", "google_signup"] }),
+        HttpResponse.json({ ...sessionAnonymous, signInMethods: ["google", "google_signup"] }),
       ),
     );
     renderGate();
