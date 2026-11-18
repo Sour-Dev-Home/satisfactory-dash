@@ -3,9 +3,9 @@
 # task's shared loopback (decision D2, the same shape as compose.yaml's `network_mode: service:backend`).
 
 locals {
-  # cloudflared 2026.10.4 by its multi-arch index digest, the same pin as compose.yaml (a static test
+  # cloudflared 2026.11.0 by its multi-arch index digest, the same pin as compose.yaml (a static test
   # keeps the two equal).
-  cloudflared_image = "cloudflare/cloudflared:2026.10.4@sha256:c6c7ae1d5dfdcb094ad344ed68ccffc26635c9c6be80965664c33baf064b0515"
+  cloudflared_image = "cloudflare/cloudflared:2026.11.0@sha256:b94b96edf2c9c4360f8879c8580cfaa99077f19c849ec595ca2f711b27d4f344"
 
   # compose.yaml's `:?` keys: the backend refuses to start without them.
   backend_required_secrets = ["DATABASE_URL", "DASHBOARD_ADMIN_USER", "DASHBOARD_ADMIN_PASSWORD_HASH", "SESSION_SECRET"]
