@@ -13,7 +13,7 @@ locals {
   # The owner puts each value by hand as a SecureString (runbooks/aws.md, "Staging"); Terraform only names them.
   staging_ssm_prefix = "/satis/staging/"
   staging_ssm_keys = [
-    "TUNNEL_TOKEN", "SESSION_SECRET", "DASHBOARD_ADMIN_USER", "DASHBOARD_ADMIN_PASSWORD_HASH",
+    "TUNNEL_TOKEN", "DASHBOARD_ADMIN_USER",
     "POSTGRES_PASSWORD", "DB_MIGRATOR_PASSWORD", "DB_APP_PASSWORD", "DATABASE_URL", "MIGRATOR_DATABASE_URL",
   ]
   staging_ssm_arns = {
@@ -39,7 +39,7 @@ locals {
     SIGNUP_MODE        = "closed"
     SELF_SERVE_ENABLED = "false"
   }
-  staging_backend_secrets = ["DATABASE_URL", "DASHBOARD_ADMIN_USER", "DASHBOARD_ADMIN_PASSWORD_HASH", "SESSION_SECRET"]
+  staging_backend_secrets = ["DATABASE_URL", "DASHBOARD_ADMIN_USER"]
 
   staging_log_options = {
     "awslogs-group"  = aws_cloudwatch_log_group.staging.name

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   errorForbidden,
-  errorLoginFailed,
   errorNotEditable,
   errorNotFound,
   errorPayloadTooLarge,
   errorRateLimited,
   errorServiceUnavailable,
+  errorSessionRequired,
   errorUnknownCode,
   errorUnsupportedMediaType,
   errorUpstreamUnreachable,
@@ -47,7 +47,7 @@ describe("isDeployGapError", () => {
 
 describe("classifyError", () => {
   it.each([
-    [errorLoginFailed, "unauthorized"],
+    [errorSessionRequired, "unauthorized"],
     [errorRateLimited, "rate_limited"],
     [errorNotEditable, "not_editable"],
     [errorForbidden, "forbidden"],

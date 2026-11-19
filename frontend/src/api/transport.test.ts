@@ -63,15 +63,15 @@ describe("the client sends every request through the transport", () => {
       { method: "GET", credentials: "include", signal: controller.signal },
     ]);
 
-    await apiSend(endpoints.auth.login, { username: "operator", password: "pw" }).catch(() => {});
+    await apiSend(endpoints.settings.setAutoPause, { enabled: true }, "default").catch(() => {});
     expect(sent[1]).toEqual([
-      endpoints.auth.login.path(),
+      endpoints.settings.setAutoPause.path("default"),
       {
-        method: "POST",
+        method: "PUT",
         credentials: "include",
         signal: undefined,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: "operator", password: "pw" }),
+        body: JSON.stringify({ enabled: true }),
       },
     ]);
   });

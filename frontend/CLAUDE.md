@@ -45,8 +45,8 @@ contract needs to grow, not that this module should special-case a backend detai
     slug (lowercase words and hyphens). The body starts at `##` (the title is the h1), never skips a heading level,
     uses only this site's images (`/...`) and has at least `MIN_GUIDE_WORDS` words, or the build fails. Link the app
     and other static pages with plain `<a href>`, never a router `Link`: they're outside the SPA.
-  - `sitemap.xml` and `robots.txt`: generated from the same list. Keep `/app` out of the sitemap but never disallow it
-    (the AdSense crawler signs in there).
+  - `sitemap.xml` and `robots.txt`: generated from the same list. Keep `/app` out of the sitemap. `robots.txt` doesn't
+    disallow it; that was for the AdSense crawler's sign-in, dropped at gate B (ADR-0021 amendment 4).
   A new generated page goes in `GENERATED_PAGES` (HTML, through the Worker) or `GENERATED_STATIC_FILES` (anything else,
   plus a `!` pattern in `wrangler.jsonc`); `worker/routing.test.ts` checks both.
 - Styling (ADR-0016 items 2-3): Tailwind v4, tokens in `@theme` in `src/index.css`
@@ -86,7 +86,7 @@ contract needs to grow, not that this module should special-case a backend detai
   failed reads with backoff; `StatusBanners` says "updating" once, for `DEPLOY_GAP_GIVE_UP_MS`, then the usual
   "couldn't reach" error. Durations are named constants there.
 - Auth (ADR-0011): `src/auth/AuthGate.tsx` shows the app only when the session query says
-  signed in. A 401 from any query or mutation (except login) signs out in one place,
+  signed in. A 401 from any query or mutation signs out in one place,
   `createQueryClient`; screens never handle 401 themselves. Nothing auth-related goes in
   localStorage: the httpOnly cookie is the only credential.
 - Servers (ADR-0001): `src/servers/ServerGate.tsx` picks the server; views read it with

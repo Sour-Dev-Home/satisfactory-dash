@@ -55,7 +55,6 @@ const FAR_FUTURE = "2099-01-01T00:00:00.000Z";
 export const handlers = [
   http.get(endpoints.health.route, () => HttpResponse.json(healthOk)),
   http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAuthenticated)),
-  http.post(endpoints.auth.login.route, () => HttpResponse.json(sessionAuthenticated)),
   http.post(endpoints.auth.logout.route, () => HttpResponse.json(sessionAnonymous)),
   http.post(endpoints.auth.logoutAll.route, () => HttpResponse.json(sessionAnonymous)),
   http.get(endpoints.servers.route, () => HttpResponse.json(serversSingle)),

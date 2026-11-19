@@ -283,3 +283,7 @@ The owner published the Google app and said "gate B go" (#186). Their answers on
 - **The staging check expects a 401** from a signed-in endpoint instead of signing in with a password.
 - **The AdSense crawler login (ADR-0021 amendment 2, Decision 5) is dropped.** AdSense reviews the public pages.
 - The owner signs in with Google today and gets the operator view.
+- **Done, 2026-11-17.** PR 9 shipped as six PRs: the break-glass (#897), the staging 401 check and the demo entry
+  (#898), the backend (#899), the contract and the sign-in page (#902), the AWS task's secrets (#903) and the docs
+  (ADR-0011 and ADR-0019 superseded in part, ADR-0021 amendment 4, the runbooks). Sign-in is Google only. The owner
+  applies `infra/aws` with Terraform, and can then delete the four unused SSM parameters (`aws.md`).

@@ -8,7 +8,7 @@ locals {
   cloudflared_image = "cloudflare/cloudflared:2026.10.4@sha256:c6c7ae1d5dfdcb094ad344ed68ccffc26635c9c6be80965664c33baf064b0515"
 
   # compose.yaml's `:?` keys: the backend refuses to start without them.
-  backend_required_secrets = ["DATABASE_URL", "DASHBOARD_ADMIN_USER", "DASHBOARD_ADMIN_PASSWORD_HASH", "SESSION_SECRET"]
+  backend_required_secrets = ["DATABASE_URL", "DASHBOARD_ADMIN_USER"]
   # The rest of the backend's SSM keys, injected only when listed in var.backend_optional_secrets (a
   # test keeps both lists inside ssm.tf's names).
   backend_optional_secret_keys = [

@@ -41,7 +41,6 @@ import {
   commandSent,
   commandSucceeded,
   deleteServerDone,
-  errorLoginFailed,
   errorRateLimited,
   errorUnknownCode,
   errorUpstreamAuthRejected,
@@ -155,7 +154,6 @@ export interface MockResponse {
 export const ROUTES = {
   health: endpoints.health,
   session: endpoints.auth.session,
-  login: endpoints.auth.login,
   logout: endpoints.auth.logout,
   logoutAll: endpoints.auth.logoutAll,
   servers: endpoints.servers,
@@ -285,7 +283,6 @@ const relayed = (result: { command: Command }): Partial<Record<RouteKey, MockRes
 const BASE: Record<RouteKey, MockResponse> = {
   health: ok(healthOk),
   session: ok(sessionAuthenticated),
-  login: ok(sessionAuthenticated),
   logout: ok(sessionAnonymous),
   logoutAll: ok(sessionAnonymous),
   servers: ok(serversSingle),
@@ -820,15 +817,16 @@ export const SCENARIOS = {
     alertDestinations: slow(BASE.alertDestinations),
   },
   "loading": { session: { status: 200, delay: "never" } },
-  "login": { session: ok(sessionAnonymous) },
-  // A backend with Google sign-in on (ADR-0025): the button shows above the password form.
-  "login-google": { session: ok({ ...sessionAnonymous, signInMethods: ["password", "google"] }) },
+  // The sign-in screen as a current backend shows it (ADR-0025): Google, with sign-up open.
+  "login": { session: ok({ ...sessionAnonymous, signInMethods: ["google", "google_signup"] }) },
+  // Google on, sign-up closed: the same button (only the terms step needs google_signup).
+  "login-google": { session: ok({ ...sessionAnonymous, signInMethods: ["google"] }) },
+  // Nothing to offer (Google off, or a backend too old to send the list): it says so.
+  "login-unavailable": { session: ok(sessionAnonymous) },
   // The backend's redirect after a failed Google sign-in (the text is fixed, never the query).
-  "login-google-error": { session: ok({ ...sessionAnonymous, signInMethods: ["password", "google"] }) },
+  "login-google-error": { session: ok({ ...sessionAnonymous, signInMethods: ["google"] }) },
   // #568: an existing account that accepted an older Terms version is sent back to accept the current one.
-  "login-terms-changed": { session: ok({ ...sessionAnonymous, signInMethods: ["password", "google"] }) },
-  "login-failed": { session: ok(sessionAnonymous), login: fail(401, errorLoginFailed) },
-  "login-rate-limited": { session: ok(sessionAnonymous), login: fail(429, errorRateLimited) },
+  "login-terms-changed": { session: ok({ ...sessionAnonymous, signInMethods: ["google"] }) },
   "no-servers": { servers: ok(serversNone) },
   "server-picker": { servers: ok(serversMultiple) },
   "paused": { status: ok(statusPaused) },

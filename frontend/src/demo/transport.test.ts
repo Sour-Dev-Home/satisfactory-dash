@@ -201,7 +201,7 @@ describe("the demo transport", () => {
 
   it("no longer answers password login: POST /api/auth/login is the demo's no-data 404 and doesn't sign in", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const res = await call("POST", endpoints.auth.login.path(), { username: "demo", password: "demo" });
+    const res = await call("POST", "/api/auth/login", { username: "demo", password: "demo" });
     expect(res.status).toBe(404);
     expect((await res.json()).error.message).toBe("The demo has no data for POST /api/auth/login.");
     expect((await session()).authenticated).toBe(false);

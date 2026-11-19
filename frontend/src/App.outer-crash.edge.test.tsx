@@ -55,7 +55,7 @@ describe("App-level fallback Sign out", () => {
     server.use(http.get(endpoints.auth.session.route, () => HttpResponse.json(sessionAnonymous)));
     gate.broken = false;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByLabelText(/password/i)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Health" })).not.toBeInTheDocument();
   });
 

@@ -98,7 +98,7 @@ test('criterion 4: SSM parameters are named, never read or written', () => {
   assert.match(code(read('deploy_iam.tf')), /deploy_parameter_prefix\s*=\s*"\/satis\/deploy\/\$\{local\.environment\}"/);
   assert.doesNotMatch(all, /data\s+"aws_secretsmanager_secret_version"/);
   const ssm = code(read('ssm.tf'));
-  for (const name of ['TUNNEL_TOKEN', 'B2_ACCESS_KEY_ID', 'B2_SECRET_ACCESS_KEY', 'BACKUP_HEARTBEAT_URL', 'SESSION_SECRET']) {
+  for (const name of ['TUNNEL_TOKEN', 'B2_ACCESS_KEY_ID', 'B2_SECRET_ACCESS_KEY', 'BACKUP_HEARTBEAT_URL', 'GOOGLE_CLIENT_SECRET']) {
     assert.match(ssm, new RegExp(`"${name}"`), `ssm.tf names ${name}`);
   }
   assert.match(ssm, /"\/satis\/prod\/"/);

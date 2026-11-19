@@ -220,7 +220,7 @@ describe("architecture (ADR-0014 dependency rules)", () => {
       ["modules/map/x.ts", `import { E } from "../../platform/errors.js";\nimport { z } from "zod";`],
       ["modules/servers/x.ts", `import type { Request } from "express";\nimport { e } from "../../platform/errorResponse.js";`],
       ["server.ts", `import { a } from "./modules/identity/index.js";\nimport { app } from "./app.js";`],
-      ["modules/identity/y.ts", `import { LoginRequestSchema } from "@satisfactory-dash/shared";`],
+      ["modules/identity/y.ts", `import { SessionResponseSchema } from "@satisfactory-dash/shared";`],
       ["platform/y.ts", `import type { ApiError } from "@satisfactory-dash/shared";`],
       ["app.ts", `import { endpoints } from "@satisfactory-dash/shared";`],
     ]);

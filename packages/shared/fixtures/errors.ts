@@ -55,16 +55,6 @@ export const errorUnknownCode = {
   },
 } satisfies ApiErrorResponse;
 
-/** POST /api/auth/login with a wrong username or password (401). The message doesn't
- *  say which one was wrong. */
-export const errorLoginFailed = {
-  error: {
-    code: "unauthorized",
-    message: "Invalid username or password",
-    requestId: "00000000-0000-4000-8000-000000000003",
-  },
-} satisfies ApiErrorResponse;
-
 /** Any protected route without a valid session cookie (401): the frontend goes to login. */
 export const errorSessionRequired = {
   error: {
@@ -74,7 +64,7 @@ export const errorSessionRequired = {
   },
 } satisfies ApiErrorResponse;
 
-/** Too many login attempts from one IP (429). */
+/** Too many requests from one IP (429), e.g. sign-in attempts or push tests. */
 export const errorRateLimited = {
   error: {
     code: "rate_limited",
