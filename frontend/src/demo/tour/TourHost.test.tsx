@@ -105,6 +105,13 @@ function renderApp(path = "/app", steps: readonly TourStep[] = TOUR_STEPS) {
 
 const dialog = () => screen.getByRole("dialog");
 
+/**
+ * Fake timers that leave setInterval real. jsdom (31+) drives its animation frames and focus fixup from one shared
+ * interval made with the global setInterval; one made while that is faked never fires after `useRealTimers`, and jsdom
+ * then never starts a real one, so no animation frame runs again in this file (the settling tests below wait on frames).
+ */
+const fakeTimers = () => vi.useFakeTimers({ toNotFake: ["setInterval", "clearInterval"] });
+
 beforeEach(() => {
   resetTourLoadForTests();
   resetTourStoreForTests();
@@ -307,7 +314,7 @@ describe("the demo's tour", () => {
   });
 
   it("shows a step centred with no highlight when its target never appears, and goes on", async () => {
-    vi.useFakeTimers();
+    fakeTimers();
     window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
     render(
       <MemoryRouter initialEntries={["/app"]}>
@@ -325,7 +332,7 @@ describe("the demo's tour", () => {
   });
 
   it("with the opener missing, falls back centred without clicking anything", async () => {
-    vi.useFakeTimers();
+    fakeTimers();
     window.localStorage.setItem(TOUR_STORAGE_KEY, "seen");
     const onOpen = vi.fn();
     const step: TourStep = { id: "panel", path: "/app", target: "panel", openedBy: "absent", title: "The details.", body: "Words.", kind: "next" };
@@ -687,7 +694,7 @@ describe("the tour's try-it steps", () => {
   });
 
   it("Do it for me with no answer from the page goes on as Next after the wait", async () => {
-    vi.useFakeTimers();
+    fakeTimers();
     renderTry([{ ...CARD, done: { appears: "never" } }, LAST]);
     await act(() => vi.advanceTimersByTimeAsync(50));
     expect(dialog()).toHaveAccessibleName("Open a group.");
